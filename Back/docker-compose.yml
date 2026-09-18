@@ -1,0 +1,15 @@
+networks:
+  app-network:
+    driver: bridge
+
+services:
+  cajeros:
+    build: ./servicios/cajeros
+    ports:
+      - '4004:4004'
+    environment:
+      - NODE_ENV=development
+      - PORT=4004
+    networks:
+      - app-network
+
