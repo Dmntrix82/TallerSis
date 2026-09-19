@@ -6,10 +6,19 @@ services:
   cajeros:
     build: ./servicios/cajeros
     ports:
-      - '4004:4004'
+      - "4004:4004"
     environment:
       - NODE_ENV=development
       - PORT=4004
     networks:
       - app-network
 
+  gestion_pagos:
+    build: ./servicios/gestion_pagos
+    ports:
+      - "4005:4005"
+    environment:
+      - NODE_ENV=development
+      - PORT=4005
+    networks:
+      - app-network
