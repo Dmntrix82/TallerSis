@@ -13,6 +13,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/cajeros/, '/cajeros'),
       },
+      '/api/pagos': {
+        target: 'http://localhost:4005',
+        changeOrigin: true,
+      },
     },
   },
 })
