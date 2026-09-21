@@ -1,13 +1,14 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
-export async function apiFetch(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+export async function apiFetch(path, options = {}, baseUrl = API_BASE_URL) {
+  const response = await fetch(`${baseUrl}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   })
 
   if (!response.ok) {
-    throw new Error(`Error ${response.status}: ${response.statusText}`)
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.mensaje ?? `Error ${response.status}: ${response.statusText}`)
   }
 
   return response.json()
