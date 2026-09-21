@@ -4,8 +4,9 @@ const port = process.env.PORT || 4005;
 
 app.use(express.json());
 
-// Array temporal para simular el historial de transacciones (TDSI-272)
-const historialTransacciones = [];
+const { historialTransacciones } = require('./data/memoria');           // AGREGAR
+const pagoMixtoRoutes = require('./routes/pagoMixtoRoutes');            // AGREGAR
+const { errorHandler } = require('./middlewares/errorHandler');         // AGREGAR
 
 const METODOS_VALIDOS = ['Efectivo', 'Tarjeta', 'QR'];
 
@@ -39,7 +40,7 @@ app.post('/api/pagos/registrar', (req, res) => {
         metodo,
         monto,
         estado: 'Registrado',
-        fecha: new Date().toISOString() // Fecha y hora del registro
+        fecha: new Date().toISOString()
     };
 
     historialTransacciones.push(nuevoPago);
@@ -61,6 +62,11 @@ app.get('/api/pagos/historial', (req, res) => {
         historial: historialTransacciones
     });
 });
+
+// TDSI-87 / TDSI-275 / TDSI-276 / TDSI-277: pago mixto              // AGREGAR
+app.use('/api/pagos', pagoMixtoRoutes);                              // AGREGAR
+
+app.use(errorHandler);                                               // AGREGAR (al final, antes de listen)
 
 app.listen(port, () => {
     console.log(`Microservicio de Pagos corriendo en el puerto ${port}`);
