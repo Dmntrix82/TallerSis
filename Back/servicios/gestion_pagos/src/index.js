@@ -4,9 +4,10 @@ const port = process.env.PORT || 4005;
 
 app.use(express.json());
 
-const { historialTransacciones } = require('./data/memoria');           // AGREGAR
-const pagoMixtoRoutes = require('./routes/pagoMixtoRoutes');            // AGREGAR
-const { errorHandler } = require('./middlewares/errorHandler');         // AGREGAR
+const { historialTransacciones } = require('./data/memoria');           
+const pagoMixtoRoutes = require('./routes/pagoMixtoRoutes');            
+const clientesRoutes = require('./routes/clientesRoutes');          
+const { errorHandler } = require('./middlewares/errorHandler');        
 
 const METODOS_VALIDOS = ['Efectivo', 'Tarjeta', 'QR'];
 
@@ -63,10 +64,13 @@ app.get('/api/pagos/historial', (req, res) => {
     });
 });
 
-// TDSI-87 / TDSI-275 / TDSI-276 / TDSI-277: pago mixto              // AGREGAR
-app.use('/api/pagos', pagoMixtoRoutes);                              // AGREGAR
+// TDSI-87 / TDSI-275 / TDSI-276 / TDSI-277: pago mixto             
+app.use('/api/pagos', pagoMixtoRoutes);                             
 
-app.use(errorHandler);                                               // AGREGAR (al final, antes de listen)
+// TDSI-91 / TDSI-287 / TDSI-288: clientes frecuentes       
+app.use('/api/clientes', clientesRoutes);                   
+
+app.use(errorHandler);                                              
 
 app.listen(port, () => {
     console.log(`Microservicio de Pagos corriendo en el puerto ${port}`);
