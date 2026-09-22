@@ -7,10 +7,7 @@ const {
 } = require("../services/clientesService");
 const { AppError } = require("../utils/AppError");
 
-// =====================================================================
 // TDSI-288: búsqueda de cliente por NIT
-// =====================================================================
-
 test("TDSI-288: busca cliente existente por NIT exacto", () => {
   const c = buscarClientePorNit("123456789");
   assert.equal(c.nit, "123456789");
@@ -55,10 +52,7 @@ test("TDSI-288: retorna 400 si el NIT tiene más de 15 dígitos", () => {
   );
 });
 
-// =====================================================================
 // TDSI-290: autocompletado (sugerencias)
-// =====================================================================
-
 test("TDSI-290: sugiere por nombre parcial", () => {
   const r = sugerirClientes("juan");
   assert.equal(r.length, 1);
@@ -80,10 +74,7 @@ test("TDSI-290: respeta el límite de resultados", () => {
   assert.ok(r.length <= 1);
 });
 
-// =====================================================================
 // TDSI-289: guardar cliente (upsert)
-// =====================================================================
-
 test("TDSI-289: guarda cliente nuevo", () => {
   const c = guardarCliente({ nit: "222222222", razon_social: "Test SA" });
   assert.equal(c.nit, "222222222");
