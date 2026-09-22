@@ -94,3 +94,39 @@ test("TDSI-289: lanza 400 si falta nit o razon_social", () => {
     (e) => e.status === 400
   );
 });
+
+// TDSI-289: guardarSiNoExiste
+const { guardarSiNoExiste } = require("../services/clientesService");
+
+test("TDSI-289: crea cliente nuevo", () => {
+  const r = guardarSiNoExiste({ nit: "999888777", razon_social: "Nuevo SA" });
+  assert.equal(r.creado, true);
+  assert.equal(r.cliente.nit, "999888777");
+});
+
+test("TDSI-289: no duplica si ya existe", () => {
+  guardarSiNoExiste({ nit: "888888888", razon_social: "Primera" });
+  const r2 = guardarSiNoExiste({ nit: "888888888", razon_social: "Segunda" });
+  assert.equal(r2.creado, false);
+  assert.equal(r2.cliente.razon_social, "Primera");
+});
+
+test("TDSI-289: no hace nada si faltan datos", () => {
+  const r = guardarSiNoExiste({});
+  assert.equal(r.creado, false);
+  assert.equal(r.cliente, null);
+});
+
+// TDSI-290: rendimiento
+test("TDSI-290: búsqueda por NIT responde en menos de 10ms", () => {
+  const inicio = Date.now();
+  buscarClientePorNit("123456789");
+  const duracion = Date.now() - inicio;
+  assert.ok(duracion < 10, `Tomó ${duracion}ms, debería ser < 10ms`);
+});
+
+test("TDSI-290: sugerencias repetidas devuelven mismo resultado (cache)", () => {
+  const r1 = sugerirClientes("juan");
+  const r2 = sugerirClientes("juan");
+  assert.deepEqual(r1, r2);
+});
