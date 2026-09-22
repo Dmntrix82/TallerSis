@@ -4,9 +4,9 @@
   "description": "Microservicio de Facturación (RePay)",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "test": "node --test src/tests/tirilla.test.js"
-  },
+  "start": "node src/index.js",
+  "test": "node --test src/tests/tirilla.test.js src/tests/impresora.test.js"
+},
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
