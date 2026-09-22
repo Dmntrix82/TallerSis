@@ -1,8 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { impresora, estadoImpresora, conmutarImpresora } = require("../services/impresoraService");
+const { impresora, estadoImpresora, conmutarImpresora, imprimir } = require("../services/impresoraService");
+const { seed, db } = require("../data/memoria");
 
-test.beforeEach(() => { impresora.conectada = true; });
+test.beforeEach(() => { impresora.conectada = true; seed(); });
 
 test("TDSI-296: la impresora está conectada por defecto", () => {
   const e = estadoImpresora();
@@ -25,4 +26,15 @@ test("TDSI-296: se puede reconectar la impresora", () => {
   conmutarImpresora(false);
   const e = conmutarImpresora(true);
   assert.equal(e.conectada, true);
+});
+
+test("TDSI-297: al imprimir marca la factura como impresa", () => {
+  imprimir("F-000001");
+  assert.equal(db.facturas[0].impresa, true);
+  assert.equal(db.facturas[0].vecesImpresa, 1);
+});
+
+test("TDSI-297: no permite imprimir dos veces la misma factura", () => {
+  imprimir("F-000001");
+  assert.throws(() => imprimir("F-000001"), /ya fue impresa/);
 });

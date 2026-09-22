@@ -1,4 +1,6 @@
-// TDSI-296: adaptador de impresora. Sin hardware real, se simula el envío del trabajo de impresión.
+const { obtenerFactura, generarTirilla } = require("./tirillaService");
+
+// TDSI-296: adaptador de impresora simulada
 const impresora = {
   modelo: process.env.IMPRESORA_MODELO || "EPSON TM-T20III (simulada)",
   conectada: true,
@@ -23,4 +25,22 @@ function conmutarImpresora(conectada) {
   return estadoImpresora();
 }
 
-module.exports = { impresora, estadoImpresora, conmutarImpresora };
+/** TDSI-297: imprime y registra en el sistema que la factura ya fue impresa. */
+function imprimir(numero) {
+  const factura = obtenerFactura(numero);
+  if (factura.impresa) {
+    const e = new Error("La factura ya fue impresa. Use el endpoint de reimpresión.");
+    e.status = 409;
+    throw e;
+  }
+  const tirilla = generarTirilla(numero, { copia: false });
+  const envio = impresora.enviar(tirilla.texto);
+
+  factura.impresa = true;
+  factura.vecesImpresa += 1;
+  factura.impresaEn = envio.enviadoEn;
+
+  return { numero, jobId: envio.jobId, impresoEn: envio.enviadoEn, tirilla: tirilla.texto };
+}
+
+module.exports = { impresora, estadoImpresora, conmutarImpresora, imprimir };
