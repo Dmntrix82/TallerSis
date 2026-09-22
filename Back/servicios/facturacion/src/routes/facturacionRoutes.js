@@ -19,5 +19,6 @@ router.get("/:numero/tirilla", wrap((req, res) => {
   res.type("text/plain").send(t.texto);
 }));
 router.post("/:numero/imprimir", wrap((req, res) => res.json({ ok: true, data: impresion.imprimir(req.params.numero) })));
+router.post("/:numero/reimprimir", wrap((req, res) => res.json({ ok: true, data: impresion.reimprimir(req.params.numero, req.body && req.body.motivo) })));
 
 module.exports = router;

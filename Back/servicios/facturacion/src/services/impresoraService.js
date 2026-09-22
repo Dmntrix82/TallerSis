@@ -43,4 +43,29 @@ function imprimir(numero) {
   return { numero, jobId: envio.jobId, impresoEn: envio.enviadoEn, tirilla: tirilla.texto };
 }
 
-module.exports = { impresora, estadoImpresora, conmutarImpresora, imprimir };
+/** TDSI-298: permite reimprimir una factura que ya fue emitida/impresa. */
+function reimprimir(numero, motivo) {
+  const factura = obtenerFactura(numero);
+  if (!factura.impresa) {
+    const e = new Error("La factura aún no fue impresa. Use /imprimir primero.");
+    e.status = 409;
+    throw e;
+  }
+
+  const tirilla = generarTirilla(numero, { copia: true });
+  const envio = impresora.enviar(tirilla.texto);
+
+  factura.vecesImpresa += 1;
+
+  return {
+    numero,
+    tipo: "COPIA",
+    motivo: motivo || "No especificado",
+    jobId: envio.jobId,
+    reimpresoEn: envio.enviadoEn,
+    copiaNro: factura.vecesImpresa - 1,
+    tirilla: tirilla.texto,
+  };
+}
+
+module.exports = { impresora, estadoImpresora, conmutarImpresora, imprimir, reimprimir };

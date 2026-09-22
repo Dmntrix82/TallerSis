@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { impresora, estadoImpresora, conmutarImpresora, imprimir } = require("../services/impresoraService");
+const { impresora, estadoImpresora, conmutarImpresora, imprimir, reimprimir } = require("../services/impresoraService");
 const { seed, db } = require("../data/memoria");
 
 test.beforeEach(() => { impresora.conectada = true; seed(); });
@@ -37,4 +37,16 @@ test("TDSI-297: al imprimir marca la factura como impresa", () => {
 test("TDSI-297: no permite imprimir dos veces la misma factura", () => {
   imprimir("F-000001");
   assert.throws(() => imprimir("F-000001"), /ya fue impresa/);
+});
+
+test("TDSI-298: no permite reimprimir si nunca se imprimió antes", () => {
+  assert.throws(() => reimprimir("F-000001"), /aún no fue impresa/);
+});
+
+test("TDSI-298: reimprime marcando la tirilla como copia", () => {
+  imprimir("F-000001");
+  const r = reimprimir("F-000001", "se dañó el papel");
+  assert.equal(r.tipo, "COPIA");
+  assert.equal(r.motivo, "se dañó el papel");
+  assert.match(r.tirilla, /COPIA \/ REIMPRESION/);
 });
