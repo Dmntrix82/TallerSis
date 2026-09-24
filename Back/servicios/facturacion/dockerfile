@@ -14,8 +14,7 @@ RUN npm install
 COPY . .
 
 # 6. Puerto del microservicio
-EXPOSE 8081
+EXPOSE 4002
 
 # 7. Ejecutar la aplicación
 CMD ["node", "src/index.js"]
-
