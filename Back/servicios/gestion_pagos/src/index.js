@@ -4,14 +4,16 @@ const port = process.env.PORT || 4005;
 
 app.use(express.json());
 
-const { historialTransacciones } = require('./data/memoria');           // AGREGAR
-const pagoMixtoRoutes = require('./routes/pagoMixtoRoutes');            // AGREGAR
-const { errorHandler } = require('./middlewares/errorHandler');         // AGREGAR
+const { historialTransacciones } = require('./data/memoria');
+const pagoMixtoRoutes = require('./routes/pagoMixtoRoutes');
+const clientesRoutes = require('./routes/clientesRoutes');
+const { guardarSiNoExiste } = require('./services/clientesService');
+const { errorHandler } = require('./middlewares/errorHandler');
 
 const METODOS_VALIDOS = ['Efectivo', 'Tarjeta', 'QR'];
 
 app.post('/api/pagos/registrar', (req, res) => {
-    const { id_transaccion, metodo, monto } = req.body;
+    const { id_transaccion, metodo, monto, nit, razon_social, email } = req.body;
 
     if (!id_transaccion || !metodo || monto === undefined) {
         return res.status(400).json({
@@ -34,28 +36,31 @@ app.post('/api/pagos/registrar', (req, res) => {
         });
     }
 
+    // TDSI-289: guardar cliente automáticamente si viene con NIT + razón social
+    const clienteAutoguardado = guardarSiNoExiste({ nit, razon_social, email });
+
     const nuevoPago = {
         id: historialTransacciones.length + 1,
         id_transaccion,
         metodo,
         monto,
+        nit: nit ?? null,
+        razon_social: razon_social ?? null,
         estado: 'Registrado',
         fecha: new Date().toISOString()
     };
 
     historialTransacciones.push(nuevoPago);
 
-    console.log('Pago registrado en historial:', nuevoPago);
-    console.log('Historial actual:', historialTransacciones);
-
     res.status(200).json({
         mensaje: 'Pago registrado exitosamente',
         pago: nuevoPago,
-        totalTransacciones: historialTransacciones.length
+        totalTransacciones: historialTransacciones.length,
+        clienteGuardado: clienteAutoguardado.creado,
+        cliente: clienteAutoguardado.cliente,
     });
 });
 
-// Endpoint extra para consultar el historial (útil para probar TDSI-272)
 app.get('/api/pagos/historial', (req, res) => {
     res.status(200).json({
         total: historialTransacciones.length,
@@ -63,10 +68,10 @@ app.get('/api/pagos/historial', (req, res) => {
     });
 });
 
-// TDSI-87 / TDSI-275 / TDSI-276 / TDSI-277: pago mixto              // AGREGAR
-app.use('/api/pagos', pagoMixtoRoutes);                              // AGREGAR
+app.use('/api/pagos', pagoMixtoRoutes);
+app.use('/api/clientes', clientesRoutes);
 
-app.use(errorHandler);                                               // AGREGAR (al final, antes de listen)
+app.use(errorHandler);
 
 app.listen(port, () => {
     console.log(`Microservicio de Pagos corriendo en el puerto ${port}`);

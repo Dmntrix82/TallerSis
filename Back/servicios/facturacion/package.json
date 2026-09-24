@@ -1,16 +1,16 @@
 {
   "name": "facturacion",
   "version": "1.0.0",
-  "description": "Microservicio de Facturación (RePay)",
   "main": "src/index.js",
   "scripts": {
-  "start": "node src/index.js",
-  "test": "node --test src/tests/tirilla.test.js src/tests/impresora.test.js"
-},
+    "start": "node src/index.js",
+    "test": "node --test src/tests/tirilla.test.js src/tests/impresora.test.js src/tests/clientes.test.js"
+  },
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1",
-    "dotenv": "^18.0.0"
+    "dotenv": "^18.0.0",
+    "pg": "^8.12.0"
   }
 }

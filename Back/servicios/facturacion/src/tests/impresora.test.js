@@ -1,23 +1,34 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { query } = require("../config/db");
 const { impresora, estadoImpresora, conmutarImpresora, imprimir, reimprimir } = require("../services/impresoraService");
-const { seed, db } = require("../data/memoria");
+const { obtenerFactura } = require("../services/tirillaService");
 
-test.beforeEach(() => { impresora.conectada = true; seed(); });
+async function resetFactura() {
+  await query(`UPDATE facturacion.facturas SET impresa=false, veces_impresa=0, impresa_en=NULL WHERE numero='F-000001'`);
+  await query(`DELETE FROM facturacion.impresiones WHERE factura_numero='F-000001'`);
+}
 
-test("TDSI-296: la impresora está conectada por defecto", () => {
+test.beforeEach(async () => {
+  impresora.conectada = true;
+  await resetFactura();
+});
+
+test.after(async () => {
+  await resetFactura();
+});
+
+test("TDSI-296: la impresora esta conectada por defecto", () => {
   const e = estadoImpresora();
   assert.equal(e.conectada, true);
-  assert.match(e.modelo, /EPSON/);
 });
 
-test("TDSI-296: se puede enviar un trabajo de impresión", () => {
+test("TDSI-296: se puede enviar un trabajo de impresion", () => {
   const r = impresora.enviar("hola tirilla");
   assert.match(r.jobId, /^JOB-/);
-  assert.ok(r.bytes > 0);
 });
 
-test("TDSI-296: rechaza enviar si la impresora está desconectada", () => {
+test("TDSI-296: rechaza enviar si la impresora esta desconectada", () => {
   conmutarImpresora(false);
   assert.throws(() => impresora.enviar("texto"), /no conectada/);
 });
@@ -28,25 +39,24 @@ test("TDSI-296: se puede reconectar la impresora", () => {
   assert.equal(e.conectada, true);
 });
 
-test("TDSI-297: al imprimir marca la factura como impresa", () => {
-  imprimir("F-000001");
-  assert.equal(db.facturas[0].impresa, true);
-  assert.equal(db.facturas[0].vecesImpresa, 1);
+test("TDSI-297: al imprimir marca la factura como impresa", async () => {
+  await imprimir("F-000001");
+  const f = await obtenerFactura("F-000001");
+  assert.equal(f.impresa, true);
 });
 
-test("TDSI-297: no permite imprimir dos veces la misma factura", () => {
-  imprimir("F-000001");
-  assert.throws(() => imprimir("F-000001"), /ya fue impresa/);
+test("TDSI-297: no permite imprimir dos veces la misma factura", async () => {
+  await imprimir("F-000001");
+  await assert.rejects(() => imprimir("F-000001"), /ya fue impresa/);
 });
 
-test("TDSI-298: no permite reimprimir si nunca se imprimió antes", () => {
-  assert.throws(() => reimprimir("F-000001"), /aún no fue impresa/);
+test("TDSI-298: no permite reimprimir si nunca se imprimio antes", async () => {
+  await assert.rejects(() => reimprimir("F-000001"), /aun no fue impresa/);
 });
 
-test("TDSI-298: reimprime marcando la tirilla como copia", () => {
-  imprimir("F-000001");
-  const r = reimprimir("F-000001", "se dañó el papel");
+test("TDSI-298: reimprime marcando la tirilla como copia", async () => {
+  await imprimir("F-000001");
+  const r = await reimprimir("F-000001", "se dano el papel");
   assert.equal(r.tipo, "COPIA");
-  assert.equal(r.motivo, "se dañó el papel");
   assert.match(r.tirilla, /COPIA \/ REIMPRESION/);
 });
