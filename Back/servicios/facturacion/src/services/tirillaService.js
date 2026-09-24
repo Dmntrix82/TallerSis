@@ -15,14 +15,12 @@ const dosColumnas = (izq, der) => {
 };
 const money = (n) => Number(n).toFixed(2);
 
-/** TDSI-93/295: obtiene la factura completa desde Postgres. */
 async function obtenerFactura(numero) {
   const f = await facturasRepo.obtenerFacturaCompleta(numero);
   if (!f) { const e = new Error("Factura no encontrada"); e.status = 404; throw e; }
   return f;
 }
 
-/** TDSI-93/295: genera el formato de impresión tipo tirilla/rollo. */
 async function generarTirilla(numero, { copia = false } = {}) {
   const f = await obtenerFactura(numero);
   const L = [];

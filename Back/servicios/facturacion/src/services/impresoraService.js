@@ -1,7 +1,6 @@
 const { obtenerFactura, generarTirilla } = require("./tirillaService");
 const facturasRepo = require("../data/facturasRepo");
 
-// TDSI-296: adaptador de impresora simulada
 const impresora = {
   modelo: process.env.IMPRESORA_MODELO || "EPSON TM-T20III (simulada)",
   conectada: true,
@@ -26,11 +25,10 @@ function conmutarImpresora(conectada) {
   return estadoImpresora();
 }
 
-/** TDSI-297: imprime y registra en Postgres que la factura ya fue impresa. */
 async function imprimir(numero) {
   const factura = await obtenerFactura(numero);
   if (factura.impresa) {
-    const e = new Error("La factura ya fue impresa. Use el endpoint de reimpresión.");
+    const e = new Error("La factura ya fue impresa. Use el endpoint de reimpresion.");
     e.status = 409;
     throw e;
   }
@@ -43,11 +41,10 @@ async function imprimir(numero) {
   return { numero, jobId: envio.jobId, impresoEn: envio.enviadoEn, tirilla: tirilla.texto };
 }
 
-/** TDSI-298: permite reimprimir una factura ya emitida. */
 async function reimprimir(numero, motivo) {
   const factura = await obtenerFactura(numero);
   if (!factura.impresa) {
-    const e = new Error("La factura aún no fue impresa. Use /imprimir primero.");
+    const e = new Error("La factura aun no fue impresa. Use /imprimir primero.");
     e.status = 409;
     throw e;
   }
