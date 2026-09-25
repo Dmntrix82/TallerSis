@@ -1,0 +1,12 @@
+const { Router } = require("express");
+const cierre = require("../services/cierreService");
+
+const router = Router();
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+
+router.get("/turnos/:turnoId/recaudado", wrap(async (req, res) => {
+  const data = await cierre.calcularTotalRecaudado(req.params.turnoId);
+  res.json({ ok: true, data });
+}));
+
+module.exports = router;
