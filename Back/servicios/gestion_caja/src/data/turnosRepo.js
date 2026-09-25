@@ -34,7 +34,18 @@ async function crearTurno({ caja_id, cajero_id, efectivo_inicial }) {
   );
   return rows[0];
 }
-
+// TDSI-313: no permitir dos turnos abiertos en la misma caja
+async function buscarTurnoAbiertoPorCaja(caja_id) {
+  const { rows } = await query(
+    `SELECT id, codigo
+       FROM caja.turnos
+      WHERE caja_id = $1
+        AND estado = 'ABIERTO'
+      LIMIT 1`,
+    [caja_id]
+  );
+  return rows[0] || null;
+}
 // ==================== Cierre (TDSI-319 a 322, viene de main) ====================
 
 async function obtenerTurnoPorId(turnoId) {
@@ -57,6 +68,7 @@ async function marcarCerrado(turnoId, { efectivoContado, efectivoEsperado, difer
 module.exports = {
   buscarCajaPorCodigo,
   crearTurno,
+  buscarTurnoAbiertoPorCaja,
   obtenerTurnoPorId,
   marcarCerrado,
 };

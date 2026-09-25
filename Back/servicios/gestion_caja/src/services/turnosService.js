@@ -38,6 +38,15 @@ async function abrirTurno({ caja_id, cajero_id, efectivo_inicial } = {}) {
   if (!caja) throw new AppError("La caja no existe", 404, { caja_id: cajaId });
   if (caja.estado !== "ACTIVA") throw new AppError("La caja está inactiva", 409, { caja_id: cajaId });
 
+    // TDSI-313: no permitir dos turnos abiertos en la misma caja
+  const turnoAbierto = await repo.buscarTurnoAbiertoPorCaja(cajaId);
+  if (turnoAbierto)
+    throw new AppError(
+      "Ya existe un turno abierto para esta caja",
+      409,
+      { caja_id: cajaId, turno_abierto: turnoAbierto.codigo }
+    );
+  
   const turno = await repo.crearTurno({
     caja_id: cajaId,
     cajero_id: cajeroId,
