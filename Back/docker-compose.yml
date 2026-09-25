@@ -22,3 +22,15 @@ services:
       - PORT=4005
     networks:
       - app-network
+
+  facturacion:
+    build: ./servicios/facturacion
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=development
+      - PORT=4002
+    env_file:
+      - ./servicios/facturacion/.env
+    networks:
+      - app-network
