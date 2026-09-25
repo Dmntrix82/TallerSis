@@ -10,4 +10,15 @@ async function insertarSesion({ cajero_id, cajero_nombre, caja_id }) {
   return resultado.rows[0];
 }
 
-module.exports = { insertarSesion };
+async function cerrarInactivas(minutos) {
+  const resultado = await query(
+    `UPDATE caja.sesiones_cajero
+     SET activa = false, cerrada_en = now(), cierre_automatico = true
+     WHERE activa = true AND iniciada_en < now() - ($1 || ' minutes')::interval
+     RETURNING id, cajero_id, caja_id, iniciada_en`,
+    [minutos]
+  );
+  return resultado.rows;
+}
+
+module.exports = { insertarSesion, cerrarInactivas };

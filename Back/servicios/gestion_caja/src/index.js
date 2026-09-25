@@ -4,6 +4,7 @@ const express = require("express");
 const { query } = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
+const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
 
 const app = express();
 
@@ -32,6 +33,18 @@ app.get("/health", async (req, res) => {
 app.use("/api/auth", authRoutes);
 
 app.use(errorHandler);
+
+// TDSI-268: cada minuto revisa y cierra las sesiones inactivas
+setInterval(async () => {
+    try {
+        const cerradas = await cerrarSesionesInactivas();
+        if (cerradas.length > 0) {
+            console.log(`Cierre automatico: ${cerradas.length} sesion(es) cerrada(s) por inactividad.`);
+        }
+    } catch (e) {
+        console.error("Error cerrando sesiones inactivas:", e.message);
+    }
+}, 60 * 1000);
 
 // Iniciar servidor
 app.listen(PORT, "0.0.0.0", () => {
