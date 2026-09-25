@@ -3,13 +3,15 @@ networks:
     driver: bridge
 
 services:
-  cajeros:
-    build: ./servicios/cajeros
+  gestion_caja:
+    build: ./servicios/gestion_caja
     ports:
       - "4004:4004"
     environment:
       - NODE_ENV=development
       - PORT=4004
+    env_file:
+      - ./servicios/gestion_caja/.env
     networks:
       - app-network
 
