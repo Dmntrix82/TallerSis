@@ -47,4 +47,38 @@ async function calcularTotalRecaudado(turnoId) {
   };
 }
 
-module.exports = { calcularTotalRecaudado };
+/** TDSI-320: compara efectivo inicial + ventas en efectivo - egresos en efectivo, contra lo contado. */
+async function compararEfectivo(turnoId, efectivoContado) {
+  if (efectivoContado === undefined || efectivoContado === null) {
+    throw new AppError("Debe enviar 'efectivoContado'", 400);
+  }
+  if (typeof efectivoContado !== "number" || efectivoContado < 0) {
+    throw new AppError("El efectivo contado debe ser un numero mayor o igual a 0", 400);
+  }
+
+  const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
+  if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
+
+  const recaudado = await calcularTotalRecaudado(turnoId);
+  const ef = recaudado.porMetodo.Efectivo || { ingresos: 0, egresos: 0 };
+
+  const inicialC = aCentavos(turno.efectivo_inicial);
+  const esperadoC = inicialC + aCentavos(ef.ingresos) - aCentavos(ef.egresos);
+  const contadoC = aCentavos(efectivoContado);
+  const diferenciaC = contadoC - esperadoC;
+
+  const tipoDiferencia = diferenciaC === 0 ? "CUADRA" : diferenciaC > 0 ? "SOBRANTE" : "FALTANTE";
+
+  return {
+    turnoId,
+    efectivoInicial: turno.efectivo_inicial,
+    ventasEfectivo: ef.ingresos,
+    egresosEfectivo: ef.egresos,
+    efectivoEsperado: aMonto(esperadoC),
+    efectivoContado: aMonto(contadoC),
+    diferencia: aMonto(diferenciaC),
+    tipoDiferencia,
+  };
+}
+
+module.exports = { calcularTotalRecaudado, compararEfectivo };

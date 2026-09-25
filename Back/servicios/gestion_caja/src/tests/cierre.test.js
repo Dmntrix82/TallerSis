@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query } = require("../config/db");
-const { calcularTotalRecaudado } = require("../services/cierreService");
+const { calcularTotalRecaudado, compararEfectivo } = require("../services/cierreService");
 
 let turnoId;
 
@@ -38,4 +38,21 @@ test("TDSI-319: calcula el total recaudado del turno por metodo", async () => {
 
 test("TDSI-319: lanza 404 si el turno no existe", async () => {
   await assert.rejects(() => calcularTotalRecaudado(999999999), (e) => e.status === 404);
+});
+
+test("TDSI-320: detecta faltante de efectivo", async () => {
+  const r = await compararEfectivo(turnoId, 350);
+  assert.equal(r.efectivoEsperado, 360);
+  assert.equal(r.tipoDiferencia, "FALTANTE");
+  assert.equal(r.diferencia, -10);
+});
+
+test("TDSI-320: cuadra exacto", async () => {
+  const r = await compararEfectivo(turnoId, 360);
+  assert.equal(r.tipoDiferencia, "CUADRA");
+  assert.equal(r.diferencia, 0);
+});
+
+test("TDSI-320: rechaza si falta el efectivoContado", async () => {
+  await assert.rejects(() => compararEfectivo(turnoId, undefined), (e) => e.status === 400);
 });

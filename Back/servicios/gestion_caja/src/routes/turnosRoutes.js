@@ -9,4 +9,9 @@ router.get("/turnos/:turnoId/recaudado", wrap(async (req, res) => {
   res.json({ ok: true, data });
 }));
 
+router.post("/turnos/:turnoId/comparar-efectivo", wrap(async (req, res) => {
+  const data = await cierre.compararEfectivo(req.params.turnoId, req.body.efectivoContado);
+  res.json({ ok: true, data });
+}));
+
 module.exports = router;
