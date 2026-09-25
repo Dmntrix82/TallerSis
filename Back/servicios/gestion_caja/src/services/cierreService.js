@@ -148,4 +148,24 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
   return L.join("\n");
 }
 
-module.exports = { calcularTotalRecaudado, compararEfectivo, generarReporteCierre, generarReporteTexto };
+/** TDSI-322: cierra el turno (guarda el arqueo) y bloquea nuevas ventas en esa caja. */
+async function cerrarTurno(turnoId, efectivoContado) {
+  const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
+  if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
+  if (turno.estado === "CERRADO") throw new AppError("El turno ya fue cerrado", 409, { turnoId });
+
+  const arqueo = await compararEfectivo(turnoId, efectivoContado);
+
+  const turnoCerrado = await turnosRepo.marcarCerrado(turnoId, {
+    efectivoContado: arqueo.efectivoContado,
+    efectivoEsperado: arqueo.efectivoEsperado,
+    diferencia: arqueo.diferencia,
+    tipoDiferencia: arqueo.tipoDiferencia,
+  });
+
+  const reporte = await generarReporteCierre(turnoId, efectivoContado);
+
+  return { turno: turnoCerrado, reporte };
+}
+
+module.exports = { calcularTotalRecaudado, compararEfectivo, generarReporteCierre, generarReporteTexto, cerrarTurno };
