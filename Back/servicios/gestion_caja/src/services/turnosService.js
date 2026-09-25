@@ -34,7 +34,7 @@ function validarTexto(valor, campo, max) {
   return limpio;
 }
 
-/** TDSI-311: registrar el monto de efectivo inicial al abrir un turno */
+/** TDSI-311 + TDSI-312: registrar monto inicial y guardar fecha, hora y cajero */
 async function abrirTurno({ caja_id, cajero_id, efectivo_inicial } = {}) {
   const cajaId = validarTexto(caja_id, "caja_id", 20);
   const cajeroId = validarTexto(cajero_id, "cajero_id", 60);
@@ -44,8 +44,17 @@ async function abrirTurno({ caja_id, cajero_id, efectivo_inicial } = {}) {
   if (!caja) throw err("La caja no existe", 404, { caja_id: cajaId });
   if (caja.estado !== "ACTIVA") throw err("La caja está inactiva", 409, { caja_id: cajaId });
 
-  const turno = await repo.crearTurno({ caja_id: cajaId, cajero_id: cajeroId, efectivo_inicial: monto });
-  return { ...turno, efectivo_inicial: Number(turno.efectivo_inicial) };
+  const turno = await repo.crearTurno({
+    caja_id: cajaId,
+    cajero_id: cajeroId,
+    efectivo_inicial: monto,
+  });
+
+  return {
+    ...turno,
+    id: Number(turno.id),
+    efectivo_inicial: Number(turno.efectivo_inicial),
+  };
 }
 
 module.exports = { abrirTurno };
