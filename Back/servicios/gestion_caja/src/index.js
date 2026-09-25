@@ -1,35 +1,25 @@
 require("dotenv").config();
-
 const express = require("express");
-const { query } = require("./config/db");
+const turnosRoutes = require("./routes/turnosRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
+const { query } = require("./config/db");
 
 const app = express();
-app.use(express.json());
-
 const PORT = process.env.PORT || 4004;
 
-// Ruta de prueba + verificación de la BD
-app.get("/gestion-caja", async (req, res, next) => {
+app.use(express.json());
+
+app.get("/health", async (req, res) => {
   try {
-    const { rows } = await query(`SELECT to_regclass('caja.turnos') AS tabla_turnos`);
-    res.json({
-      mensaje: "Microservicio de Gestión de Caja funcionando",
-      estado: "activo",
-      bd: rows[0].tabla_turnos ? "conectada" : "conectada, pero falta ejecutar script_caja.sql",
-    });
+    await query("SELECT 1");
+    res.json({ ok: true, db: "up" });
   } catch (e) {
-    next(e);
+    res.status(503).json({ ok: false, db: "down", mensaje: e.message });
   }
 });
 
-// Rutas
-app.use("/turnos", require("./routes/turnosRoutes"));
+app.use("/api/caja", turnosRoutes);
 
-// Ruta no encontrada
-app.use((req, res) => res.status(404).json({ ok: false, mensaje: "Ruta no encontrada" }));
-
-// Manejador global de errores (siempre al final)
 app.use(errorHandler);
 
 app.listen(PORT, "0.0.0.0", () => {
