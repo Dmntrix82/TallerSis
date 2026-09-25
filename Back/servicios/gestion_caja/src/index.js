@@ -2,6 +2,8 @@ require("dotenv").config();
 
 const express = require("express");
 const { query } = require("./config/db");
+const authRoutes = require("./routes/authRoutes");
+const { errorHandler } = require("./middlewares/errorHandler");
 
 const app = express();
 
@@ -26,6 +28,10 @@ app.get("/health", async (req, res) => {
         res.status(503).json({ ok: false, db: "down", mensaje: e.message });
     }
 });
+
+app.use("/api/auth", authRoutes);
+
+app.use(errorHandler);
 
 // Iniciar servidor
 app.listen(PORT, "0.0.0.0", () => {
