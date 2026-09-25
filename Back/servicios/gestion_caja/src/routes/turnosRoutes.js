@@ -14,4 +14,16 @@ router.post("/turnos/:turnoId/comparar-efectivo", wrap(async (req, res) => {
   res.json({ ok: true, data });
 }));
 
+router.get("/turnos/:turnoId/cierre/reporte", wrap(async (req, res) => {
+  const efectivoContado = req.query.efectivoContado ? Number(req.query.efectivoContado) : null;
+  const data = await cierre.generarReporteCierre(req.params.turnoId, efectivoContado);
+  res.json({ ok: true, data });
+}));
+
+router.get("/turnos/:turnoId/cierre/reporte-texto", wrap(async (req, res) => {
+  const efectivoContado = req.query.efectivoContado ? Number(req.query.efectivoContado) : null;
+  const texto = await cierre.generarReporteTexto(req.params.turnoId, efectivoContado);
+  res.type("text/plain").send(texto);
+}));
+
 module.exports = router;

@@ -71,7 +71,7 @@ async function compararEfectivo(turnoId, efectivoContado) {
 
   return {
     turnoId,
-    efectivoInicial: turno.efectivo_inicial,
+    efectivoInicial: Number(turno.efectivo_inicial),
     ventasEfectivo: ef.ingresos,
     egresosEfectivo: ef.egresos,
     efectivoEsperado: aMonto(esperadoC),
@@ -81,4 +81,71 @@ async function compararEfectivo(turnoId, efectivoContado) {
   };
 }
 
-module.exports = { calcularTotalRecaudado, compararEfectivo };
+/** TDSI-321: arma el reporte de cierre con totales por método (datos estructurados). */
+async function generarReporteCierre(turnoId, efectivoContado = null) {
+  const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
+  if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
+
+  const recaudado = await calcularTotalRecaudado(turnoId);
+  const arqueo = efectivoContado != null ? await compararEfectivo(turnoId, efectivoContado) : null;
+
+  return {
+    turnoId,
+    codigo: turno.codigo,
+    cajaId: turno.caja_id,
+    cajero: turno.cajero_nombre,
+    abiertoEn: turno.abierto_en,
+    totalesPorMetodo: recaudado.porMetodo,
+    totalIngresos: recaudado.totalIngresos,
+    totalEgresos: recaudado.totalEgresos,
+    totalRecaudado: recaudado.totalRecaudado,
+    operaciones: recaudado.operaciones,
+    arqueoEfectivo: arqueo,
+  };
+}
+
+/** TDSI-321: version en texto plano del reporte, lista para imprimir/mostrar. */
+async function generarReporteTexto(turnoId, efectivoContado = null) {
+  const r = await generarReporteCierre(turnoId, efectivoContado);
+  const ANCHO = 44;
+  const linea = (c = "-") => c.repeat(ANCHO);
+  const col = (izq, der) => {
+    const i = String(izq), d = String(der);
+    const espacio = Math.max(1, ANCHO - i.length - d.length);
+    return i + " ".repeat(espacio) + d;
+  };
+
+  const L = [];
+  L.push(linea("="));
+  L.push("      REPORTE DE CIERRE DE CAJA");
+  L.push(linea("="));
+  L.push(col("Turno:", r.codigo));
+  L.push(col("Caja:", r.cajaId));
+  L.push(col("Cajero:", r.cajero || "-"));
+  L.push(col("Abierto:", new Date(r.abiertoEn).toLocaleString("es-BO")));
+  L.push(linea());
+  L.push("TOTALES POR METODO DE PAGO");
+  for (const [metodo, v] of Object.entries(r.totalesPorMetodo)) {
+    L.push(col(`  ${metodo} (${v.operaciones} op.)`, v.neto.toFixed(2)));
+  }
+  L.push(linea());
+  L.push(col("TOTAL INGRESOS", r.totalIngresos.toFixed(2)));
+  L.push(col("TOTAL EGRESOS", r.totalEgresos.toFixed(2)));
+  L.push(col("TOTAL RECAUDADO", r.totalRecaudado.toFixed(2)));
+
+  if (r.arqueoEfectivo) {
+    L.push(linea());
+    L.push("ARQUEO DE EFECTIVO");
+    L.push(col("  Efectivo inicial", r.arqueoEfectivo.efectivoInicial.toFixed(2)));
+    L.push(col("  Ventas efectivo", r.arqueoEfectivo.ventasEfectivo.toFixed(2)));
+    L.push(col("  Egresos efectivo", r.arqueoEfectivo.egresosEfectivo.toFixed(2)));
+    L.push(col("  Esperado", r.arqueoEfectivo.efectivoEsperado.toFixed(2)));
+    L.push(col("  Contado", r.arqueoEfectivo.efectivoContado.toFixed(2)));
+    L.push(col(`  ${r.arqueoEfectivo.tipoDiferencia}`, r.arqueoEfectivo.diferencia.toFixed(2)));
+  }
+
+  L.push(linea("="));
+  return L.join("\n");
+}
+
+module.exports = { calcularTotalRecaudado, compararEfectivo, generarReporteCierre, generarReporteTexto };

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query } = require("../config/db");
-const { calcularTotalRecaudado, compararEfectivo } = require("../services/cierreService");
+const { calcularTotalRecaudado, compararEfectivo, generarReporteCierre, generarReporteTexto } = require("../services/cierreService");
 
 let turnoId;
 
@@ -55,4 +55,25 @@ test("TDSI-320: cuadra exacto", async () => {
 
 test("TDSI-320: rechaza si falta el efectivoContado", async () => {
   await assert.rejects(() => compararEfectivo(turnoId, undefined), (e) => e.status === 400);
+});
+
+test("TDSI-321: el reporte trae totales por metodo y arqueo", async () => {
+  const r = await generarReporteCierre(turnoId, 360);
+  assert.equal(r.totalRecaudado, 250);
+  assert.ok(r.totalesPorMetodo.Efectivo);
+  assert.ok(r.totalesPorMetodo.QR);
+  assert.equal(r.arqueoEfectivo.tipoDiferencia, "CUADRA");
+});
+
+test("TDSI-321: el reporte funciona sin arqueo (efectivoContado omitido)", async () => {
+  const r = await generarReporteCierre(turnoId);
+  assert.equal(r.arqueoEfectivo, null);
+  assert.equal(r.totalRecaudado, 250);
+});
+
+test("TDSI-321: el reporte en texto incluye los totales y el turno", async () => {
+  const texto = await generarReporteTexto(turnoId, 360);
+  assert.match(texto, /REPORTE DE CIERRE DE CAJA/);
+  assert.match(texto, /TOTAL RECAUDADO\s+250\.00/);
+  assert.match(texto, /CUADRA/);
 });
