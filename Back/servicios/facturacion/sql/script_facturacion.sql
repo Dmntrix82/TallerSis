@@ -155,3 +155,23 @@ ALTER TABLE facturacion.impresiones                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE facturacion.factura_documentos          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE facturacion.factura_anulaciones         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE facturacion.factura_envios_contabilidad ENABLE ROW LEVEL SECURITY;
+-- ==========================================================================
+-- TDSI-17/113/383-386: supervisores con PIN + ampliacion de anulaciones
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS facturacion.supervisores (
+    id                  BIGSERIAL PRIMARY KEY,
+    supervisor_id       VARCHAR(60)  NOT NULL UNIQUE,
+    nombre              VARCHAR(150) NOT NULL,
+    pin_hash            VARCHAR(255) NOT NULL,
+    activo              BOOLEAN      NOT NULL DEFAULT true,
+    intentos_fallidos   INT          NOT NULL DEFAULT 0,
+    bloqueado_hasta     TIMESTAMPTZ,
+    actualizado_en      TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+ALTER TABLE facturacion.factura_anulaciones
+    ADD COLUMN IF NOT EXISTS autorizado_nombre  VARCHAR(150),
+    ADD COLUMN IF NOT EXISTS observacion        VARCHAR(300);
+
+ALTER TABLE facturacion.supervisores ENABLE ROW LEVEL SECURITY;
