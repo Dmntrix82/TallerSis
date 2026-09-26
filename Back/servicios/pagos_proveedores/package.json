@@ -1,5 +1,5 @@
 {
-  "name": "cajeros",
+  "name": "pagos_proveedores",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -13,6 +13,7 @@
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^18.0.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "pg": "^8.12.0"
   }
 }
