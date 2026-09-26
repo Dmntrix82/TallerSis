@@ -17,15 +17,31 @@ async function buscarFacturaPorNumero(numero) {
   return rows[0] || null;
 }
 
-/** TDSI-95/304/305: registra la solicitud de anulacion del cajero (motivo, quien y cuando) */
-async function crear({ factura_id, motivo, solicitado_por }) {
-  const { rows } = await query(
-    `INSERT INTO facturacion.factura_anulaciones (factura_id, motivo, solicitado_por)
-     VALUES ($1, $2, $3)
-     RETURNING id, factura_id, motivo, solicitado_por, solicitado_en, estado`,
-    [factura_id, motivo, solicitado_por || null]
-  );
-  return rows[0];
+/**
+ * TDSI-95/303/304/305: registra la solicitud de anulacion del cajero (motivo, quien y cuando)
+ * y marca la factura como 'AnulacionSolicitada' en la MISMA transaccion.
+ */
+async function crear({ factura_id, motivo, solicitado_por }, validarFactura) {
+  return withTransaction(async (client) => {
+    const { rows: facturaRows } = await client.query(
+      `SELECT id, estado FROM facturacion.facturas WHERE id = $1 FOR UPDATE`,
+      [factura_id]
+    );
+    validarFactura(facturaRows[0] || null);
+
+    await client.query(
+      `UPDATE facturacion.facturas SET estado = 'AnulacionSolicitada' WHERE id = $1`,
+      [factura_id]
+    );
+
+    const { rows } = await client.query(
+      `INSERT INTO facturacion.factura_anulaciones (factura_id, motivo, solicitado_por)
+       VALUES ($1, $2, $3)
+       RETURNING id, factura_id, motivo, solicitado_por, solicitado_en, estado`,
+      [factura_id, motivo, solicitado_por || null]
+    );
+    return rows[0];
+  });
 }
 
 /**

@@ -23,11 +23,14 @@ async function solicitarAnulacion({ factura_numero, motivo, solicitado_por } = {
   const factura = await repo.buscarFacturaPorNumero(numero);
   if (!factura) throw err("Factura no encontrada", 404);
 
-  return repo.crear({
-    factura_id: factura.id,
-    motivo: motivo.trim(),
-    solicitado_por: solicitado_por || null,
-  });
+  return repo.crear(
+    { factura_id: factura.id, motivo: motivo.trim(), solicitado_por: solicitado_por || null },
+    (actual) => {
+      if (!actual) throw err("Factura no encontrada", 404);
+      if (actual.estado !== "Emitida")
+        throw err(`No se puede solicitar la anulación de una factura en estado "${actual.estado}"`, 409);
+    }
+  );
 }
 
 /** TDSI-384 + TDSI-385: autorizar (o rechazar) una anulacion con el PIN del supervisor */
