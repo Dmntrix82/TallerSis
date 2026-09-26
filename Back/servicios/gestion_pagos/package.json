@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/auth.test.js",
+    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/auth.test.js src/tests/estadoTransaccion.test.js",
     "crear-cliente": "node scripts/crearSistemaCliente.js"
   },
   "license": "ISC",
