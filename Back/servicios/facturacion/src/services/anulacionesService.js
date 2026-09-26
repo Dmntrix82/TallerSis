@@ -10,6 +10,32 @@ function err(mensaje, status = 400, detalle = null) {
 
 const DECISIONES = ["APROBAR", "RECHAZAR"];
 
+<<<<<<< HEAD
+=======
+/** TDSI-95: el cajero solicita la anulacion de una factura recien emitida */
+async function solicitarAnulacion({ factura_numero, motivo, solicitado_por } = {}) {
+  const numero = String(factura_numero ?? "").trim();
+  if (!numero) throw err("El numero de factura es obligatorio");
+
+  if (typeof motivo !== "string" || !motivo.trim())
+    throw err("El motivo de la anulación es obligatorio");
+  if (motivo.trim().length > 300)
+    throw err("El motivo debe tener máximo 300 caracteres");
+
+  const factura = await repo.buscarFacturaPorNumero(numero);
+  if (!factura) throw err("Factura no encontrada", 404);
+
+  return repo.crear(
+    { factura_id: factura.id, motivo: motivo.trim(), solicitado_por: solicitado_por || null },
+    (actual) => {
+      if (!actual) throw err("Factura no encontrada", 404);
+      if (actual.estado !== "Emitida")
+        throw err(`No se puede solicitar la anulación de una factura en estado "${actual.estado}"`, 409);
+    }
+  );
+}
+
+>>>>>>> cc0ea6f (Implementa TDSI-303: marca la factura como Anulacion solicitada)
 /** TDSI-384 + TDSI-385: autorizar (o rechazar) una anulacion con el PIN del supervisor */
 async function autorizarAnulacion(id, { supervisor_id, pin, decision, observacion } = {}) {
   const anulacionId = String(id ?? "").trim();
