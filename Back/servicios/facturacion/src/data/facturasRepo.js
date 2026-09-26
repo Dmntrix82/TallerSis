@@ -1,4 +1,35 @@
-const { query } = require("../config/db");
+const { query, withTransaction } = require("../config/db");
+
+/** TDSI-89/281: crea la factura con el NIT/Razon Social del cliente y sus items */
+async function crearFactura({ cliente_nit, cliente_nombre, items, subtotal, descuento, impuesto, total }) {
+  return withTransaction(async (client) => {
+    const { rows: ultimas } = await client.query(
+      `SELECT numero FROM facturacion.facturas ORDER BY id DESC LIMIT 1`
+    );
+    const ultimo = ultimas[0]?.numero;
+    const siguiente = ultimo ? Number(ultimo.split("-")[1]) + 1 : 1;
+    const numero = `F-${String(siguiente).padStart(6, "0")}`;
+
+    const { rows } = await client.query(
+      `INSERT INTO facturacion.facturas
+         (numero, cliente_nit, cliente_nombre, subtotal, descuento, impuesto, total)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING *`,
+      [numero, cliente_nit, cliente_nombre, subtotal, descuento, impuesto, total]
+    );
+    const factura = rows[0];
+
+    for (const item of items) {
+      await client.query(
+        `INSERT INTO facturacion.factura_items (factura_id, descripcion, cantidad, precio_unitario, subtotal)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [factura.id, item.descripcion, item.cantidad, item.precio_unitario, item.subtotal]
+      );
+    }
+
+    return factura;
+  });
+}
 
 async function obtenerFacturaCompleta(numero) {
   const { rows: facturaRows } = await query(
@@ -66,6 +97,7 @@ async function listarImpresiones(numero) {
 }
 
 module.exports = {
+  crearFactura,
   obtenerFacturaCompleta,
   listarFacturas,
   marcarImpresa,
