@@ -8,12 +8,20 @@ async function existeOrden(ordenId) {
   return rows.length > 0;
 }
 
+// NUEVO: Buscamos la orden para saber si existe y ver su estado
+async function obtenerVenta(ordenId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM pagos.ventas_online WHERE orden_id = $1`,
+    [ordenId]
+  );
+  return rows[0] || null;
+}
+
 async function guardarVenta(venta, items) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     
-    // Insertamos la cabecera
     const { rows: ventaRows } = await client.query(
       `INSERT INTO pagos.ventas_online (orden_id, cliente_id, total, metodo_pago, codigo_confirmacion)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -22,7 +30,6 @@ async function guardarVenta(venta, items) {
     
     const ventaId = ventaRows[0].id;
 
-    // Insertamos el detalle de ítems
     for (const it of items) {
       await client.query(
         `INSERT INTO pagos.venta_online_items (venta_id, sku, descripcion, cantidad, precio_unitario, subtotal)
@@ -41,4 +48,4 @@ async function guardarVenta(venta, items) {
   }
 }
 
-module.exports = { existeOrden, guardarVenta };
+module.exports = { existeOrden, obtenerVenta, guardarVenta };
