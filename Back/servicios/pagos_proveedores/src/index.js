@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const { query } = require("./config/db");
 const { errorHandler } = require("./middlewares/errorHandler");
+const egresosRoutes = require("./routes/egresosRoutes");
 
 const app = express();
 
@@ -27,6 +28,8 @@ app.get("/health", async (req, res) => {
         res.status(503).json({ ok: false, db: "down", mensaje: e.message });
     }
 });
+
+app.use("/api/egresos", egresosRoutes);
 
 app.use(errorHandler);
 
