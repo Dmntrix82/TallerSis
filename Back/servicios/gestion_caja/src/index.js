@@ -1,16 +1,15 @@
 require("dotenv").config();
-
 const express = require("express");
 const { query } = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
+const turnosRoutes = require("./routes/turnosRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
 
 const app = express();
+const PORT = process.env.PORT || 4004;
 
 app.use(express.json());
-
-const PORT = process.env.PORT || 4004;
 
 // Ruta de prueba
 app.get("/gestion-caja", (req, res) => {
@@ -31,6 +30,7 @@ app.get("/health", async (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/caja", turnosRoutes);
 
 app.use(errorHandler);
 
