@@ -29,8 +29,9 @@ async function crear({ factura_id, motivo, solicitado_por }, validarFactura) {
     );
     validarFactura(facturaRows[0] || null);
 
+    // TDSI-306: se bloquea mientras esta en revision, no se puede modificar (imprimir/reimprimir)
     await client.query(
-      `UPDATE facturacion.facturas SET estado = 'AnulacionSolicitada' WHERE id = $1`,
+      `UPDATE facturacion.facturas SET estado = 'AnulacionSolicitada', bloqueada = true WHERE id = $1`,
       [factura_id]
     );
 
@@ -58,12 +59,11 @@ async function resolver(id, { aprobar, supervisor, observacion }, validar) {
     );
     validar(rows[0] || null);
 
-    if (aprobar) {
-      await client.query(
-        `UPDATE facturacion.facturas SET estado = 'Anulada' WHERE id = $1`,
-        [rows[0].factura_id]
-      );
-    }
+    // TDSI-306: al resolverse (aprobada o rechazada) la factura deja de estar en revision
+    await client.query(
+      `UPDATE facturacion.facturas SET estado = $2, bloqueada = false WHERE id = $1`,
+      [rows[0].factura_id, aprobar ? "Anulada" : "Emitida"]
+    );
 
     const upd = await client.query(
       `UPDATE facturacion.factura_anulaciones
