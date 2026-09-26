@@ -25,4 +25,10 @@ async function registrarEgreso({ orden_pago_id, monto, metodo, descripcion, regi
   return { egreso, orden };
 }
 
-module.exports = { registrarEgreso, METODOS_VALIDOS };
+/** TDSI-402: historial de egresos (movimientos financieros de este esquema) */
+async function obtenerHistorial() {
+  const historial = await egresosRepo.listarEgresos();
+  return { total: historial.length, historial };
+}
+
+module.exports = { registrarEgreso, obtenerHistorial, METODOS_VALIDOS };
