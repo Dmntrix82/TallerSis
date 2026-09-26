@@ -1,3 +1,17 @@
+-- ==========================================================================
+-- Script de base de datos: schema caja
+-- Proyecto: Taller de Sistemas de Informacion
+-- Servicio: gestion_caja (puerto 4004)
+--
+-- Cubre:
+--   - Apertura de turno (TDSI-311/312/313)
+--   - Cierre de caja (TDSI-319-322)
+--   - Historial de caja (TDSI-314)
+--   - Autorizaciones supervisor (TDSI-25/26/127-130)
+--   - Diferencias (TDSI-32/141/142)
+--   - Aprobaciones especiales (TDSI-35/131/132)
+-- ==========================================================================
+
 CREATE SCHEMA IF NOT EXISTS caja;
 
 -- TDSI-24/125/126: catalogo de cajas (terminales) y su estado activo/inactivo
@@ -42,15 +56,20 @@ CREATE INDEX IF NOT EXISTS idx_turnos_caja_estado ON caja.turnos (caja_id, estad
 CREATE INDEX IF NOT EXISTS idx_turnos_cajero ON caja.turnos (cajero_id);              -- TDSI-143/144
 
 -- TDSI-277 (via API desde gestion_pagos) + TDSI-401 (via API desde pagos_proveedores)
--- + TDSI-314: registro del efectivo inicial en el historial.
+-- + TDSI-314: registro del efectivo inicial en el historial de caja.
 -- Esta tabla es el "resumen de caja" que otros microservicios alimentan por HTTP,
 -- segun el diagrama de arquitectura ("Actualiza Resumen de Caja", "Aporta egresos al cierre de caja").
 -- gestion_caja NUNCA hace JOIN directo a pagos.transacciones ni a proveedores.egresos.
+--
+-- TDSI-314: se permite 'APERTURA' como tipo adicional para registrar
+--           el efectivo inicial declarado al abrir el turno. Este movimiento
+--           NO cuenta como ingreso/egreso de venta: cierreService.calcularTotalRecaudado
+--           lo ignora explicitamente.
 CREATE TABLE IF NOT EXISTS caja.movimientos (
     id                  BIGSERIAL PRIMARY KEY,
     caja_id             VARCHAR(20)  NOT NULL,
     turno_id            BIGINT       NOT NULL REFERENCES caja.turnos(id) ON DELETE CASCADE,
-    tipo                VARCHAR(10)  NOT NULL CHECK (tipo IN ('INGRESO','EGRESO')),
+    tipo                VARCHAR(10)  NOT NULL CHECK (tipo IN ('INGRESO','EGRESO','APERTURA')),
     metodo              VARCHAR(20)  NOT NULL CHECK (metodo IN ('Efectivo','Tarjeta','QR','Mixto')),
     monto               NUMERIC(14,2) NOT NULL CHECK (monto > 0),
     origen_microservicio VARCHAR(30) NOT NULL DEFAULT 'LOCAL' CHECK (origen_microservicio IN ('LOCAL','PAGOS','PROVEEDORES')),
@@ -113,3 +132,25 @@ ALTER TABLE caja.movimientos              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE caja.autorizaciones           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE caja.diferencias_resolucion   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE caja.aprobaciones_especiales  ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-314: asegurar que el CHECK de caja.movimientos.tipo incluya 'APERTURA'
+-- --------------------------------------------------------------------------
+-- Este bloque es IDEMPOTENTE: si la BD viene de una version anterior (donde
+-- el CHECK solo aceptaba 'INGRESO' y 'EGRESO'), la migra al vuelo. Si ya
+-- estaba correcto, no cambia nada.
+--
+-- Por que existe aunque el CREATE TABLE ya tenga 'APERTURA':
+--   1) CREATE TABLE IF NOT EXISTS no modifica tablas existentes, asi que si
+--      la tabla ya existia sin 'APERTURA', el CREATE de arriba no la toca.
+--   2) Este bloque es el que garantiza la migracion en BDs ya desplegadas
+--      (dev, staging, produccion, Supabase, etc.).
+--   3) Se puede correr N veces sin error.
+-- ==========================================================================
+
+-- 1) quitar el constraint actual (si existe)
+ALTER TABLE caja.movimientos DROP CONSTRAINT IF EXISTS movimientos_tipo_check;
+
+-- 2) volver a crearlo, ahora con 3 valores permitidos
+ALTER TABLE caja.movimientos ADD CONSTRAINT movimientos_tipo_check
+  CHECK (tipo IN ('INGRESO','EGRESO','APERTURA'));
