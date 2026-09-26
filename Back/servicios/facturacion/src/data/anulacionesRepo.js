@@ -9,6 +9,25 @@ async function buscar(id) {
   return rows[0] || null;
 }
 
+async function buscarFacturaPorNumero(numero) {
+  const { rows } = await query(
+    `SELECT id, numero, estado, bloqueada FROM facturacion.facturas WHERE numero = $1`,
+    [numero]
+  );
+  return rows[0] || null;
+}
+
+/** TDSI-95/304/305: registra la solicitud de anulacion del cajero (motivo, quien y cuando) */
+async function crear({ factura_id, motivo, solicitado_por }) {
+  const { rows } = await query(
+    `INSERT INTO facturacion.factura_anulaciones (factura_id, motivo, solicitado_por)
+     VALUES ($1, $2, $3)
+     RETURNING id, factura_id, motivo, solicitado_por, solicitado_en, estado`,
+    [factura_id, motivo, solicitado_por || null]
+  );
+  return rows[0];
+}
+
 /**
  * TDSI-384 + TDSI-385: resuelve la anulacion en UNA transaccion.
  * Adaptado a los estados reales de la BD: 'Solicitada', 'Autorizada', 'Rechazada'.
@@ -51,4 +70,4 @@ async function resolver(id, { aprobar, supervisor, observacion }, validar) {
   });
 }
 
-module.exports = { buscar, resolver };
+module.exports = { buscar, buscarFacturaPorNumero, crear, resolver };
