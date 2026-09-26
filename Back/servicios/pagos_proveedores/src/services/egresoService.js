@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const egresosRepo = require("../data/egresosRepo");
 const { validarOrdenPagable, liquidarOrden } = require("./ordenPagoService");
+const { actualizarFlujoTrasEgreso } = require("./flujoCajaService");
 
 const METODOS_VALIDOS = ["TRANSFERENCIA", "CHEQUE", "EFECTIVO"];
 
@@ -21,8 +22,9 @@ async function registrarEgreso({ orden_pago_id, monto, metodo, descripcion, regi
 
   const egreso = await egresosRepo.insertarEgreso({ orden_pago_id, monto, metodo: metodoFinal, descripcion, registrado_por });
   const orden = await liquidarOrden(orden_pago_id, registrado_por);
+  const flujoDia = await actualizarFlujoTrasEgreso(monto);
 
-  return { egreso, orden };
+  return { egreso, orden, flujoDia };
 }
 
 /** TDSI-402: historial de egresos (movimientos financieros de este esquema) */
