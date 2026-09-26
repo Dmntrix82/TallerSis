@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const facturacionRoutes = require("./routes/facturacionRoutes");
 const clientesRoutes = require("./routes/clientesRoutes");
+const anulacionesRoutes = require("./routes/anulacionesRoutes");       
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 
@@ -25,6 +26,7 @@ app.get("/health", async (req, res) => {
 
 app.use("/api/facturas", facturacionRoutes);
 app.use("/api/clientes", clientesRoutes);
+app.use("/anulaciones", anulacionesRoutes); 
 
 app.use(errorHandler);
 

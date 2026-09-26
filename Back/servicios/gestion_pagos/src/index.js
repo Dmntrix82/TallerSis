@@ -3,8 +3,10 @@ const express = require("express");
 const pagosRoutes = require("./routes/pagosRoutes");
 const pagoMixtoRoutes = require("./routes/pagoMixtoRoutes");
 const authRoutes = require("./routes/authRoutes");
+const ventaOnlineRoutes = require("./routes/ventaOnlineRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
+
 
 const app = express();
 const port = process.env.PORT || 4005;
@@ -24,6 +26,7 @@ app.get("/health", async (req, res) => {
 // ⬇️ RUTAS DESPUÉS
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/pagos", pagoMixtoRoutes);
+app.use("/api/pagos", ventaOnlineRoutes);
 app.use("/auth", authRoutes);
 app.use("/transacciones", require("./routes/transaccionesEstadoRoutes")); // TDSI-14
 
