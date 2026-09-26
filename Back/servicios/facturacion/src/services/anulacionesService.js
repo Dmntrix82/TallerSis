@@ -10,8 +10,6 @@ function err(mensaje, status = 400, detalle = null) {
 
 const DECISIONES = ["APROBAR", "RECHAZAR"];
 
-<<<<<<< HEAD
-=======
 /** TDSI-95: el cajero solicita la anulacion de una factura recien emitida */
 async function solicitarAnulacion({ factura_numero, motivo, solicitado_por } = {}) {
   const numero = String(factura_numero ?? "").trim();
@@ -35,7 +33,6 @@ async function solicitarAnulacion({ factura_numero, motivo, solicitado_por } = {
   );
 }
 
->>>>>>> cc0ea6f (Implementa TDSI-303: marca la factura como Anulacion solicitada)
 /** TDSI-384 + TDSI-385: autorizar (o rechazar) una anulacion con el PIN del supervisor */
 async function autorizarAnulacion(id, { supervisor_id, pin, decision, observacion } = {}) {
   const anulacionId = String(id ?? "").trim();
@@ -49,13 +46,11 @@ async function autorizarAnulacion(id, { supervisor_id, pin, decision, observacio
   if (observacion != null && (typeof observacion !== "string" || observacion.length > 300))
     throw err("La observación debe ser texto de máximo 300 caracteres");
 
-  // Se revisa antes del PIN para no gastar intentos en una solicitud que no existe
   const anulacion = await repo.buscar(anulacionId);
   if (!anulacion) throw err("Solicitud de anulación no encontrada", 404);
   if (anulacion.estado !== "Solicitada")
     throw err(`La solicitud ya fue resuelta (${anulacion.estado})`, 409);
 
-  // El PIN se valida FUERA de la transaccion: los intentos fallidos deben quedar guardados
   const supervisor = await validarPin(supervisor_id, pin);
 
   if (anulacion.solicitado_por && anulacion.solicitado_por === supervisor.supervisor_id)
@@ -82,4 +77,4 @@ async function autorizarAnulacion(id, { supervisor_id, pin, decision, observacio
   };
 }
 
-module.exports = { autorizarAnulacion };
+module.exports = { solicitarAnulacion, autorizarAnulacion };
