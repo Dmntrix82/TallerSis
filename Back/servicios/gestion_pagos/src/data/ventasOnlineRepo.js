@@ -45,25 +45,19 @@ async function marcarDespachada(ordenId) {
   return rows[0] || null;
 }
 
-// NUEVO: Función TDSI-369 usando tu tabla exacta 'pagos.anulaciones_online'
 async function guardarAnulacion({ ordenId, motivo, solicitadoPor }) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    
-    // 1. Cambiamos el estado a 'Anulado'
     await client.query(
       `UPDATE pagos.ventas_online SET estado = 'Anulado' WHERE orden_id = $1`,
       [ordenId]
     );
-
-    // 2. Guardamos el historial en tu tabla
     const { rows } = await client.query(
       `INSERT INTO pagos.anulaciones_online (orden_id, motivo, solicitado_por)
        VALUES ($1, $2, $3) RETURNING *`,
       [ordenId, motivo, solicitadoPor || 'SISTEMA_CLIENTE']
     );
-
     await client.query("COMMIT");
     return rows[0];
   } catch (error) {
@@ -74,4 +68,16 @@ async function guardarAnulacion({ ordenId, motivo, solicitadoPor }) {
   }
 }
 
-module.exports = { existeOrden, obtenerVenta, guardarVenta, marcarDespachada, guardarAnulacion };
+// NUEVO: Función TDSI-370
+async function marcarAnulacionNotificada(ordenId) {
+  const { rows } = await pool.query(
+    `UPDATE pagos.anulaciones_online SET notificado = true WHERE orden_id = $1 RETURNING *`,
+    [ordenId]
+  );
+  return rows[0] || null;
+}
+
+module.exports = { 
+  existeOrden, obtenerVenta, guardarVenta, marcarDespachada, 
+  guardarAnulacion, marcarAnulacionNotificada 
+};

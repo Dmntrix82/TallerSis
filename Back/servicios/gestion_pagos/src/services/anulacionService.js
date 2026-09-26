@@ -1,5 +1,6 @@
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/ventasOnlineRepo");
+const { notificarAnulacionExterna } = require("./notificacionProxy");
 
 async function anularPagoOnline({ ordenId, motivo, solicitadoPor }) {
   if (!ordenId) throw new AppError("El campo 'ordenId' es obligatorio", 400);
@@ -13,19 +14,27 @@ async function anularPagoOnline({ ordenId, motivo, solicitadoPor }) {
     throw new AppError("El pago de esta orden ya fue anulado anteriormente", 409, { ordenId });
   }
 
-  // Persistencia TDSI-369
+  // 1. Persistencia (TDSI-369)
   const anulacion = await repo.guardarAnulacion({
     ordenId: venta.orden_id,
     motivo: String(motivo).trim(),
     solicitadoPor
   });
 
+  // 2. Notificación al Sistema Cliente (TDSI-370)
+  const notificadoExitomente = await notificarAnulacionExterna(venta.orden_id, anulacion.motivo);
+  
+  if (notificadoExitomente) {
+    await repo.marcarAnulacionNotificada(venta.orden_id);
+    anulacion.notificado = true;
+  }
+
   return { 
     anulacionRecibida: true, 
     ordenId,
     estado: "ANULADO",
     detalle: anulacion,
-    mensaje: "Pago anulado correctamente"
+    mensaje: notificadoExitomente ? "Pago anulado y sistema notificado" : "Pago anulado (Notificación pendiente/fallida)"
   };
 }
 
