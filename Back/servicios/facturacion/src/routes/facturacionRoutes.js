@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const facturasRepo = require("../data/facturasRepo");
+const facturasService = require("../services/facturasService");
 const tirilla = require("../services/tirillaService");
 const impresion = require("../services/impresoraService");
 
@@ -7,6 +8,8 @@ const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 
 router.get("/", wrap(async (req, res) => res.json({ ok: true, data: await facturasRepo.listarFacturas() })));
+
+router.post("/", wrap(async (req, res) => res.status(201).json({ ok: true, mensaje: "Factura creada", data: await facturasService.crearFactura(req.body) })));
 
 router.get("/impresora", wrap((req, res) => res.json({ ok: true, data: impresion.estadoImpresora() })));
 router.patch("/impresora", wrap((req, res) => res.json({ ok: true, data: impresion.conmutarImpresora(req.body.conectada) })));
