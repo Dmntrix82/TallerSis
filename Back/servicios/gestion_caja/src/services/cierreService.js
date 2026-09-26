@@ -15,6 +15,7 @@ async function calcularTotalRecaudado(turnoId) {
   let egresosC = 0;
 
   for (const m of movimientos) {
+    if (m.tipo === "APERTURA") continue;
     const c = aCentavos(m.monto);
     if (!porMetodo[m.metodo]) {
       porMetodo[m.metodo] = { ingresos: 0, egresos: 0, neto: 0, operaciones: 0 };

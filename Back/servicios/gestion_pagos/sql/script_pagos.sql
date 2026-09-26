@@ -1,3 +1,16 @@
+-- ==========================================================================
+-- Script de base de datos: schema pagos
+-- Proyecto: Taller de Sistemas de Informacion
+-- Servicio: gestion_pagos (puerto 4005)
+--
+-- Cubre:
+--   - Pago simple y mixto (TDSI-85/87/262/271/272/275/276/277)
+--   - Autenticacion del Sistema Cliente externo (TDSI-103/104/335-338)
+--   - Recepcion de venta online (TDSI-105/106/343-346)
+--   - Historial de estados (TDSI-109/359-362)
+--   - Anulacion de pago online (TDSI-110/367-370)
+-- ==========================================================================
+
 CREATE SCHEMA IF NOT EXISTS pagos;
 
 -- NOTA: NO existe pagos.clientes_frecuentes aquí.
@@ -36,9 +49,20 @@ CREATE TABLE IF NOT EXISTS pagos.pagos_mixtos (
     fecha           TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
-ALTER TABLE pagos.transacciones
-    ADD CONSTRAINT fk_transacciones_pago_mixto
-    FOREIGN KEY (pago_mixto_id) REFERENCES pagos.pagos_mixtos(id) ON DELETE CASCADE;
+-- FK de transacciones.pago_mixto_id -> pagos_mixtos.id
+-- Idempotente: si ya existe, no falla. Se puede correr el script N veces.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_transacciones_pago_mixto'
+          AND conrelid = 'pagos.transacciones'::regclass
+    ) THEN
+        ALTER TABLE pagos.transacciones
+            ADD CONSTRAINT fk_transacciones_pago_mixto
+            FOREIGN KEY (pago_mixto_id) REFERENCES pagos.pagos_mixtos(id) ON DELETE CASCADE;
+    END IF;
+END $$;
 
 -- TDSI-276: detalle del pago mixto (montos y metodos)
 CREATE TABLE IF NOT EXISTS pagos.detalles_pago (
@@ -57,24 +81,18 @@ CREATE TABLE IF NOT EXISTS pagos.detalles_pago (
 -- Tablas preparadas para HU futuras del mismo microservicio (aun sin codigo)
 -- ==============================================================
 
--- TDSI-103/104/335-338: autenticacion del Sistema Cliente externo
-CREATE TABLE IF NOT EXISTS pagos.credenciales_sistema_cliente (
+-- TDSI-103/104/335-338: autenticacion del Sistema Cliente externo.
+-- Se guarda el secret CIFRADO (scrypt), nunca en texto plano. El token es JWT
+-- y su vigencia la resuelve el propio token, asi que no hay tabla de tokens.
+CREATE TABLE IF NOT EXISTS pagos.sistemas_cliente (
     id              BIGSERIAL PRIMARY KEY,
-    nombre_sistema  VARCHAR(100) NOT NULL,
-    api_key         VARCHAR(120) NOT NULL UNIQUE,
+    client_id       VARCHAR(60)  NOT NULL UNIQUE,
+    nombre          VARCHAR(120) NOT NULL,
+    secret_hash     VARCHAR(255) NOT NULL,
     activo          BOOLEAN      NOT NULL DEFAULT true,
-    creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS pagos.tokens_acceso (
-    id              BIGSERIAL PRIMARY KEY,
-    credencial_id   BIGINT       NOT NULL REFERENCES pagos.credenciales_sistema_cliente(id),
-    token           VARCHAR(255) NOT NULL UNIQUE,
-    expira_en       TIMESTAMPTZ  NOT NULL,
     creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    revocado        BOOLEAN      NOT NULL DEFAULT false
+    ultimo_acceso   TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_tokens_credencial ON pagos.tokens_acceso (credencial_id);
 
 -- TDSI-105/106/343-346: recepcion de venta online
 CREATE TABLE IF NOT EXISTS pagos.ventas_online (
@@ -128,9 +146,29 @@ DELETE FROM pagos.pagos_mixtos WHERE id_transaccion = 'SEED-NO-USAR';
 ALTER TABLE pagos.transacciones               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.pagos_mixtos                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.detalles_pago               ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pagos.credenciales_sistema_cliente ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pagos.tokens_acceso               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pagos.sistemas_cliente            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.ventas_online               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.venta_online_items          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.historial_estados_transaccion ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pagos.anulaciones_online           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pagos.anulaciones_online          ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-109/359-362: estado_pago (resultado del pago) + historial de cambios
+-- ==========================================================================
+
+-- TDSI-109/360: agregar estado_pago (resultado del cobro) + actualizado_en
+-- 'estado' sigue existiendo para el ciclo de vida del registro (Registrado/Anulado).
+-- 'estado_pago' es un concepto distinto: el resultado del cobro (PENDIENTE/APROBADA/RECHAZADA).
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS estado_pago VARCHAR(20) NOT NULL DEFAULT 'APROBADA'
+        CHECK (estado_pago IN ('PENDIENTE','APROBADA','RECHAZADA')),
+    ADD COLUMN IF NOT EXISTS actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- TDSI-361: ampliar el historial existente (sin tocar sus columnas actuales)
+ALTER TABLE pagos.historial_estados_transaccion
+    ADD COLUMN IF NOT EXISTS motivo VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS origen VARCHAR(30) NOT NULL DEFAULT 'SISTEMA';
+
+-- TDSI-362: indice para consultar el historial por transaccion
+CREATE INDEX IF NOT EXISTS idx_historial_estados_tx
+    ON pagos.historial_estados_transaccion (id_transaccion, cambiado_en DESC);

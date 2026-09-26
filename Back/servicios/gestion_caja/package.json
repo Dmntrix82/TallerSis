@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/tests/cierre.test.js src/tests/movimiento.test.js"
+    "test": "node --test src/tests/cierre.test.js src/tests/movimiento.test.js src/tests/turnos.test.js"
   },
   "license": "ISC",
   "type": "commonjs",
