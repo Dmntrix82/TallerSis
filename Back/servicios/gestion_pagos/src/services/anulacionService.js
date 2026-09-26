@@ -1,9 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/ventasOnlineRepo");
 
-/** TDSI-367: Servicio que recibe y valida la solicitud inicial de anulación */
 async function anularPagoOnline({ ordenId, motivo, solicitadoPor }) {
-  // Validaciones nativas
   if (!ordenId) {
     throw new AppError("El campo 'ordenId' es obligatorio", 400);
   }
@@ -11,18 +9,22 @@ async function anularPagoOnline({ ordenId, motivo, solicitadoPor }) {
     throw new AppError("Debe indicar un motivo de anulación de al menos 5 caracteres", 400);
   }
 
-  // Verificar que la orden exista en la BD
   const venta = await repo.obtenerVenta(ordenId);
   if (!venta) {
     throw new AppError("La orden que intenta anular no existe", 404, { ordenId });
   }
 
-  console.log(`[anulacion] Solicitud válida recibida para la orden ${ordenId}. Motivo: ${motivo}`);
+  // NUEVO: Validación de despacho para TDSI-368
+  if (venta.despachada) {
+    throw new AppError("No se puede anular: la compra ya fue despachada", 409, { ordenId });
+  }
+
+  console.log(`[anulacion] Solicitud válida (no despachada) para orden ${ordenId}. Motivo: ${motivo}`);
   
   return { 
     anulacionRecibida: true, 
     ordenId,
-    mensaje: "Solicitud de anulación recibida correctamente"
+    mensaje: "Solicitud de anulación validada (orden no despachada)"
   };
 }
 

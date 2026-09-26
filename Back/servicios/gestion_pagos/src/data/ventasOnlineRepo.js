@@ -8,7 +8,6 @@ async function existeOrden(ordenId) {
   return rows.length > 0;
 }
 
-// NUEVO: Buscamos la orden para saber si existe y ver su estado
 async function obtenerVenta(ordenId) {
   const { rows } = await pool.query(
     `SELECT * FROM pagos.ventas_online WHERE orden_id = $1`,
@@ -48,4 +47,13 @@ async function guardarVenta(venta, items) {
   }
 }
 
-module.exports = { existeOrden, obtenerVenta, guardarVenta };
+// NUEVO: Función para TDSI-368 (Actualiza estado a despachado)
+async function marcarDespachada(ordenId) {
+  const { rows } = await pool.query(
+    `UPDATE pagos.ventas_online SET despachada = true WHERE orden_id = $1 RETURNING *`,
+    [ordenId]
+  );
+  return rows[0] || null;
+}
+
+module.exports = { existeOrden, obtenerVenta, guardarVenta, marcarDespachada };
