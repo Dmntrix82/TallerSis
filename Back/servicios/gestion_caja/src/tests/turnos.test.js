@@ -74,3 +74,44 @@ test("TDSI-313: permite abrir en otra caja aunque haya una ocupada", async () =>
   assert.equal(t.estado, "ABIERTO");
   assert.equal(t.caja_id, CAJA_B);
 });
+
+test("TDSI-314: al abrir turno se registra el efectivo inicial en el historial de caja", async () => {
+  const CAJA_H = "CAJA-TEST-314";
+
+  // Preparar caja
+  await query(
+    `INSERT INTO caja.cajas (codigo, nombre, estado)
+     VALUES ($1, 'Caja Test 314', 'ACTIVA')
+     ON CONFLICT (codigo) DO NOTHING`,
+    [CAJA_H]
+  );
+  // Limpiar turnos previos (por si quedaron)
+  await query(`DELETE FROM caja.turnos WHERE caja_id = $1`, [CAJA_H]);
+
+  try {
+    const turno = await abrirTurno({
+      caja_id: CAJA_H,
+      cajero_id: "CAJ-TEST-314",
+      efectivo_inicial: 250.75,
+    });
+
+    const { rows } = await query(
+      `SELECT tipo, metodo, monto, origen_microservicio, descripcion
+         FROM caja.movimientos
+        WHERE turno_id = $1`,
+      [turno.id]
+    );
+
+    assert.equal(rows.length, 1, "Debe existir exactamente 1 movimiento de apertura");
+    const mov = rows[0];
+    assert.equal(mov.tipo, "APERTURA");
+    assert.equal(mov.metodo, "Efectivo");
+    assert.equal(Number(mov.monto), 250.75);
+    assert.equal(mov.origen_microservicio, "LOCAL");
+    assert.match(mov.descripcion, /inicial/i);
+  } finally {
+    // Limpieza: el ON DELETE CASCADE borra el movimiento al borrar el turno
+    await query(`DELETE FROM caja.turnos WHERE caja_id = $1`, [CAJA_H]);
+    await query(`DELETE FROM caja.cajas  WHERE codigo   = $1`, [CAJA_H]);
+  }
+});
