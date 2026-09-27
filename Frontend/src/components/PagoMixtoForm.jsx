@@ -74,7 +74,6 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
             <h2 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>
               División de Pago (Pago Mixto)
             </h2>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>TDSI-3 • Terminal POS</span>
           </div>
           <span style={{
             fontSize: '0.85rem',
