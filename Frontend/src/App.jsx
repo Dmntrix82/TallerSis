@@ -3,6 +3,7 @@ import Navbar from './components/Navbar.jsx'
 import Home from './pages/Home.jsx'
 import Cajeros from './pages/Cajeros.jsx'
 import Pagos from './pages/Pagos.jsx'
+import PagoMixto from './pages/PagoMixto.jsx'
 import './App.css'
 
 function App() {
