@@ -10,6 +10,10 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
   // Control de flujo: formulario -> resumen -> comprobante
   const [etapa, setEtapa] = useState('formulario');
 
+  // Estados para el envío al backend
+  const [enviando, setEnviando] = useState(false);
+  const [errorBackend, setErrorBackend] = useState(null);
+
   const numMonto1 = parseFloat(monto1) || 0;
   const numMonto2 = parseFloat(monto2) || 0;
   const sumaTotal = +(numMonto1 + numMonto2).toFixed(2);
@@ -35,23 +39,74 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
     if (esValido) setEtapa('resumen');
   };
 
-  const confirmarPago = () => {
-    setEtapa('comprobante');
-    if (onFinalizar) {
-      onFinalizar({
-        total: totalVenta,
-        metodos: [
-          { metodo: metodo1, monto: numMonto1 },
-          { metodo: metodo2, monto: numMonto2 }
-        ],
-        fecha: new Date().toLocaleString()
+  const confirmarPago = async () => {
+    setEnviando(true);
+    setErrorBackend(null);
+
+    // Cálculos de porcentaje requeridos por la tabla pagos.detalles_pago
+    const porcentaje1 = Number(((numMonto1 / totalVenta) * 100).toFixed(2));
+    const porcentaje2 = Number(((numMonto2 / totalVenta) * 100).toFixed(2));
+
+    // Estructura exacta que requiere registrarPagoMixtoCompleto
+    const payload = {
+      id_transaccion: 'TX-MIX-' + Date.now(),
+      cajaId: 1, // ID por defecto de la terminal POS
+      turnoId: 1,
+      total: Number(totalVenta.toFixed(2)),
+      metodos: [
+        {
+          metodo: metodo1,
+          monto: numMonto1,
+          porcentaje: porcentaje1,
+          orden: 1,
+          referencia: 'Pago Efectivo/POS'
+        },
+        {
+          metodo: metodo2,
+          monto: numMonto2,
+          porcentaje: porcentaje2,
+          orden: 2,
+          referencia: 'Pago POS'
+        }
+      ]
+    };
+
+    try {
+      // Puerto 4005 de gestion_pagos y endpoint POST /mixto
+      const respuesta = await fetch('http://localhost:4005/mixto', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
+
+      const resultado = await respuesta.json();
+
+      if (!respuesta.ok || !resultado.ok) {
+        throw new Error(resultado.mensaje || 'Error al asentar el pago en base de datos');
+      }
+
+      console.log('Pago mixto guardado en Supabase con éxito:', resultado.data);
+      setEtapa('comprobante');
+
+      if (onFinalizar) {
+        onFinalizar(resultado.data);
+      }
+    } catch (err) {
+      console.warn('Backend local no disponible o error:', err.message);
+      setErrorBackend(`Servidor no disponible (${err.message}). Avanzando en modo local para pruebas.`);
+      // Permite continuar la prueba en la interfaz aunque el backend local esté apagado
+      setTimeout(() => setEtapa('comprobante'), 1200);
+    } finally {
+      setEnviando(false);
     }
   };
 
   const reiniciar = () => {
     setMonto1('');
     setMonto2('');
+    setErrorBackend(null);
     setEtapa('formulario');
   };
 
@@ -239,10 +294,27 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
           </div>
         </div>
 
+        {/* Aviso de error de backend (modo local) */}
+        {errorBackend && (
+          <div style={{
+            backgroundColor: '#fffbeb',
+            border: '1px solid #fde68a',
+            color: '#92400e',
+            padding: '0.65rem 0.85rem',
+            borderRadius: '8px',
+            fontSize: '0.78rem',
+            marginBottom: '1rem',
+            fontWeight: '600'
+          }}>
+            ⚠️ {errorBackend}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             type="button"
             onClick={() => setEtapa('formulario')}
+            disabled={enviando}
             style={{
               flex: 1,
               padding: '0.65rem',
@@ -252,7 +324,8 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
               color: '#475569',
               fontSize: '0.85rem',
               fontWeight: '600',
-              cursor: 'pointer'
+              cursor: enviando ? 'not-allowed' : 'pointer',
+              opacity: enviando ? 0.6 : 1
             }}
           >
             Modificar
@@ -260,19 +333,20 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
           <button
             type="button"
             onClick={confirmarPago}
+            disabled={enviando}
             style={{
               flex: 2,
               padding: '0.65rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: '#16a34a',
+              backgroundColor: enviando ? '#94a3b8' : '#16a34a',
               color: '#fff',
               fontSize: '0.85rem',
               fontWeight: 'bold',
-              cursor: 'pointer'
+              cursor: enviando ? 'wait' : 'pointer'
             }}
           >
-            Confirmar Cobro
+            {enviando ? 'Procesando...' : 'Confirmar Cobro'}
           </button>
         </div>
       </div>
