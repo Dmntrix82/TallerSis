@@ -5,8 +5,9 @@ const { tableroEvents } = require("../utils/tableroEvents");
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 
+// TDSI-381: ?fecha=YYYY-MM-DD filtra el tablero por un dia especifico; sin ella, es hoy.
 router.get("/ingresos-dia", wrap(async (req, res) => {
-  res.json({ ok: true, data: await obtenerIngresosDelDia() });
+  res.json({ ok: true, data: await obtenerIngresosDelDia(req.query.fecha) });
 }));
 
 /** TDSI-378: empuja el tablero actualizado (Server-Sent Events) cada vez que entra una venta */

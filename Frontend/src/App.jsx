@@ -14,6 +14,7 @@ import OrdenesPago from './pages/OrdenesPago.jsx'
 import PagoMixtoForm from './components/PagoMixtoForm';
 import Facturacion from './pages/Facturacion.jsx'
 import Facturas from './pages/Facturas.jsx'
+import TableroIngresos from './pages/TableroIngresos.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import './App.css'
 
@@ -45,6 +46,7 @@ function App() {
           <Route path="/pago-mixto" element={<RutaProtegida><PagoMixtoForm /></RutaProtegida>} />
           <Route path="/facturacion" element={<RutaProtegida><Facturacion /></RutaProtegida>} />
           <Route path="/facturas" element={<RutaProtegida><Facturas /></RutaProtegida>} />
+          <Route path="/tablero" element={<RutaProtegida><TableroIngresos /></RutaProtegida>} />
         </Routes>
       </main>
     </>
