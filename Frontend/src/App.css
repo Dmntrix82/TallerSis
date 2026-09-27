@@ -835,6 +835,64 @@
   color: var(--color-brand-dark);
 }
 
+/* Selector Cajero / Administrador (TDSI-19) */
+.selector-modo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 44px;
+  padding: 4px;
+  margin-bottom: 2rem;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-olive);
+  cursor: pointer;
+  transition: background-color 0.25s ease;
+}
+
+.selector-modo--admin {
+  background-color: var(--color-brand-dark);
+}
+
+.selector-modo-opcion {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  transition: color 0.25s ease;
+}
+
+.selector-modo-opcion.activo {
+  color: var(--color-brand-dark);
+}
+
+.selector-modo--admin .selector-modo-opcion.activo {
+  color: var(--color-brand-dark);
+}
+
+.selector-modo-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 999px;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.25s ease;
+}
+
+.selector-modo--admin .selector-modo-thumb {
+  transform: translateX(100%);
+}
+
 .login-form {
   display: flex;
   flex-direction: column;

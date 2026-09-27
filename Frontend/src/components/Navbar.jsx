@@ -26,10 +26,7 @@ function Navbar() {
           <NavLink to="/ordenes-pago">Órdenes de pago</NavLink>
           <NavLink to="/facturacion">Facturación</NavLink>
           <NavLink to="/facturas">Facturas</NavLink>
-          <NavLink to="/tablero">Tablero</NavLink>
-          <NavLink to="/documentos-factura">Documentos</NavLink>
           <NavLink to="/resumen-ventas">Resumen de ventas</NavLink>
-          <NavLink to="/egresos">Egresos</NavLink>
         </>
       )}
 

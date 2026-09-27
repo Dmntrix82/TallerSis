@@ -1,9 +1,13 @@
 const { query, withTransaction } = require("../config/db");
 
 async function buscar(id) {
+  // Incluye la fecha de emision de la factura: el plazo de 2 horas se controla
+  // tambien al momento de aprobar/rechazar, no solo al solicitar (ver anulacionesService.js).
   const { rows } = await query(
-    `SELECT id, factura_id, solicitado_por, estado
-       FROM facturacion.factura_anulaciones WHERE id = $1`,
+    `SELECT fa.id, fa.factura_id, fa.solicitado_por, fa.estado, f.fecha AS factura_fecha
+       FROM facturacion.factura_anulaciones fa
+       JOIN facturacion.facturas f ON f.id = fa.factura_id
+      WHERE fa.id = $1`,
     [id]
   );
   return rows[0] || null;
@@ -11,7 +15,7 @@ async function buscar(id) {
 
 async function buscarFacturaPorNumero(numero) {
   const { rows } = await query(
-    `SELECT id, numero, estado, bloqueada FROM facturacion.facturas WHERE numero = $1`,
+    `SELECT id, numero, estado, bloqueada, fecha FROM facturacion.facturas WHERE numero = $1`,
     [numero]
   );
   return rows[0] || null;
