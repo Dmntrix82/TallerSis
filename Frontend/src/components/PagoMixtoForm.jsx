@@ -73,7 +73,7 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
 
     try {
       // Puerto 4005 de gestion_pagos y endpoint POST /mixto
-      const respuesta = await fetch('http://localhost:4005/api/pagos/mixto', {
+      const respuesta = await fetch('api/pagos/mixto', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
