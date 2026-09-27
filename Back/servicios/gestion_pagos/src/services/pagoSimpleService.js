@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/pagosRepo");
 const { guardarClienteEnFacturacion } = require("./clientesProxy");
+const { emitirActualizacion } = require("../utils/tableroEvents");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
@@ -20,6 +21,7 @@ async function registrarPagoSimple({ id_transaccion, metodo, monto, nit, razon_s
 
   const pago = await repo.insertarTransaccionSimple({ id_transaccion, metodo, monto, nit, razon_social, caja_id });
   const totalTransacciones = await repo.contarTransacciones();
+  emitirActualizacion();
 
   return { pago, totalTransacciones, clienteGuardado: clienteAutoguardado.creado, cliente: clienteAutoguardado.cliente };
 }
