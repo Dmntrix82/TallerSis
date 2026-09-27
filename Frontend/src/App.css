@@ -106,13 +106,17 @@
   margin-bottom: 1rem;
 }
 
-.campo input {
+.campo input,
+.campo textarea {
   padding: 0.5rem;
   border: 1px solid #cbd2d9;
   border-radius: 4px;
+  font-family: inherit;
+  font-size: inherit;
 }
 
-.campo input:focus {
+.campo input:focus,
+.campo textarea:focus {
   outline: none;
   border-color: var(--color-brand-olive);
 }
@@ -189,6 +193,87 @@
 .factura-acciones {
   display: flex;
   gap: 0.75rem;
+}
+
+/* =========================================================================
+   Lista de facturas y solicitud de anulación (TDSI-96)
+   ========================================================================= */
+.tabla-facturas {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tabla-facturas th,
+.tabla-facturas td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e4e7eb;
+}
+
+.tabla-facturas th {
+  background-color: var(--color-brand-dark);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tabla-facturas tr:last-child td {
+  border-bottom: none;
+}
+
+.badge-estado {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background-color: #e4e7eb;
+  color: #3e4c59;
+}
+
+.badge-estado--emitida {
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+}
+
+.badge-estado--solicitada {
+  background-color: var(--color-brand-olive);
+  color: #fff;
+}
+
+.anulacion-form {
+  max-width: 420px;
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background-color: #fff;
+  border-left: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.anulacion-form h2 {
+  margin-top: 0;
+}
+
+.anulacion-solicitante {
+  margin: 0 0 1rem;
+  color: #616e7c;
+  font-size: 0.9rem;
+}
+
+.anulacion-acciones {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.mensaje-exito {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background-color: var(--color-brand-mint);
+  border-left: 4px solid var(--color-brand-dark);
+  border-radius: 6px;
+  color: var(--color-brand-dark);
 }
 
 /* =========================================================================

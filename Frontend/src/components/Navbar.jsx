@@ -25,6 +25,7 @@ function Navbar() {
           <NavLink to="/consulta-transaccion">Consultar transacción</NavLink>
           <NavLink to="/ordenes-pago">Órdenes de pago</NavLink>
           <NavLink to="/facturacion">Facturación</NavLink>
+          <NavLink to="/facturas">Facturas</NavLink>
         </>
       )}
 
