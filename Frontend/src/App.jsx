@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Navbar from './components/Navbar.jsx'
 import Home from './pages/Home.jsx'
 import Cajeros from './pages/Cajeros.jsx'
@@ -12,15 +12,20 @@ import ConsultaTransaccion from './pages/ConsultaTransaccion.jsx'
 import OrdenesPago from './pages/OrdenesPago.jsx'
 import PagoMixtoForm from './components/PagoMixtoForm';
 import Facturacion from './pages/Facturacion.jsx'
+import Login from './pages/Login.jsx'
 import './App.css'
 
 function App() {
+  const { pathname } = useLocation()
+  const esPantallaLogin = pathname === '/login'
+
   return (
     <>
-      <Navbar />
-      <main className="container">
+      {!esPantallaLogin && <Navbar />}
+      <main className={esPantallaLogin ? undefined : 'container'}>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/cajeros" element={<Cajeros />} />
           <Route path="/pagos" element={<Pagos />} />
           <Route path="/clientes" element={<Clientes />} />
