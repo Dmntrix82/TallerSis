@@ -4,6 +4,7 @@ import Home from './pages/Home.jsx'
 import Cajeros from './pages/Cajeros.jsx'
 import Pagos from './pages/Pagos.jsx'
 import PagoMixtoForm from './components/PagoMixtoForm';
+
 import './App.css'
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/cajeros" element={<Cajeros />} />
           <Route path="/pagos" element={<Pagos />} />
+          <Route path="/pago-mixtos" element={<PagoMixtoForm />} />
         </Routes>
       </main>
     </>
