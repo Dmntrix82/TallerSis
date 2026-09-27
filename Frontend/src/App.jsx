@@ -16,7 +16,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/cajeros" element={<Cajeros />} />
           <Route path="/pagos" element={<Pagos />} />
-          <Route path="/pago-mixtos" element={<PagoMixtoForm />} />
+          <Route path="/pago-mixto" element={<PagoMixtoForm />} />
         </Routes>
       </main>
     </>
