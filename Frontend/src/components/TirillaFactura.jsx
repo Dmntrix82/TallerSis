@@ -187,7 +187,7 @@ export default function TirillaFactura({
               }}
             >
               <div style={{ textAlign: 'center', borderBottom: '1px dashed #64748b', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>SUPERMERCADOS TDSI S.A.</div>
+                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>SUPERMERCADO</div>
                 <div>Casa Matriz: Av. 6 de Agosto #2450</div>
                 <div>NIT: 102456029 • La Paz - Bolivia</div>
                 <div style={{ fontWeight: 'bold', marginTop: '4px' }}>FACTURA ELECTRÓNICA</div>
