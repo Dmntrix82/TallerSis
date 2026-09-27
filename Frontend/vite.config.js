@@ -14,6 +14,14 @@ export default defineConfig({
         target: 'http://localhost:4005',
         changeOrigin: true,
       },
+      '/api/facturas': {
+        target: 'http://localhost:4002',
+        changeOrigin: true,
+      },
+      '/anulaciones': {
+        target: 'http://localhost:4002',
+        changeOrigin: true,
+      },
     },
   },
 })
