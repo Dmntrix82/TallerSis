@@ -139,7 +139,7 @@ export default function VentasOnline() {
               <th style={{ padding: '0.75rem 0.5rem' }}>Fecha</th>
               <th style={{ padding: '0.75rem 0.5rem' }}>Cliente</th>
               <th style={{ padding: '0.75rem 0.5rem' }}>Total</th>
-              <th style={{ padding: '0.75rem 0.5rem' }}>Estado (TDSI-349)</th>
+              <th style={{ padding: '0.75rem 0.5rem' }}>Estado</th>
               <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>Acción</th>
             </tr>
           </thead>
