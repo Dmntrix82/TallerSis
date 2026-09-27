@@ -63,9 +63,6 @@ export default function CierreCaja({
             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>
               Cierre de Turno y Conciliación
             </h2>
-            <span style={{ fontSize: '0.75rem', backgroundColor: '#e2e8f0', color: '#475569', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: '600' }}>
-              TDSI-9
-            </span>
           </div>
         </div>
 
