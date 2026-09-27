@@ -6,6 +6,7 @@ const pagoMixtoRoutes = require("./routes/pagoMixtoRoutes");
 const ventaOnlineRoutes = require("./routes/ventaOnlineRoutes");
 const authRoutes = require("./routes/authRoutes");
 const tableroRoutes = require("./routes/tableroRoutes");
+const facturaDocumentoRoutes = require("./routes/facturaDocumentoRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 
@@ -32,6 +33,7 @@ app.use("/api/pagos", ventaOnlineRoutes);
 app.use("/auth", authRoutes);
 app.use("/transacciones", require("./routes/transaccionesEstadoRoutes")); // TDSI-14
 app.use("/api/tablero", tableroRoutes); // TDSI-16
+app.use("/api/facturas", facturaDocumentoRoutes); // TDSI-108
 
 app.use(errorHandler);
 
