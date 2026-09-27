@@ -22,7 +22,6 @@
   color: var(--color-brand-mint);
 }
 
-/* Sesión del cajero en el navbar (TDSI-269 / TDSI-270) */
 .navbar-sesion {
   display: flex;
   align-items: center;
@@ -64,9 +63,7 @@
   color: #b91c1c;
 }
 
-/* =========================================================================
-   Botones
-   ========================================================================= */
+/* Botones */
 .btn {
   padding: 0.5rem 1.25rem;
   background-color: var(--color-brand-dark);
@@ -96,9 +93,7 @@
   color: var(--color-brand-dark);
 }
 
-/* =========================================================================
-   Formularios comunes
-   ========================================================================= */
+/* Formularios */
 .campo {
   display: flex;
   flex-direction: column;
@@ -150,9 +145,7 @@
   gap: 0.75rem;
 }
 
-/* =========================================================================
-   Tipo de venta (TDSI-285)
-   ========================================================================= */
+/* Tipo de venta (TDSI-285) */
 .tipo-venta-opciones {
   display: flex;
   gap: 0.75rem;
@@ -181,9 +174,7 @@
   font-weight: 600;
 }
 
-/* =========================================================================
-   Facturación (TDSI-89)
-   ========================================================================= */
+/* Facturación */
 .factura-form,
 .factura-resumen,
 .factura-exito {
@@ -195,9 +186,7 @@
   gap: 0.75rem;
 }
 
-/* =========================================================================
-   Lista de facturas y solicitud de anulación (TDSI-96)
-   ========================================================================= */
+/* Lista de facturas (TDSI-96) */
 .tabla-facturas {
   width: 100%;
   border-collapse: collapse;
@@ -269,16 +258,14 @@
 
 .mensaje-exito {
   padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
+  margin: 0;
   background-color: var(--color-brand-mint);
   border-left: 4px solid var(--color-brand-dark);
   border-radius: 6px;
   color: var(--color-brand-dark);
 }
 
-/* =========================================================================
-   Tablero de ingresos (TDSI-16)
-   ========================================================================= */
+/* Tablero (TDSI-16) */
 .tablero-filtros {
   display: flex;
   flex-wrap: wrap;
@@ -405,9 +392,56 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* =========================================================================
-   Cliente buscador (TDSI-5)
-   ========================================================================= */
+/* Documentos de factura (TDSI-355 a 358) */
+.documentos-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.documentos-form .campo {
+  margin-bottom: 0;
+}
+
+.documentos-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.documento-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 200px;
+  padding: 1rem 1.25rem;
+  background-color: #fff;
+  border-top: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.documento-tipo {
+  font-weight: 700;
+  color: #3e4c59;
+}
+
+/* Enviar factura por correo (TDSI-107/108) */
+.factura-correo {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background-color: #fff;
+  border-left: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.factura-correo-acciones {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Cliente buscador (TDSI-5) */
 .cliente-buscador {
   position: relative;
   max-width: 420px;
@@ -452,9 +486,7 @@
   margin-top: 1.5rem;
 }
 
-/* =========================================================================
-   Anulaciones (TDSI-17)
-   ========================================================================= */
+/* Anulaciones (TDSI-17) */
 .confirmacion {
   color: #065f46;
   background-color: #ecfdf5;
@@ -494,9 +526,7 @@
   flex-shrink: 0;
 }
 
-/* =========================================================================
-   Modales
-   ========================================================================= */
+/* Modales */
 .modal-fondo {
   position: fixed;
   inset: 0;
@@ -515,17 +545,13 @@
   width: 100%;
 }
 
-/* =========================================================================
-   Turnos (TDSI-8)
-   ========================================================================= */
+/* Turnos (TDSI-8) */
 .turno-form,
 .turno-exito {
   max-width: 420px;
 }
 
-/* =========================================================================
-   Tokens (TDSI-11)
-   ========================================================================= */
+/* Tokens (TDSI-11) */
 .token-form,
 .token-resultado {
   max-width: 480px;
@@ -558,9 +584,7 @@
   font-weight: 600;
 }
 
-/* =========================================================================
-   Consulta de transacción (TDSI-14)
-   ========================================================================= */
+/* Consulta de transacción (TDSI-14) */
 .consulta-form,
 .consulta-resultado {
   max-width: 420px;
@@ -586,9 +610,7 @@
   background-color: #b91c1c;
 }
 
-/* =========================================================================
-   Órdenes de pago (TDSI-20 / TDSI-18)
-   ========================================================================= */
+/* Órdenes de pago (TDSI-20 / TDSI-18) */
 .orden-lista {
   list-style: none;
   padding: 0;
@@ -639,9 +661,7 @@
   border: 1px solid #fecaca;
 }
 
-/* =========================================================================
-   Pantalla de Login del terminal POS (TDSI-1 / TDSI-84 / TDSI-261)
-   ========================================================================= */
+/* Login (TDSI-1 / TDSI-84 / TDSI-261) */
 .login-page {
   min-height: 100vh;
   display: flex;
@@ -781,9 +801,7 @@
   }
 }
 
-/* =========================================================================
-   Encabezado del terminal (TDSI-269)
-   ========================================================================= */
+/* Encabezado del terminal (TDSI-269) */
 .terminal-header {
   border-left: 4px solid var(--color-brand-dark);
   background-color: #fff;

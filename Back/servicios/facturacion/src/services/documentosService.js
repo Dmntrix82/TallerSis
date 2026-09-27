@@ -154,4 +154,17 @@ async function obtenerArchivoParaEntrega(numero, tipo) {
   };
 }
 
-module.exports = { generarDocumentosFactura, obtenerArchivoParaEntrega };
+/** TDSI-356: estado de los documentos (PDF/XML) de una factura, sin marcarlos como entregados */
+async function obtenerEstadoDocumentos(numero) {
+  const factura = await facturasRepo.obtenerFacturaCompleta(numero);
+  if (!factura) {
+    const e = new Error("Factura no encontrada");
+    e.status = 404;
+    throw e;
+  }
+
+  const documentos = await documentosRepo.listarPorFactura(factura.id);
+  return { numero: factura.numero, documentos };
+}
+
+module.exports = { generarDocumentosFactura, obtenerArchivoParaEntrega, obtenerEstadoDocumentos };

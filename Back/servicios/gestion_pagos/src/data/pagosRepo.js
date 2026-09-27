@@ -14,6 +14,15 @@ async function insertarTransaccionSimple({ id_transaccion, metodo, monto, nit, r
   return { ...rows[0], monto: num(rows[0].monto) };
 }
 
+/** Todas las filas de una misma venta (una sola si es pago Simple, varias si es Mixto). */
+async function buscarTransaccionesPorIdTransaccion(id_transaccion) {
+  const { rows } = await query(
+    `SELECT * FROM pagos.transacciones WHERE id_transaccion = $1 AND estado = 'Registrado' ORDER BY fecha, id`,
+    [id_transaccion]
+  );
+  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
+}
+
 async function contarTransacciones() {
   const { rows } = await query(`SELECT COUNT(*)::int AS total FROM pagos.transacciones`);
   return rows[0].total;
@@ -97,6 +106,7 @@ async function obtenerPagoMixtoPorTransaccion(id_transaccion) {
 
 module.exports = {
   insertarTransaccionSimple,
+  buscarTransaccionesPorIdTransaccion,
   contarTransacciones,
   listarHistorial,
   existePagoMixto,

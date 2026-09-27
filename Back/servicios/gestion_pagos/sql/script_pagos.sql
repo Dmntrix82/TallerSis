@@ -183,3 +183,21 @@ ALTER TABLE pagos.transacciones
 CREATE INDEX IF NOT EXISTS idx_transacciones_estado_fecha ON pagos.transacciones (estado, fecha);
 CREATE INDEX IF NOT EXISTS idx_transacciones_caja_id ON pagos.transacciones (caja_id);
 CREATE INDEX IF NOT EXISTS idx_ventas_online_estado_recibida ON pagos.ventas_online (estado, recibida_en);
+
+-- ==========================================================================
+-- Extension de TDSI-107/108: envio de la factura digital por correo.
+-- En vez de generar/guardar un PDF/XML, la factura se arma como datos
+-- estructurados al momento y se manda (o simula, sin credenciales SMTP) al
+-- correo que pida el cliente justo despues de pagar. Ver src/services/emailService.js.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.facturas_enviadas (
+    id              BIGSERIAL PRIMARY KEY,
+    id_transaccion  VARCHAR(60)  NOT NULL,
+    email           VARCHAR(150) NOT NULL,
+    estado          VARCHAR(20)  NOT NULL DEFAULT 'SIMULADO' CHECK (estado IN ('SIMULADO','ENVIADO','ERROR')),
+    payload         JSONB        NOT NULL,
+    creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_facturas_enviadas_id_trx ON pagos.facturas_enviadas (id_transaccion);
+
+ALTER TABLE pagos.facturas_enviadas ENABLE ROW LEVEL SECURITY;
