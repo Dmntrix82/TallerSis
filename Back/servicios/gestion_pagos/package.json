@@ -10,11 +10,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-<<<<<<< HEAD
     "cors": "^2.8.6",
-=======
-    "cors": "^2.8.5",
->>>>>>> 666f2f2 (Implementa TDSI-355/356/357/358 y extiende TDSI-107/108 con factura digital por correo)
     "dotenv": "^18.0.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",

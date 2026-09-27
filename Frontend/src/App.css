@@ -441,6 +441,70 @@
   gap: 0.75rem;
 }
 
+/* Resumen de ventas del turno (TDSI-102) */
+.resumen-turno-actual {
+  color: #616e7c;
+  margin-bottom: 1rem;
+}
+
+.campo-turno-dia {
+  max-width: 320px;
+  margin-bottom: 1.5rem;
+}
+
+.campo-turno-dia select {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  background-color: #fff;
+  font-size: 1rem;
+  color: #1f2933;
+}
+
+.campo-turno-dia select:focus {
+  outline: none;
+  border-color: var(--color-brand-olive);
+}
+
+.resumen-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.resumen-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 160px;
+  padding: 1rem 1.25rem;
+  background-color: #fff;
+  border-top: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.resumen-card-metodo {
+  font-weight: 600;
+  color: #3e4c59;
+}
+
+.resumen-card-total {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-brand-dark);
+}
+
+.resumen-card-cantidad {
+  font-size: 0.85rem;
+  color: #616e7c;
+}
+
+.resumen-total {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
 /* Cliente buscador (TDSI-5) */
 .cliente-buscador {
   position: relative;
