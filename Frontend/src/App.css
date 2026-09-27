@@ -194,3 +194,35 @@
 .turno-exito {
   max-width: 420px;
 }
+
+.token-form,
+.token-resultado {
+  max-width: 480px;
+}
+
+.token-copia {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.token-copia input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.token-estado {
+  margin: 1rem 0;
+}
+
+.estado-activo {
+  color: #1a7f37;
+  font-weight: 600;
+}
+
+.estado-inactivo {
+  color: #b91c1c;
+  font-weight: 600;
+}
