@@ -5,7 +5,7 @@ const { guardarClienteEnFacturacion } = require("./clientesProxy");
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
 /** TDSI-85/262/271/272 + TDSI-289 (via proxy a facturacion) */
-async function registrarPagoSimple({ id_transaccion, metodo, monto, nit, razon_social, email }) {
+async function registrarPagoSimple({ id_transaccion, metodo, monto, nit, razon_social, email, caja_id }) {
   if (!id_transaccion || !metodo || monto === undefined) {
     throw new AppError("Los campos id_transaccion, metodo y monto son obligatorios.", 400);
   }
@@ -18,7 +18,7 @@ async function registrarPagoSimple({ id_transaccion, metodo, monto, nit, razon_s
 
   const clienteAutoguardado = await guardarClienteEnFacturacion({ nit, razon_social, email });
 
-  const pago = await repo.insertarTransaccionSimple({ id_transaccion, metodo, monto, nit, razon_social });
+  const pago = await repo.insertarTransaccionSimple({ id_transaccion, metodo, monto, nit, razon_social, caja_id });
   const totalTransacciones = await repo.contarTransacciones();
 
   return { pago, totalTransacciones, clienteGuardado: clienteAutoguardado.creado, cliente: clienteAutoguardado.cliente };
