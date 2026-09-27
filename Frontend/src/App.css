@@ -89,7 +89,6 @@
   color: #1f2933;
   border: 1px solid #1f2933;
 }
-
 .cliente-buscador {
   position: relative;
   max-width: 420px;
@@ -189,4 +188,9 @@
   padding: 1.5rem;
   max-width: 360px;
   width: 100%;
+}
+
+.turno-form,
+.turno-exito {
+  max-width: 420px;
 }

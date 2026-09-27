@@ -1,10 +1,21 @@
 const { Router } = require("express");
+const { abrirTurno } = require("../services/turnosService");
 const cierre = require("../services/cierreService");
 const movimientoService = require("../services/movimientoService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 
+// TDSI-311/312: apertura de turno
+router.post("/turnos/apertura", wrap(async (req, res) =>
+  res.status(201).json({
+    ok: true,
+    mensaje: "Turno abierto correctamente",
+    data: await abrirTurno(req.body),
+  })
+));
+
+// TDSI-319 a 322: cierre y reportes (viene de main)
 router.get("/turnos/:turnoId/recaudado", wrap(async (req, res) => {
   const data = await cierre.calcularTotalRecaudado(req.params.turnoId);
   res.json({ ok: true, data });

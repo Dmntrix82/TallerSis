@@ -5,7 +5,7 @@ const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 
 const app = express();
-const port = process.env.PORT || 4004;
+const PORT = process.env.PORT || 4004;
 
 app.use(express.json());
 
@@ -22,6 +22,6 @@ app.use("/api/caja", turnosRoutes);
 
 app.use(errorHandler);
 
-app.listen(port, () => {
-  console.log(`Gestion de Caja ejecutandose en el puerto ${port}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Gestión de Caja ejecutándose en el puerto ${PORT}`);
 });

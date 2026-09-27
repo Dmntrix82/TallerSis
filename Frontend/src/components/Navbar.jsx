@@ -8,6 +8,7 @@ function Navbar() {
       <NavLink to="/pagos">Pagos</NavLink>
       <NavLink to="/clientes">Clientes</NavLink>
       <NavLink to="/autorizacion-anulacion">Autorizar anulación</NavLink>
+      <NavLink to="/apertura-turno">Apertura de turno</NavLink>
     </nav>
   )
 }

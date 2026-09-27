@@ -6,6 +6,7 @@ import Pagos from './pages/Pagos.jsx'
 import Clientes from './pages/Clientes.jsx'
 import AutorizacionAnulacion from './pages/AutorizacionAnulacion.jsx'
 import VentasOnline from './pages/VentasOnline';
+import AperturaTurno from './pages/AperturaTurno.jsx'
 import './App.css'
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/autorizacion-anulacion" element={<AutorizacionAnulacion />} />
           <Route path="/admin/ventas-online" element={<VentasOnline />} />
+          <Route path="/apertura-turno" element={<AperturaTurno />} />
         </Routes>
       </main>
     </>
