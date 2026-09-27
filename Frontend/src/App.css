@@ -89,3 +89,28 @@
   color: #1f2933;
   border: 1px solid #1f2933;
 }
+
+.consulta-form,
+.consulta-resultado {
+  max-width: 420px;
+}
+
+.estado-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.estado-verde {
+  background-color: #1a7f37;
+}
+
+.estado-amarillo {
+  background-color: #b7791f;
+}
+
+.estado-rojo {
+  background-color: #b91c1c;
+}
