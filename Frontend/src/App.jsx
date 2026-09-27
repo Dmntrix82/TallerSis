@@ -4,6 +4,7 @@ import Home from './pages/Home.jsx'
 import Cajeros from './pages/Cajeros.jsx'
 import Pagos from './pages/Pagos.jsx'
 import Clientes from './pages/Clientes.jsx'
+import AutorizacionAnulacion from './pages/AutorizacionAnulacion.jsx'
 import './App.css'
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
           <Route path="/cajeros" element={<Cajeros />} />
           <Route path="/pagos" element={<Pagos />} />
           <Route path="/clientes" element={<Clientes />} />
+          <Route path="/autorizacion-anulacion" element={<AutorizacionAnulacion />} />
         </Routes>
       </main>
     </>
