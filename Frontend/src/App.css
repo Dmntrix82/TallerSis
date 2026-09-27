@@ -89,3 +89,8 @@
   color: #1f2933;
   border: 1px solid #1f2933;
 }
+
+.turno-form,
+.turno-exito {
+  max-width: 420px;
+}
