@@ -92,7 +92,7 @@ export default function AnulacionesOnlinePage() {
       {/* Encabezado */}
       <div style={{ borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>
-          Solicitudes de Anulación - Compras Online (TDSI-15)
+          Solicitudes de Anulación - Compras Online
         </h1>
         <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.25rem' }}>
           Gestión y resolución de cancelaciones solicitadas por el Sistema Cliente.
