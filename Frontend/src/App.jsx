@@ -3,6 +3,7 @@ import Navbar from './components/Navbar.jsx'
 import Home from './pages/Home.jsx'
 import Cajeros from './pages/Cajeros.jsx'
 import Pagos from './pages/Pagos.jsx'
+import Clientes from './pages/Clientes.jsx'
 import './App.css'
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/cajeros" element={<Cajeros />} />
           <Route path="/pagos" element={<Pagos />} />
+          <Route path="/clientes" element={<Clientes />} />
         </Routes>
       </main>
     </>
