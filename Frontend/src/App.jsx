@@ -17,6 +17,7 @@ import Facturas from './pages/Facturas.jsx'
 import TableroIngresos from './pages/TableroIngresos.jsx'
 import DocumentosFactura from './pages/DocumentosFactura.jsx'
 import ResumenVentas from './pages/ResumenVentas.jsx'
+import EgresoProveedor from './pages/EgresoProveedor.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import './App.css'
 
@@ -51,6 +52,7 @@ function App() {
           <Route path="/tablero" element={<RutaProtegida><TableroIngresos /></RutaProtegida>} />
           <Route path="/documentos-factura" element={<RutaProtegida><DocumentosFactura /></RutaProtegida>} />
           <Route path="/resumen-ventas" element={<RutaProtegida><ResumenVentas /></RutaProtegida>} />
+          <Route path="/egresos" element={<RutaProtegida><EgresoProveedor /></RutaProtegida>} />
         </Routes>
       </main>
     </>

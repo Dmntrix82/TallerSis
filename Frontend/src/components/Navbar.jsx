@@ -29,6 +29,7 @@ function Navbar() {
           <NavLink to="/tablero">Tablero</NavLink>
           <NavLink to="/documentos-factura">Documentos</NavLink>
           <NavLink to="/resumen-ventas">Resumen de ventas</NavLink>
+          <NavLink to="/egresos">Egresos</NavLink>
         </>
       )}
 
