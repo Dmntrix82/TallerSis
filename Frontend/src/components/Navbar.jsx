@@ -12,6 +12,7 @@ function Navbar() {
       <NavLink to="/credenciales">Credenciales</NavLink>
       <NavLink to="/consulta-transaccion">Consultar transacción</NavLink>
       <NavLink to="/ordenes-pago">Órdenes de pago</NavLink>
+      <NavLink to="/facturacion">Facturación</NavLink>
     </nav>
   )
 }
