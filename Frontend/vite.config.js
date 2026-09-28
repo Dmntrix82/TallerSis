@@ -33,6 +33,14 @@ export default defineConfig({
         target: 'http://localhost:4005',
         changeOrigin: true,
       },
+      '/api/egresos': {
+        target: 'http://localhost:4006',
+        changeOrigin: true,
+      },
+      '/ordenes-pago': {
+        target: 'http://localhost:4006',
+        changeOrigin: true,
+      },
     },
   },
 })
