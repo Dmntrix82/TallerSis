@@ -29,6 +29,10 @@ export default defineConfig({
         target: 'http://localhost:4004',
         changeOrigin: true,
       },
+      '/transacciones': {
+        target: 'http://localhost:4005',
+        changeOrigin: true,
+      },
     },
   },
 })

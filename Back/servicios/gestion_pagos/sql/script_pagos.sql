@@ -151,3 +151,24 @@ ALTER TABLE pagos.ventas_online               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.venta_online_items          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.historial_estados_transaccion ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.anulaciones_online          ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-109/359-362: estado_pago (resultado del pago) + historial de cambios
+-- ==========================================================================
+
+-- TDSI-109/360: agregar estado_pago (resultado del cobro) + actualizado_en
+-- 'estado' sigue existiendo para el ciclo de vida del registro (Registrado/Anulado).
+-- 'estado_pago' es un concepto distinto: el resultado del cobro (PENDIENTE/APROBADA/RECHAZADA).
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS estado_pago VARCHAR(20) NOT NULL DEFAULT 'APROBADA'
+        CHECK (estado_pago IN ('PENDIENTE','APROBADA','RECHAZADA')),
+    ADD COLUMN IF NOT EXISTS actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- TDSI-361: ampliar el historial existente (sin tocar sus columnas actuales)
+ALTER TABLE pagos.historial_estados_transaccion
+    ADD COLUMN IF NOT EXISTS motivo VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS origen VARCHAR(30) NOT NULL DEFAULT 'SISTEMA';
+
+-- TDSI-362: indice para consultar el historial por transaccion
+CREATE INDEX IF NOT EXISTS idx_historial_estados_tx
+    ON pagos.historial_estados_transaccion (id_transaccion, cambiado_en DESC);

@@ -8,6 +8,7 @@ import AutorizacionAnulacion from './pages/AutorizacionAnulacion.jsx'
 import VentasOnline from './pages/VentasOnline';
 import AperturaTurno from './pages/AperturaTurno.jsx'
 import GenerarToken from './pages/GenerarToken.jsx'
+import ConsultaTransaccion from './pages/ConsultaTransaccion.jsx'
 import './App.css'
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
           <Route path="/admin/ventas-online" element={<VentasOnline />} />
           <Route path="/apertura-turno" element={<AperturaTurno />} />
           <Route path="/credenciales" element={<GenerarToken />} />
+          <Route path="/consulta-transaccion" element={<ConsultaTransaccion />} />
         </Routes>
       </main>
     </>

@@ -10,6 +10,7 @@ function Navbar() {
       <NavLink to="/autorizacion-anulacion">Autorizar anulación</NavLink>
       <NavLink to="/apertura-turno">Apertura de turno</NavLink>
       <NavLink to="/credenciales">Credenciales</NavLink>
+      <NavLink to="/consulta-transaccion">Consultar transacción</NavLink>
     </nav>
   )
 }

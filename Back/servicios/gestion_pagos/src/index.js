@@ -3,16 +3,15 @@ const express = require("express");
 const pagosRoutes = require("./routes/pagosRoutes");
 const pagoMixtoRoutes = require("./routes/pagoMixtoRoutes");
 const ventaOnlineRoutes = require("./routes/ventaOnlineRoutes");
+const authRoutes = require("./routes/authRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
-const authRoutes = require("./routes/authRoutes");
-
 
 const app = express();
 const port = process.env.PORT || 4005;
 
 app.use(express.json());
-app.use("/auth", authRoutes); // TDSI-11
+
 app.get("/health", async (req, res) => {
   try {
     await query("SELECT 1");
@@ -25,6 +24,8 @@ app.get("/health", async (req, res) => {
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/pagos", pagoMixtoRoutes);
 app.use("/api/pagos", ventaOnlineRoutes);
+app.use("/auth", authRoutes);
+app.use("/transacciones", require("./routes/transaccionesEstadoRoutes")); // TDSI-14
 
 app.use(errorHandler);
 
