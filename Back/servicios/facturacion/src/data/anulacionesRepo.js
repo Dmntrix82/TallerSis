@@ -9,6 +9,42 @@ async function buscar(id) {
   return rows[0] || null;
 }
 
+async function buscarFacturaPorNumero(numero) {
+  const { rows } = await query(
+    `SELECT id, numero, estado, bloqueada FROM facturacion.facturas WHERE numero = $1`,
+    [numero]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * TDSI-95/303/304/305: registra la solicitud de anulacion del cajero (motivo, quien y cuando)
+ * y marca la factura como 'AnulacionSolicitada' en la MISMA transaccion.
+ */
+async function crear({ factura_id, motivo, solicitado_por }, validarFactura) {
+  return withTransaction(async (client) => {
+    const { rows: facturaRows } = await client.query(
+      `SELECT id, estado FROM facturacion.facturas WHERE id = $1 FOR UPDATE`,
+      [factura_id]
+    );
+    validarFactura(facturaRows[0] || null);
+
+    // TDSI-306: se bloquea mientras esta en revision, no se puede modificar (imprimir/reimprimir)
+    await client.query(
+      `UPDATE facturacion.facturas SET estado = 'AnulacionSolicitada', bloqueada = true WHERE id = $1`,
+      [factura_id]
+    );
+
+    const { rows } = await client.query(
+      `INSERT INTO facturacion.factura_anulaciones (factura_id, motivo, solicitado_por)
+       VALUES ($1, $2, $3)
+       RETURNING id, factura_id, motivo, solicitado_por, solicitado_en, estado`,
+      [factura_id, motivo, solicitado_por || null]
+    );
+    return rows[0];
+  });
+}
+
 /**
  * TDSI-384 + TDSI-385: resuelve la anulacion en UNA transaccion.
  * Adaptado a los estados reales de la BD: 'Solicitada', 'Autorizada', 'Rechazada'.
@@ -23,12 +59,11 @@ async function resolver(id, { aprobar, supervisor, observacion }, validar) {
     );
     validar(rows[0] || null);
 
-    if (aprobar) {
-      await client.query(
-        `UPDATE facturacion.facturas SET estado = 'Anulada' WHERE id = $1`,
-        [rows[0].factura_id]
-      );
-    }
+    // TDSI-306: al resolverse (aprobada o rechazada) la factura deja de estar en revision
+    await client.query(
+      `UPDATE facturacion.facturas SET estado = $2, bloqueada = false WHERE id = $1`,
+      [rows[0].factura_id, aprobar ? "Anulada" : "Emitida"]
+    );
 
     const upd = await client.query(
       `UPDATE facturacion.factura_anulaciones
@@ -51,4 +86,4 @@ async function resolver(id, { aprobar, supervisor, observacion }, validar) {
   });
 }
 
-module.exports = { buscar, resolver };
+module.exports = { buscar, buscarFacturaPorNumero, crear, resolver };
