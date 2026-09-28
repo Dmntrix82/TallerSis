@@ -1,75 +1,79 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { obtenerTirillaTexto, imprimirFactura, reimprimirFactura } from '../api/facturacion';
 
 export default function TirillaFactura({
-  venta = {
-    id: '0004921',
-    fecha: new Date().toLocaleString(),
-    cajero: 'Cajero: Rodny Siles',
-    cliente: 'Comercializadora Santa Cruz S.R.L.',
-    nit: '1029384019',
-    items: [
-      { nombre: 'Licencia Anual ERP', cantidad: 1, subtotal: 250.00 },
-      { nombre: 'Soporte Técnico POS', cantidad: 2, subtotal: 100.00 }
-    ],
-    total: 350.00,
-    metodoPago: 'Pago Dividido (Bs. 200 Efec / Bs. 150 Tarj)'
-  }
+  numeroFactura = 'F-001' // Default para simular si no se provee
 }) {
-  // TDSI-300: Control del modal de vista previa
   const [mostrarModal, setMostrarModal] = useState(false);
-
-  // TDSI-301 y TDSI-302: Estados de retroalimentación
+  const [tirillaTexto, setTirillaTexto] = useState('Cargando vista previa...');
+  
   const [estadoImpresion, setEstadoImpresion] = useState(null); // 'exito' | 'error' | null
-  const [simularFallo, setSimularFallo] = useState(false);
+  const [errorMensaje, setErrorMensaje] = useState('');
+  const [simularFallo, setSimularFallo] = useState(false); // Para pruebas (TDSI-302)
 
-  // TDSI-94: Disparador de impresión con control de errores
-  const ejecutarImpresion = () => {
+  // TDSI-300: Obtener y mostrar una vista previa de la tirilla ANTES de imprimir
+  useEffect(() => {
+    if (mostrarModal) {
+      obtenerTirillaTexto(numeroFactura)
+        .then(texto => {
+          setTirillaTexto(texto);
+        })
+        .catch(err => {
+          setTirillaTexto('Error al obtener la vista previa de la factura: ' + err.message);
+        });
+    }
+  }, [mostrarModal, numeroFactura]);
+
+  // TDSI-94 y TDSI-296: Disparador de impresión con conexión al backend
+  const ejecutarImpresion = async () => {
     try {
+      setEstadoImpresion(null);
+      setErrorMensaje('');
+
       if (simularFallo) {
         throw new Error('Impresora térmica desconectada o sin papel.');
       }
 
-      // Dispara la impresión nativa
-      window.print();
+      // Llamar al endpoint del backend para mandar a imprimir
+      await imprimirFactura(numeroFactura);
 
-      // TDSI-301: Notificación de confirmación exitosa
       setEstadoImpresion('exito');
       setMostrarModal(false);
       setTimeout(() => setEstadoImpresion(null), 5000);
     } catch (err) {
-      // TDSI-302: Notificación de error si la impresora falla
+      // Si la factura ya fue impresa, capturar el 409 y sugerir reimpresión
+      if (err.status === 409 || err.message.includes('ya fue impresa')) {
+        const confirmar = window.confirm('La factura ya fue impresa. ¿Desea realizar una REIMPRESIÓN?');
+        if (confirmar) {
+          ejecutarReimpresion();
+        } else {
+          setEstadoImpresion('error');
+          setErrorMensaje('Impresión cancelada (factura ya impresa).');
+        }
+      } else {
+        setEstadoImpresion('error');
+        setErrorMensaje(err.mensaje || err.message || 'Error de conexión con la impresora.');
+      }
+    }
+  };
+
+  const ejecutarReimpresion = async () => {
+    try {
+      setEstadoImpresion(null);
+      setErrorMensaje('');
+      await reimprimirFactura(numeroFactura, 'Copia solicitada por el usuario');
+      setEstadoImpresion('exito');
+      setMostrarModal(false);
+      setTimeout(() => setEstadoImpresion(null), 5000);
+    } catch (err) {
       setEstadoImpresion('error');
+      setErrorMensaje(err.mensaje || err.message || 'Error al reimprimir.');
     }
   };
 
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', marginTop: '1rem' }}>
       
-      {/* Estilos para que en la hoja solo se imprima la tirilla térmica */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #seccion-imprimible-tirilla, #seccion-imprimible-tirilla * {
-            visibility: visible !important;
-          }
-          #seccion-imprimible-tirilla {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 80mm !important;
-            margin: 0 !important;
-            padding: 10px !important;
-            box-shadow: none !important;
-            border: none !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
-
       {/* TDSI-299: Botón Imprimir factura en pantalla de venta */}
       <button
         type="button"
@@ -92,7 +96,6 @@ export default function TirillaFactura({
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}
       >
-        <span>🖨️</span>
         <span>Imprimir Factura</span>
       </button>
 
@@ -111,7 +114,7 @@ export default function TirillaFactura({
           alignItems: 'center',
           gap: '6px'
         }}>
-          ✓ La factura fue enviada e impresa correctamente en la tirilla.
+          ✓ La factura fue enviada a la impresora de tirillas correctamente.
         </div>
       )}
 
@@ -130,7 +133,7 @@ export default function TirillaFactura({
           alignItems: 'center',
           gap: '6px'
         }}>
-          ⚠️ Error: La impresora no responde o no se encuentra conectada al terminal POS.
+          ⚠️ Error: {errorMensaje || 'La impresora no responde o no se encuentra conectada al terminal POS.'}
         </div>
       )}
 
@@ -160,9 +163,9 @@ export default function TirillaFactura({
             gap: '14px'
           }}>
             
-            <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#334155' }}>
-                Vista Previa de Tirilla
+                Vista Previa de Tirilla - {numeroFactura}
               </span>
               <button
                 onClick={() => setMostrarModal(false)}
@@ -172,9 +175,8 @@ export default function TirillaFactura({
               </button>
             </div>
 
-            {/* CUERPO DE LA TIRILLA (PAPEL TÉRMICO) */}
+            {/* CUERPO DE LA TIRILLA CARGADA DEL BACKEND */}
             <div
-              id="seccion-imprimible-tirilla"
               style={{
                 backgroundColor: '#fafafa',
                 border: '1px solid #cbd5e1',
@@ -183,64 +185,17 @@ export default function TirillaFactura({
                 fontFamily: "'Courier New', Courier, monospace",
                 fontSize: '0.78rem',
                 color: '#111827',
-                lineHeight: '1.4'
+                lineHeight: '1.4',
+                whiteSpace: 'pre-wrap',
+                maxHeight: '400px',
+                overflowY: 'auto'
               }}
             >
-              <div style={{ textAlign: 'center', borderBottom: '1px dashed #64748b', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>SUPERMERCADO</div>
-                <div>Casa Matriz: Av. 6 de Agosto #2450</div>
-                <div>NIT: 102456029 • La Paz - Bolivia</div>
-                <div style={{ fontWeight: 'bold', marginTop: '4px' }}>FACTURA ELECTRÓNICA</div>
-              </div>
-
-              <div style={{ borderBottom: '1px dashed #64748b', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div><strong>N° Factura:</strong> {venta.id}</div>
-                <div><strong>Fecha:</strong> {venta.fecha}</div>
-                <div><strong>{venta.cajero}</strong></div>
-                <div><strong>NIT/CI:</strong> {venta.nit}</div>
-                <div><strong>Señor(es):</strong> {venta.cliente}</div>
-              </div>
-
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px dashed #64748b', textAlign: 'left', fontSize: '0.75rem' }}>
-                    <th style={{ paddingBottom: '4px' }}>Cant</th>
-                    <th style={{ paddingBottom: '4px' }}>Detalle</th>
-                    <th style={{ textAlign: 'right', paddingBottom: '4px' }}>Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {venta.items.map((item, index) => (
-                    <tr key={index}>
-                      <td style={{ verticalAlign: 'top', paddingTop: '3px' }}>{item.cantidad}</td>
-                      <td style={{ paddingTop: '3px' }}>{item.nombre}</td>
-                      <td style={{ textAlign: 'right', verticalAlign: 'top', paddingTop: '3px' }}>
-                        Bs. {item.subtotal.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <div style={{ borderTop: '1px dashed #64748b', paddingTop: '8px', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                  <span>TOTAL:</span>
-                  <span>Bs. {venta.total.toFixed(2)}</span>
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '4px' }}>
-                  <strong>Modalidad:</strong> {venta.metodoPago}
-                </div>
-              </div>
-
-              <div style={{ textAlign: 'center', fontSize: '0.7rem', color: '#475569', marginTop: '6px' }}>
-                <div>Código Control: 8A-4F-29-C1</div>
-                <div>"ESTA FACTURA CONTRIBUYE AL DESARROLLO DEL PAÍS"</div>
-                <div style={{ marginTop: '4px' }}>*** GRACIAS POR SU PREFERENCIA ***</div>
-              </div>
+              {tirillaTexto}
             </div>
 
             {/* CONTROLES DEL MODAL */}
-            <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               
               {/* TDSI-302: Selector para probar el caso de error */}
               <label style={{ fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
@@ -249,7 +204,7 @@ export default function TirillaFactura({
                   checked={simularFallo}
                   onChange={(e) => setSimularFallo(e.target.checked)}
                 />
-                Simular fallo de conexión con impresora (TDSI-302)
+                Simular fallo de conexión con impresora (Prueba TDSI-302)
               </label>
 
               <div style={{ display: 'flex', gap: '8px' }}>

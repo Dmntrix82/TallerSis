@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { registrarPago, enviarFacturaPorCorreo } from '../api/pagos.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
+import TirillaFactura from '../components/TirillaFactura.jsx'
 
 const METODOS_PAGO = ['Efectivo', 'Tarjeta', 'QR']
 
@@ -198,6 +199,10 @@ function Pagos() {
                 <li>Fecha: {new Date(pagoRegistrado.fecha).toLocaleString()}</li>
               </ul>
               <EnviarFacturaPorCorreo idTransaccion={pagoRegistrado.id_transaccion} />
+
+              {/* TDSI-299: Botón Imprimir factura en pantalla de venta */}
+              <TirillaFactura numeroFactura={`F-001`} />
+
               <button type="button" className="btn" onClick={registrarOtro}>Registrar otro pago</button>
             </div>
           )}
