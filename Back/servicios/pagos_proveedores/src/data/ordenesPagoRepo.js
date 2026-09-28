@@ -11,8 +11,8 @@ async function existeOrden(ordenCompraId) {
 async function guardarOrdenPendiente(orden) {
   const { rows } = await pool.query(
     `INSERT INTO proveedores.ordenes_pago 
-     (numero, orden_compra_id, proveedor_nit, proveedor_razon_social, proveedor_cuenta_bancaria, proveedor_banco, monto, estado)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDIENTE')
+     (numero, orden_compra_id, proveedor_nit, proveedor_razon_social, proveedor_cuenta_bancaria, proveedor_banco, monto, fecha_vencimiento, concepto, estado)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDIENTE')
      RETURNING *`,
     [
       orden.numero,
@@ -21,7 +21,9 @@ async function guardarOrdenPendiente(orden) {
       orden.proveedor.razonSocial,
       orden.proveedor.cuentaBancaria,
       orden.proveedor.banco,
-      orden.monto
+      orden.monto,
+      orden.fechaVencimiento ?? null,
+      orden.concepto ?? null
     ]
   );
   return rows[0];
