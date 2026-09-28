@@ -1,4 +1,4 @@
-const { pool } = require("../config/db");
+const { pool, query } = require("../config/db");
 
 async function existeOrden(ordenCompraId) {
   const { rows } = await pool.query(
@@ -10,7 +10,7 @@ async function existeOrden(ordenCompraId) {
 
 async function guardarOrdenPendiente(orden) {
   const { rows } = await pool.query(
-    `INSERT INTO proveedores.ordenes_pago 
+    `INSERT INTO proveedores.ordenes_pago
      (numero, orden_compra_id, proveedor_nit, proveedor_razon_social, proveedor_cuenta_bancaria, proveedor_banco, monto, fecha_vencimiento, concepto, estado)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDIENTE')
      RETURNING *`,
@@ -29,7 +29,7 @@ async function guardarOrdenPendiente(orden) {
   return rows[0];
 }
 
-// TDSI-394: Registrar la notificación en tu base de datos
+// TDSI-394: Registrar la notificacion en la base de datos
 async function guardarNotificacionAdmin(ordenPagoId, mensaje) {
   const { rows } = await pool.query(
     `INSERT INTO proveedores.notificaciones_admin (orden_pago_id, mensaje)
@@ -81,7 +81,42 @@ async function marcarNotificacionLeida(id) {
   return rows[0] || null;
 }
 
+/** TDSI-404: consultar la orden por su numero */
+async function buscarPorNumero(numero) {
+  const resultado = await query(
+    "SELECT id, numero, proveedor_razon_social, monto, estado FROM proveedores.ordenes_pago WHERE numero = $1",
+    [numero]
+  );
+  return resultado.rows[0] || null;
+}
+
+async function buscarPorId(id) {
+  const resultado = await query(
+    "SELECT id, numero, proveedor_razon_social, monto, estado FROM proveedores.ordenes_pago WHERE id = $1",
+    [id]
+  );
+  return resultado.rows[0] || null;
+}
+
+async function marcarLiquidada(id, liquidada_por) {
+  const resultado = await query(
+    `UPDATE proveedores.ordenes_pago
+     SET estado = 'LIQUIDADA', liquidada_en = now(), liquidada_por = $2
+     WHERE id = $1
+     RETURNING id, numero, estado, liquidada_en, liquidada_por`,
+    [id, liquidada_por || null]
+  );
+  return resultado.rows[0];
+}
+
 module.exports = {
-  existeOrden, guardarOrdenPendiente, guardarNotificacionAdmin, listarPendientes,
-  listarNotificaciones, marcarNotificacionLeida,
+  existeOrden,
+  guardarOrdenPendiente,
+  guardarNotificacionAdmin,
+  listarPendientes,
+  listarNotificaciones,
+  marcarNotificacionLeida,
+  buscarPorId,
+  buscarPorNumero,
+  marcarLiquidada,
 };
