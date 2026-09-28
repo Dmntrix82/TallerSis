@@ -1,6 +1,6 @@
 const { Router } = require("express");
 const { recibirVenta } = require("../services/ventaOnlineService");
-const { anularPagoOnline } = require("../services/anulacionService");
+const { anularPagoOnline, listarAnulacionesPendientes, procesarSolicitudAnulacion } = require("../services/anulacionService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -15,6 +15,17 @@ router.post("/online", wrap(async (req, res) => {
 router.post("/online/anular", wrap(async (req, res) => {
   const data = await anularPagoOnline(req.body);
   res.json({ ok: true, mensaje: "Solicitud procesada", data });
+}));
+
+// ENDPOINTS DE ADMINISTRACIÓN (TDSI-371, TDSI-372)
+router.get("/online/anulaciones/pendientes", wrap(async (req, res) => {
+  const data = await listarAnulacionesPendientes();
+  res.json(data); // El frontend espera directamente el array
+}));
+
+router.post("/online/anulaciones/:id/procesar", wrap(async (req, res) => {
+  const data = await procesarSolicitudAnulacion(req.params.id, req.body.accion);
+  res.json({ ok: true, data });
 }));
 
 module.exports = router;

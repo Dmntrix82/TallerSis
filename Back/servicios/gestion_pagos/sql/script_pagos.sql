@@ -150,7 +150,7 @@ ALTER TABLE pagos.sistemas_cliente            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.ventas_online               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.venta_online_items          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos.historial_estados_transaccion ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pagos.anulaciones_online          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pagos.anulaciones_online           ENABLE ROW LEVEL SECURITY;
 
 -- ==========================================================================
 -- TDSI-109/359-362: estado_pago (resultado del pago) + historial de cambios
@@ -210,3 +210,14 @@ CREATE TABLE IF NOT EXISTS pagos.facturas_enviadas (
 CREATE INDEX IF NOT EXISTS idx_facturas_enviadas_id_trx ON pagos.facturas_enviadas (id_transaccion);
 
 ALTER TABLE pagos.facturas_enviadas ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-15/367-370: flujo de aprobacion de anulacion de pago online.
+-- Amplia la restriccion existente sin modificar su estructura base, para
+-- soportar el estado intermedio "Anulacion Pendiente" mientras el
+-- administrador revisa la solicitud.
+-- ==========================================================================
+ALTER TABLE pagos.ventas_online DROP CONSTRAINT IF EXISTS ventas_online_estado_check;
+ALTER TABLE pagos.ventas_online
+    ADD CONSTRAINT ventas_online_estado_check
+    CHECK (estado::text = ANY (ARRAY['Pagado','Anulacion Pendiente','Anulado']::varchar[]));
