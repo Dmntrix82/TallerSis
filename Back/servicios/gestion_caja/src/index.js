@@ -9,7 +9,6 @@ const { query } = require("./config/db");
 const app = express();
 const PORT = process.env.PORT || 4004;
 
-// Permite que el Frontend (Vite en localhost:5173, u otro origen en produccion) consuma este WS.
 app.use(cors());
 app.use(express.json());
 

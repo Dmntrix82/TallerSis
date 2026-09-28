@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { abrirTurno } = require("../services/turnosService");
+const { abrirTurno, obtenerTurnoAbierto } = require("../services/turnosService");
 const cierre = require("../services/cierreService");
 const movimientoService = require("../services/movimientoService");
 
@@ -14,6 +14,12 @@ router.post("/turnos/apertura", wrap(async (req, res) =>
     data: await abrirTurno(req.body),
   })
 ));
+
+// Turno abierto de la caja del cajero logueado (para no pedirle el id a mano en el resumen de ventas)
+router.get("/turnos/actual", wrap(async (req, res) => {
+  const data = await obtenerTurnoAbierto(req.query.caja_id);
+  res.json({ ok: true, data });
+}));
 
 // TDSI-319 a 322: cierre y reportes (viene de main)
 router.get("/turnos/:turnoId/recaudado", wrap(async (req, res) => {

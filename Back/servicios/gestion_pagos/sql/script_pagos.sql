@@ -178,6 +178,15 @@ CREATE INDEX IF NOT EXISTS idx_historial_estados_tx
 ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS caja_id VARCHAR(60);
 
+-- TDSI-101: turno_id tambien en pagos simples (los mixtos ya lo tienen via pagos_mixtos),
+-- para poder filtrar el resumen de ventas por el turno actual del cajero.
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS turno_id VARCHAR(60);
+
+-- TDSI-330: indices para que el resumen de ventas por turno cargue rapido con muchos datos.
+CREATE INDEX IF NOT EXISTS idx_transacciones_estado_turno ON pagos.transacciones (estado, turno_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_mixtos_turno_id ON pagos.pagos_mixtos (turno_id);
+
 -- TDSI-377: indices para que el tablero de ingresos cargue rapido con muchos datos.
 -- Las consultas del tablero filtran por (estado, fecha) y agrupan por caja_id.
 CREATE INDEX IF NOT EXISTS idx_transacciones_estado_fecha ON pagos.transacciones (estado, fecha);

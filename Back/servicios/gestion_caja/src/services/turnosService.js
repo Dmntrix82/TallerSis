@@ -60,4 +60,12 @@ async function abrirTurno({ caja_id, cajero_id, efectivo_inicial } = {}) {
   };
 }
 
-module.exports = { abrirTurno };
+/** Turno abierto de una caja, para que el frontend no tenga que pedirle el id al cajero. */
+async function obtenerTurnoAbierto(caja_id) {
+  const cajaId = validarTexto(caja_id, "caja_id", 20);
+  const turno = await repo.buscarTurnoAbiertoPorCaja(cajaId);
+  if (!turno) throw new AppError(`No hay un turno abierto para la caja "${cajaId}".`, 404, { caja_id: cajaId });
+  return { ...turno, id: Number(turno.id) };
+}
+
+module.exports = { abrirTurno, obtenerTurnoAbierto };
