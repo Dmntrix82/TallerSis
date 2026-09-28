@@ -1,0 +1,93 @@
+const { query, withTransaction } = require("../config/db");
+
+async function buscar(id) {
+  // Incluye la fecha de emision de la factura: el plazo de 2 horas se controla
+  // tambien al momento de aprobar/rechazar, no solo al solicitar (ver anulacionesService.js).
+  const { rows } = await query(
+    `SELECT fa.id, fa.factura_id, fa.solicitado_por, fa.estado, f.fecha AS factura_fecha
+       FROM facturacion.factura_anulaciones fa
+       JOIN facturacion.facturas f ON f.id = fa.factura_id
+      WHERE fa.id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function buscarFacturaPorNumero(numero) {
+  const { rows } = await query(
+    `SELECT id, numero, estado, bloqueada, fecha FROM facturacion.facturas WHERE numero = $1`,
+    [numero]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * TDSI-95/303/304/305: registra la solicitud de anulacion del cajero (motivo, quien y cuando)
+ * y marca la factura como 'AnulacionSolicitada' en la MISMA transaccion.
+ */
+async function crear({ factura_id, motivo, solicitado_por }, validarFactura) {
+  return withTransaction(async (client) => {
+    const { rows: facturaRows } = await client.query(
+      `SELECT id, estado FROM facturacion.facturas WHERE id = $1 FOR UPDATE`,
+      [factura_id]
+    );
+    validarFactura(facturaRows[0] || null);
+
+    // TDSI-306: se bloquea mientras esta en revision, no se puede modificar (imprimir/reimprimir)
+    await client.query(
+      `UPDATE facturacion.facturas SET estado = 'AnulacionSolicitada', bloqueada = true WHERE id = $1`,
+      [factura_id]
+    );
+
+    const { rows } = await client.query(
+      `INSERT INTO facturacion.factura_anulaciones (factura_id, motivo, solicitado_por)
+       VALUES ($1, $2, $3)
+       RETURNING id, factura_id, motivo, solicitado_por, solicitado_en, estado`,
+      [factura_id, motivo, solicitado_por || null]
+    );
+    return rows[0];
+  });
+}
+
+/**
+ * TDSI-384 + TDSI-385: resuelve la anulacion en UNA transaccion.
+ * Adaptado a los estados reales de la BD: 'Solicitada', 'Autorizada', 'Rechazada'.
+ * El estado de facturas al aprobar es 'Anulada' (con mayuscula inicial).
+ */
+async function resolver(id, { aprobar, supervisor, observacion }, validar) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, factura_id, estado FROM facturacion.factura_anulaciones
+       WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
+    validar(rows[0] || null);
+
+    // TDSI-306: al resolverse (aprobada o rechazada) la factura deja de estar en revision
+    await client.query(
+      `UPDATE facturacion.facturas SET estado = $2, bloqueada = false WHERE id = $1`,
+      [rows[0].factura_id, aprobar ? "Anulada" : "Emitida"]
+    );
+
+    const upd = await client.query(
+      `UPDATE facturacion.factura_anulaciones
+       SET estado = $2,
+           autorizado_por = $3,
+           autorizado_nombre = $4,
+           autorizado_en = now(),
+           observacion = $5
+       WHERE id = $1
+       RETURNING id, factura_id, estado, autorizado_por, autorizado_nombre, autorizado_en, observacion`,
+      [
+        id,
+        aprobar ? "Autorizada" : "Rechazada",
+        supervisor.supervisor_id,
+        supervisor.nombre,
+        observacion,
+      ]
+    );
+    return upd.rows[0];
+  });
+}
+
+module.exports = { buscar, buscarFacturaPorNumero, crear, resolver };

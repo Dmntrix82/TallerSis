@@ -4,14 +4,23 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
 
 // ---------- Pago simple / historial (TDSI-85/262/271/272) ----------
 
-async function insertarTransaccionSimple({ id_transaccion, metodo, monto, nit, razon_social }) {
+async function insertarTransaccionSimple({ id_transaccion, metodo, monto, nit, razon_social, caja_id, turno_id }) {
   const { rows } = await query(
-    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, nit, razon_social)
-     VALUES ($1, $2, $3, 'Simple', $4, $5)
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, nit, razon_social, caja_id, turno_id)
+     VALUES ($1, $2, $3, 'Simple', $4, $5, $6, $7)
      RETURNING *`,
-    [id_transaccion, metodo, monto, nit || null, razon_social || null]
+    [id_transaccion, metodo, monto, nit || null, razon_social || null, caja_id || null, turno_id || null]
   );
   return { ...rows[0], monto: num(rows[0].monto) };
+}
+
+/** Todas las filas de una misma venta (una sola si es pago Simple, varias si es Mixto). */
+async function buscarTransaccionesPorIdTransaccion(id_transaccion) {
+  const { rows } = await query(
+    `SELECT * FROM pagos.transacciones WHERE id_transaccion = $1 AND estado = 'Registrado' ORDER BY fecha, id`,
+    [id_transaccion]
+  );
+  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
 }
 
 async function contarTransacciones() {
@@ -97,6 +106,7 @@ async function obtenerPagoMixtoPorTransaccion(id_transaccion) {
 
 module.exports = {
   insertarTransaccionSimple,
+  buscarTransaccionesPorIdTransaccion,
   contarTransacciones,
   listarHistorial,
   existePagoMixto,

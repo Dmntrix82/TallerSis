@@ -11,9 +11,12 @@ const cacheSugerencias = new Map();
 const MAX_CACHE = 50;
 const invalidarCache = () => cacheSugerencias.clear();
 
+const NIT_REGEX = /^\d{6,15}$/;
+
+/** TDSI-280/282: valida el formato del NIT antes de guardarlo en la factura */
 function validarCampos(nit, razon_social) {
   if (!nit || !razon_social) throw err("Los campos 'nit' y 'razon_social' son obligatorios");
-  if (nit.length > 30) throw err("El NIT no puede superar 30 caracteres");
+  if (!NIT_REGEX.test(nit)) throw err("El NIT debe tener entre 6 y 15 dígitos numéricos", 400, { nit });
   if (razon_social.length > 150) throw err("La razón social no puede superar 150 caracteres");
 }
 

@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/ventasOnlineRepo");
 const { aCentavos, aMonto } = require("../utils/money");
+const { emitirActualizacion } = require("../utils/tableroEvents");
 
 function generarCodigo() {
   return "CNF-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -47,7 +48,8 @@ async function recibirVenta(json) {
     codigoConfirmacion
   }, itemsProcesados);
 
-  return { 
+  emitirActualizacion();
+  return {
     recibido: true, 
     ordenId: json.ordenId, 
     codigoConfirmacion,
