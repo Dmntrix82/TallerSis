@@ -27,6 +27,7 @@ function Navbar() {
           <NavLink to="/facturacion">Facturación</NavLink>
           <NavLink to="/facturas">Facturas</NavLink>
           <NavLink to="/resumen-ventas">Resumen de ventas</NavLink>
+          <NavLink to="/cierre-caja" style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>Cerrar Caja</NavLink>
         </>
       )}
 

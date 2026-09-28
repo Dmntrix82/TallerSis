@@ -20,6 +20,7 @@ import DocumentosFactura from './pages/DocumentosFactura.jsx'
 import ResumenVentas from './pages/ResumenVentas.jsx'
 import EgresoProveedor from './pages/EgresoProveedor.jsx'
 import OrdenesProveedores from './pages/OrdenesProveedores.jsx'
+import CierreCaja from './pages/CierreCaja.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import './App.css'
@@ -60,6 +61,7 @@ function App() {
           <Route path="/facturacion" element={<RutaProtegida><Facturacion /></RutaProtegida>} />
           <Route path="/facturas" element={<RutaProtegida><Facturas /></RutaProtegida>} />
           <Route path="/resumen-ventas" element={<RutaProtegida><ResumenVentas /></RutaProtegida>} />
+          <Route path="/cierre-caja" element={<RutaProtegida><CierreCaja /></RutaProtegida>} />
 
           {/* Panel de Administración */}
           <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />

@@ -1,312 +1,193 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react'
+import { generarReporteCierre, cerrarTurno } from '../api/caja.js'
+import { obtenerTurnoActual } from '../api/turnos.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
-export default function CierreCaja({
-  saldoTeoricoEsperado = 1450.00,
-  cajero = 'Rodny Siles',
-  onFinalizarCierre
-}) {
-  // TDSI-324: Captura de efectivo contado en físico
-  const [efectivoContado, setEfectivoContado] = useState('');
-  const [observaciones, setObservaciones] = useState('');
+function CierreCaja() {
+  const { cajero } = useAuth()
 
-  // Control de flujo: 'formulario' -> 'reporte' (TDSI-325)
-  const [etapa, setEtapa] = useState('formulario');
+  const [turnoActual, setTurnoActual] = useState(null) // { id, codigo } del turno abierto en la caja
+  const [cargandoTurno, setCargandoTurno] = useState(true)
+  const [errorTurno, setErrorTurno] = useState(null)
 
-  const contadoNum = parseFloat(efectivoContado) || 0;
-  // Diferencia = Contado - Esperado (Positivo = Sobrante, Negativo = Faltante)
-  const diferencia = +(contadoNum - saldoTeoricoEsperado).toFixed(2);
-  const hayDiferencia = diferencia !== 0 && efectivoContado !== '';
+  const [paso, setPaso] = useState('ingreso') // ingreso, reporte, listo
+  const [efectivoContado, setEfectivoContado] = useState('')
+  const [reporte, setReporte] = useState(null)
+  const [error, setError] = useState(null)
+  const [cargando, setCargando] = useState(false)
 
-  const evitarCaracteresInvalidos = (e) => {
-    if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
-  };
-
-  const ejecutarCierre = (e) => {
-    e.preventDefault();
-    if (efectivoContado === '') return;
-
-    setEtapa('reporte');
-    if (onFinalizarCierre) {
-      onFinalizarCierre({
-        cajero,
-        saldoEsperado: saldoTeoricoEsperado,
-        efectivoContado: contadoNum,
-        diferencia,
-        observaciones,
-        fecha: new Date().toLocaleString()
-      });
+  // El turno (de caja) sale de la caja del cajero logueado, no se escribe a mano.
+  useEffect(() => {
+    if (!cajero?.caja) {
+      setCargandoTurno(false)
+      return
     }
-  };
+    setCargandoTurno(true)
+    obtenerTurnoActual(cajero.caja)
+      .then((r) => setErrorTurno(null) || setTurnoActual(r.data))
+      .catch((err) => setErrorTurno(err.message))
+      .finally(() => setCargandoTurno(false))
+  }, [cajero?.caja])
 
-  const nuevoTurno = () => {
-    setEfectivoContado('');
-    setObservaciones('');
-    setEtapa('formulario');
-  };
+  const turnoId = turnoActual?.id
 
-  // VISTA 1: FORMULARIO DE CONTEO Y ALERTAS (TDSI-324 & TDSI-326)
-  if (etapa === 'formulario') {
+  const manejarContinuar = async (e) => {
+    e.preventDefault()
+    if (!efectivoContado) {
+      setError('Por favor, ingrese el monto contado en la caja.')
+      return
+    }
+
+    setCargando(true)
+    setError(null)
+    try {
+      const { data } = await generarReporteCierre(turnoId, Number(efectivoContado))
+      setReporte(data)
+      setPaso('reporte')
+    } catch (err) {
+      setError(err.mensaje || err.message)
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  const manejarCerrarCaja = async () => {
+    setCargando(true)
+    setError(null)
+    try {
+      await cerrarTurno(turnoId, Number(efectivoContado))
+      setPaso('listo')
+    } catch (err) {
+      setError(err.mensaje || err.message)
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  if (cargandoTurno) {
     return (
-      <div style={{
-        maxWidth: '560px',
-        margin: '2rem auto',
-        padding: '1.75rem',
-        backgroundColor: '#ffffff',
-        borderRadius: '16px',
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
-        fontFamily: 'system-ui, -apple-system, sans-serif'
-      }}>
-        {/* Cabecera */}
-        <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>
-              Cierre de Turno y Conciliación
-            </h2>
-          </div>
+      <section>
+        <h1>Cierre de Caja</h1>
+        <p>Buscando el turno abierto de su caja...</p>
+      </section>
+    )
+  }
+
+  if (errorTurno || !turnoActual) {
+    return (
+      <section>
+        <h1>Cierre de Caja</h1>
+        <div className="error" style={{ padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px' }}>
+          {errorTurno || 'No hay un turno abierto en su caja. Abra un turno antes de cerrar caja.'}
         </div>
+      </section>
+    )
+  }
 
-        <form onSubmit={ejecutarCierre} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
-          {/* Tarjeta Informativa de Saldo Teórico */}
-          <div style={{
-            backgroundColor: '#f8fafc',
-            border: '1px solid #cbd5e1',
-            borderRadius: '10px',
-            padding: '1rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', fontWeight: '500' }}>
-                Saldo Teórico en Sistema (Esperado)
-              </span>
-              <strong style={{ fontSize: '1.25rem', color: '#0f172a' }}>
-                Bs. {saldoTeoricoEsperado.toFixed(2)}
-              </strong>
-            </div>
-          </div>
+  return (
+    <section>
+      <h1>Cierre de Caja</h1>
 
-          {/* TDSI-324: Campo de captura de efectivo */}
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '0.4rem' }}>
-              Efectivo Contado en Gaveta (Bs.) *
-            </label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: '12px', top: '10px', fontWeight: 'bold', color: '#94a3b8', fontSize: '0.9rem' }}>Bs.</span>
+      {error && <div className="error" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px' }}>{error}</div>}
+
+      {paso === 'ingreso' && (
+        <div style={{ maxWidth: '400px', margin: 'auto', padding: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+          <h3>Ingresar Efectivo Contado</h3>
+          <p style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '1rem' }}>
+            Cuente el dinero físico en la caja e ingrese el total aquí.
+          </p>
+          <form onSubmit={manejarContinuar}>
+            <label className="campo" style={{ display: 'block', marginBottom: '1rem' }}>
+              Monto Contado (Bs.)
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                placeholder="0.00"
                 value={efectivoContado}
-                onKeyDown={evitarCaracteresInvalidos}
-                onChange={(e) => setEfectivoContado(e.target.value)}
-                required
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '0.65rem 0.65rem 0.65rem 2.5rem',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '1.1rem',
-                  fontWeight: 'bold',
-                  color: '#1e293b',
-                  outline: 'none'
+                onChange={(e) => {
+                  setEfectivoContado(e.target.value)
+                  setError(null)
                 }}
+                style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
               />
-            </div>
-          </div>
-
-          {/* Campo Observaciones */}
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '0.4rem' }}>
-              Observaciones / Justificación de Cuadre
             </label>
-            <textarea
-              rows="2"
-              placeholder="Detalla cualquier ajuste o justificación de descuadre..."
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                padding: '0.6rem',
-                fontSize: '0.85rem',
-                fontFamily: 'inherit',
-                outline: 'none'
-              }}
-            />
-          </div>
-
-          {/* TDSI-326: Alertas dinámicas de descuadre o conciliación */}
-          {hayDiferencia && (
-            <div style={{
-              padding: '0.85rem 1rem',
-              borderRadius: '8px',
-              backgroundColor: diferencia < 0 ? '#fef2f2' : '#fffbeb',
-              border: `1px solid ${diferencia < 0 ? '#fecdd3' : '#fef3c7'}`,
-              color: diferencia < 0 ? '#991b1b' : '#92400e',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <span>⚠️</span>
-              <span>
-                {diferencia < 0
-                  ? `Alerta: Existe un faltante de Bs. ${Math.abs(diferencia).toFixed(2)}.`
-                  : `Alerta: Existe un sobrante de Bs. ${diferencia.toFixed(2)}.`
-                }
-              </span>
-            </div>
-          )}
-
-          {efectivoContado !== '' && !hayDiferencia && (
-            <div style={{
-              padding: '0.85rem 1rem',
-              borderRadius: '8px',
-              backgroundColor: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              color: '#065f46',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <span>✓</span>
-              <span>Caja conciliada exactamente. Sin diferencias monetarias.</span>
-            </div>
-          )}
-
-          {/* TDSI-323: Botón de confirmación de cierre */}
-          <button
-            type="submit"
-            disabled={efectivoContado === ''}
-            style={{
-              padding: '0.8rem',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: efectivoContado !== '' ? '#4f46e5' : '#cbd5e1',
-              color: '#ffffff',
-              fontSize: '0.9rem',
-              fontWeight: 'bold',
-              cursor: efectivoContado !== '' ? 'pointer' : 'not-allowed',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              transition: 'background-color 0.2s'
-            }}
-          >
-            Realizar Cierre de Caja
-          </button>
-        </form>
-      </div>
-    );
-  }
-
-  // VISTA 2: REPORTE CONSOLIDADO EN PANTALLA (TDSI-100 & TDSI-325)
-  if (etapa === 'reporte') {
-    return (
-      <div style={{
-        maxWidth: '560px',
-        margin: '2rem auto',
-        padding: '1.75rem',
-        backgroundColor: '#ffffff',
-        borderRadius: '16px',
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-        fontFamily: 'system-ui, -apple-system, sans-serif'
-      }}>
-        <div style={{ borderBottom: '2px dashed #cbd5e1', paddingBottom: '1rem', marginBottom: '1.25rem', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#0f172a', margin: 0 }}>
-            Reporte de Cierre de Caja (Reporte Z)
-          </h2>
-          <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '0.25rem 0 0 0' }}>
-            Comprobante oficial de finalización de turno
-          </p>
+            <button type="submit" className="btn" disabled={cargando} style={{ width: '100%' }}>
+              {cargando ? 'Generando Reporte...' : 'Continuar al Reporte'}
+            </button>
+          </form>
         </div>
+      )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9' }}>
-            <span style={{ color: '#64748b' }}>Fecha y Hora:</span>
-            <strong>{new Date().toLocaleString()}</strong>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9' }}>
-            <span style={{ color: '#64748b' }}>Cajero Responsable:</span>
-            <strong>{cajero}</strong>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9' }}>
-            <span style={{ color: '#64748b' }}>Saldo Teórico del Sistema:</span>
-            <strong>Bs. {saldoTeoricoEsperado.toFixed(2)}</strong>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9' }}>
-            <span style={{ color: '#64748b' }}>Efectivo Físico Contado:</span>
-            <strong>Bs. {contadoNum.toFixed(2)}</strong>
-          </div>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            padding: '0.6rem 0.75rem',
-            borderRadius: '8px',
-            backgroundColor: diferencia === 0 ? '#ecfdf5' : '#fef2f2',
-            fontWeight: 'bold',
-            marginTop: '0.25rem'
-          }}>
-            <span style={{ color: diferencia === 0 ? '#065f46' : '#991b1b' }}>Diferencia de Arqueo:</span>
-            <span style={{ color: diferencia === 0 ? '#065f46' : '#991b1b' }}>
-              Bs. {diferencia.toFixed(2)} {diferencia < 0 ? '(Faltante)' : diferencia > 0 ? '(Sobrante)' : '(Exacto)'}
-            </span>
-          </div>
-          {observaciones && (
-            <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '0.5rem', backgroundColor: '#f8fafc', padding: '0.6rem', borderRadius: '6px' }}>
-              <strong>Notas:</strong> {observaciones}
+      {paso === 'reporte' && reporte && (
+        <div style={{ maxWidth: '600px', margin: 'auto' }}>
+          <div style={{ padding: '1.5rem', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#f9fafb' }}>
+            <h3 style={{ borderBottom: '1px solid #d1d5db', paddingBottom: '0.5rem' }}>Reporte de Cierre de Turno #{turnoActual.codigo ?? turnoId}</h3>
+
+            {reporte.arqueoEfectivo && (
+              <>
+                <div style={{ margin: '1rem 0' }}>
+                  <p><strong>Efectivo Inicial:</strong> Bs. {reporte.arqueoEfectivo.efectivoInicial}</p>
+                  <p><strong>Total Ventas Efectivo:</strong> Bs. {reporte.arqueoEfectivo.ventasEfectivo}</p>
+                  <p><strong>Total Egresos Efectivo:</strong> Bs. {reporte.arqueoEfectivo.egresosEfectivo}</p>
+                </div>
+
+                <div style={{ padding: '1rem', backgroundColor: '#e5e7eb', borderRadius: '8px', marginBottom: '1rem' }}>
+                  <p><strong>Efectivo Esperado en Caja:</strong> Bs. {reporte.arqueoEfectivo.efectivoEsperado}</p>
+                  <p><strong>Efectivo Contado Ingresado:</strong> Bs. {reporte.arqueoEfectivo.efectivoContado}</p>
+                </div>
+
+                {reporte.arqueoEfectivo.diferencia !== 0 && (
+                  <div style={{ padding: '1rem', backgroundColor: '#fef3c7', color: '#92400e', borderRadius: '8px', marginBottom: '1rem', border: '1px solid #fcd34d' }}>
+                    <strong>⚠️ Diferencia Detectada:</strong>
+                    <p>{reporte.arqueoEfectivo.tipoDiferencia}: Bs. {Math.abs(reporte.arqueoEfectivo.diferencia)}</p>
+                    <p style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Esta diferencia se registrará en el sistema como un ajuste de inventario/caja.</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div style={{ marginTop: '1rem' }}>
+              <h4>Resumen Medios de Pago (Neto):</h4>
+              <ul style={{ listStyleType: 'none', padding: 0 }}>
+                {Object.entries(reporte.totalesPorMetodo || {}).map(([metodo, totales]) => (
+                   <li key={metodo}>{metodo}: Bs. {totales.neto} ({totales.operaciones} op.)</li>
+                ))}
+              </ul>
             </div>
-          )}
-        </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            style={{
-              flex: 1,
-              padding: '0.65rem',
-              backgroundColor: '#f1f5f9',
-              border: '1px solid #cbd5e1',
-              borderRadius: '8px',
-              color: '#334155',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            🖨️ Imprimir Reporte
-          </button>
-          <button
-            type="button"
-            onClick={nuevoTurno}
-            style={{
-              flex: 1,
-              padding: '0.65rem',
-              backgroundColor: '#0f172a',
-              border: 'none',
-              borderRadius: '8px',
-              color: '#ffffff',
-              fontSize: '0.85rem',
-              fontWeight: 'bold',
-              cursor: 'pointer'
-            }}
-          >
-            Nuevo Turno
-          </button>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+              <button
+                type="button"
+                className="btn btn-secundario"
+                onClick={() => setPaso('ingreso')}
+                disabled={cargando}
+                style={{ flex: 1 }}
+              >
+                Modificar Efectivo
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={manejarCerrarCaja}
+                disabled={cargando}
+                style={{ flex: 2, backgroundColor: '#dc2626' }}
+              >
+                {cargando ? 'Cerrando Turno...' : 'Confirmar y Cerrar Caja'}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  return null;
+      {paso === 'listo' && (
+        <div style={{ maxWidth: '400px', margin: 'auto', textAlign: 'center', padding: '2rem', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#ecfdf5' }}>
+          <h2 style={{ color: '#065f46' }}>Caja Cerrada Exitosamente</h2>
+          <p style={{ color: '#064e3b', marginBottom: '1rem' }}>El turno #{turnoActual.codigo ?? turnoId} ha sido cerrado.</p>
+          <button type="button" className="btn" onClick={() => window.location.reload()}>Volver al Inicio</button>
+        </div>
+      )}
+    </section>
+  )
 }
+
+export default CierreCaja
