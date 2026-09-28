@@ -1,6 +1,7 @@
 const { aCentavos, aMonto, porcentaje } = require("../utils/money");
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/pagosRepo");
+const { emitirActualizacion } = require("../utils/tableroEvents");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
@@ -96,6 +97,7 @@ async function registrarPagoMixto(payload) {
     metodos: calculo.metodos,
   });
 
+  emitirActualizacion();
   return { ...resultado, cambio: calculo.cambio };
 }
 

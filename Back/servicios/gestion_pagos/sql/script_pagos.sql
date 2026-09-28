@@ -172,3 +172,14 @@ ALTER TABLE pagos.historial_estados_transaccion
 -- TDSI-362: indice para consultar el historial por transaccion
 CREATE INDEX IF NOT EXISTS idx_historial_estados_tx
     ON pagos.historial_estados_transaccion (id_transaccion, cambiado_en DESC);
+
+-- TDSI-376: caja_id tambien en pagos simples (los mixtos ya lo tienen via pagos_mixtos),
+-- para poder desglosar el tablero de ingresos por caja.
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS caja_id VARCHAR(60);
+
+-- TDSI-377: indices para que el tablero de ingresos cargue rapido con muchos datos.
+-- Las consultas del tablero filtran por (estado, fecha) y agrupan por caja_id.
+CREATE INDEX IF NOT EXISTS idx_transacciones_estado_fecha ON pagos.transacciones (estado, fecha);
+CREATE INDEX IF NOT EXISTS idx_transacciones_caja_id ON pagos.transacciones (caja_id);
+CREATE INDEX IF NOT EXISTS idx_ventas_online_estado_recibida ON pagos.ventas_online (estado, recibida_en);
