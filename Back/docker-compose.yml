@@ -3,13 +3,15 @@ networks:
     driver: bridge
 
 services:
-  cajeros:
-    build: ./servicios/cajeros
+  gestion_caja:
+    build: ./servicios/gestion_caja
     ports:
       - "4004:4004"
     environment:
       - NODE_ENV=development
       - PORT=4004
+    env_file:
+      - ./servicios/gestion_caja/.env
     networks:
       - app-network
 
@@ -20,6 +22,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=4005
+    env_file:
+      - ./servicios/gestion_pagos/.env
     networks:
       - app-network
 
@@ -32,5 +36,17 @@ services:
       - PORT=4002
     env_file:
       - ./servicios/facturacion/.env
+    networks:
+      - app-network
+
+  pagos_proveedores:
+    build: ./servicios/pagos_proveedores
+    ports:
+      - "4006:4006"
+    environment:
+      - NODE_ENV=development
+      - PORT=4006
+    env_file:
+      - ./servicios/pagos_proveedores/.env
     networks:
       - app-network

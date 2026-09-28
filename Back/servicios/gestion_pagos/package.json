@@ -1,18 +1,20 @@
 {
   "name": "gestion_pagos",
   "version": "1.0.0",
-  "description": "Microservicio de Gestión de Pagos (RePay)",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/tests/*.test.js"
+    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/ventaOnline.test.js src/tests/anulacion.test.js src/tests/auth.test.js src/tests/estadoTransaccion.test.js",
+    "crear-cliente": "node scripts/crearSistemaCliente.js"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "cors": "^2.8.6",
     "dotenv": "^18.0.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^6.9.14",
+    "pg": "^8.12.0"
   }
 }
