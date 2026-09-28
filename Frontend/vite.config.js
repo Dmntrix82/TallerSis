@@ -14,6 +14,10 @@ export default defineConfig({
         target: 'http://localhost:4005',
         changeOrigin: true,
       },
+      '/api/caja': {
+        target: 'http://localhost:4004',
+        changeOrigin: true,
+      },
     },
   },
 })

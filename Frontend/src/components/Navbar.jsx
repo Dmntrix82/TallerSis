@@ -9,6 +9,7 @@ function Navbar() {
       </NavLink>
       <NavLink to="/cajeros">Cajeros</NavLink>
       <NavLink to="/pagos">Pagos</NavLink>
+      <NavLink to="/cierre-caja" style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>Cerrar Caja</NavLink>
     </nav>
   )
 }
