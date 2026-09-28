@@ -1,15 +1,35 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { generarReporteCierre, cerrarTurno } from '../api/caja.js'
+import { obtenerTurnoActual } from '../api/turnos.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
 function CierreCaja() {
+  const { cajero } = useAuth()
+
+  const [turnoActual, setTurnoActual] = useState(null) // { id, codigo } del turno abierto en la caja
+  const [cargandoTurno, setCargandoTurno] = useState(true)
+  const [errorTurno, setErrorTurno] = useState(null)
+
   const [paso, setPaso] = useState('ingreso') // ingreso, reporte, listo
   const [efectivoContado, setEfectivoContado] = useState('')
   const [reporte, setReporte] = useState(null)
   const [error, setError] = useState(null)
   const [cargando, setCargando] = useState(false)
 
-  // Asumimos un turnoId = 1 por defecto para la caja actual
-  const turnoId = 1
+  // El turno (de caja) sale de la caja del cajero logueado, no se escribe a mano.
+  useEffect(() => {
+    if (!cajero?.caja) {
+      setCargandoTurno(false)
+      return
+    }
+    setCargandoTurno(true)
+    obtenerTurnoActual(cajero.caja)
+      .then((r) => setErrorTurno(null) || setTurnoActual(r.data))
+      .catch((err) => setErrorTurno(err.message))
+      .finally(() => setCargandoTurno(false))
+  }, [cajero?.caja])
+
+  const turnoId = turnoActual?.id
 
   const manejarContinuar = async (e) => {
     e.preventDefault()
@@ -44,10 +64,30 @@ function CierreCaja() {
     }
   }
 
+  if (cargandoTurno) {
+    return (
+      <section>
+        <h1>Cierre de Caja</h1>
+        <p>Buscando el turno abierto de su caja...</p>
+      </section>
+    )
+  }
+
+  if (errorTurno || !turnoActual) {
+    return (
+      <section>
+        <h1>Cierre de Caja</h1>
+        <div className="error" style={{ padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px' }}>
+          {errorTurno || 'No hay un turno abierto en su caja. Abra un turno antes de cerrar caja.'}
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section>
       <h1>Cierre de Caja</h1>
-      
+
       {error && <div className="error" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px' }}>{error}</div>}
 
       {paso === 'ingreso' && (
@@ -81,8 +121,8 @@ function CierreCaja() {
       {paso === 'reporte' && reporte && (
         <div style={{ maxWidth: '600px', margin: 'auto' }}>
           <div style={{ padding: '1.5rem', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#f9fafb' }}>
-            <h3 style={{ borderBottom: '1px solid #d1d5db', paddingBottom: '0.5rem' }}>Reporte de Cierre de Turno #{turnoId}</h3>
-            
+            <h3 style={{ borderBottom: '1px solid #d1d5db', paddingBottom: '0.5rem' }}>Reporte de Cierre de Turno #{turnoActual.codigo ?? turnoId}</h3>
+
             {reporte.arqueoEfectivo && (
               <>
                 <div style={{ margin: '1rem 0' }}>
@@ -116,18 +156,18 @@ function CierreCaja() {
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-              <button 
-                type="button" 
-                className="btn btn-secundario" 
+              <button
+                type="button"
+                className="btn btn-secundario"
                 onClick={() => setPaso('ingreso')}
                 disabled={cargando}
                 style={{ flex: 1 }}
               >
                 Modificar Efectivo
               </button>
-              <button 
-                type="button" 
-                className="btn" 
+              <button
+                type="button"
+                className="btn"
                 onClick={manejarCerrarCaja}
                 disabled={cargando}
                 style={{ flex: 2, backgroundColor: '#dc2626' }}
@@ -142,7 +182,7 @@ function CierreCaja() {
       {paso === 'listo' && (
         <div style={{ maxWidth: '400px', margin: 'auto', textAlign: 'center', padding: '2rem', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#ecfdf5' }}>
           <h2 style={{ color: '#065f46' }}>Caja Cerrada Exitosamente</h2>
-          <p style={{ color: '#064e3b', marginBottom: '1rem' }}>El turno #{turnoId} ha sido cerrado.</p>
+          <p style={{ color: '#064e3b', marginBottom: '1rem' }}>El turno #{turnoActual.codigo ?? turnoId} ha sido cerrado.</p>
           <button type="button" className="btn" onClick={() => window.location.reload()}>Volver al Inicio</button>
         </div>
       )}
