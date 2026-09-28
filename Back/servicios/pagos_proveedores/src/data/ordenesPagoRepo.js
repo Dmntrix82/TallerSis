@@ -37,4 +37,23 @@ async function guardarNotificacionAdmin(ordenPagoId, mensaje) {
   return rows[0];
 }
 
-module.exports = { existeOrden, guardarOrdenPendiente, guardarNotificacionAdmin };
+// TDSI-116 / TDSI-395: ordenes pendientes para la bandeja del administrador.
+// fechaEmision = dia en que llego la orden (creado_en), en hora de Bolivia.
+async function listarPendientes() {
+  const { rows } = await pool.query(
+    `SELECT numero AS id,
+            proveedor_razon_social AS proveedor,
+            proveedor_nit AS nit,
+            monto,
+            TO_CHAR(creado_en AT TIME ZONE 'America/La_Paz', 'YYYY-MM-DD') AS "fechaEmision",
+            TO_CHAR(fecha_vencimiento, 'YYYY-MM-DD') AS "fechaVencimiento",
+            concepto,
+            estado
+     FROM proveedores.ordenes_pago
+     WHERE estado = 'PENDIENTE'
+     ORDER BY creado_en DESC, id DESC`
+  );
+  return rows.map((r) => ({ ...r, monto: Number(r.monto) }));
+}
+
+module.exports = { existeOrden, guardarOrdenPendiente, guardarNotificacionAdmin, listarPendientes };

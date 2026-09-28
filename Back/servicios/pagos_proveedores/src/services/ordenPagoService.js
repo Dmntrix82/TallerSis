@@ -35,4 +35,9 @@ async function recibirOrdenPago(payload) {
   };
 }
 
-module.exports = { recibirOrdenPago };
+// TDSI-116 / TDSI-395: lista de ordenes pendientes para la bandeja del administrador
+async function listarOrdenesPendientes() {
+  return repo.listarPendientes();
+}
+
+module.exports = { recibirOrdenPago, listarOrdenesPendientes };
