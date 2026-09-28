@@ -19,6 +19,7 @@ import TableroIngresos from './pages/TableroIngresos.jsx'
 import DocumentosFactura from './pages/DocumentosFactura.jsx'
 import ResumenVentas from './pages/ResumenVentas.jsx'
 import EgresoProveedor from './pages/EgresoProveedor.jsx'
+import OrdenesProveedores from './pages/OrdenesProveedores.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import './App.css'
@@ -65,6 +66,7 @@ function App() {
           <Route path="/admin/documentos-factura" element={<RutaProtegidaAdmin><DocumentosFactura /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/egresos" element={<RutaProtegidaAdmin><EgresoProveedor /></RutaProtegidaAdmin>} />
+          <Route path="/admin/ordenes-proveedores" element={<RutaProtegidaAdmin><OrdenesProveedores /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

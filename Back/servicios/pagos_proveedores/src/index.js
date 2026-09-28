@@ -4,7 +4,6 @@ const cors = require("cors");
 const { query } = require("./config/db");
 const { errorHandler } = require("./middlewares/errorHandler");
 const egresosRoutes = require("./routes/egresosRoutes");
-const confirmacionesRoutes = require("./routes/confirmacionesRoutes");
 
 const app = express();
 
@@ -21,7 +20,8 @@ app.get("/health", async (req, res) => {
 });
 
 app.use("/api/egresos", egresosRoutes);
-app.use("/ordenes-pago", confirmacionesRoutes);
+app.use("/api/proveedores", require("./routes/ordenPagoRoutes"));
+app.use("/api/proveedores/notificaciones", require("./routes/notificacionRoutes"));
 
 app.use(errorHandler);
 

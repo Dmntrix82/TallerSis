@@ -1,40 +1,24 @@
-import React, { useState } from 'react';
-
-const ORDENES_INICIALES = [
-  {
-    id: 'OP-501',
-    proveedor: 'Distribuidora PIL Andina S.A.',
-    nit: '1020304050',
-    monto: 3450.00,
-    fechaEmision: '2026-09-20',
-    fechaVencimiento: '2026-09-30',
-    concepto: 'Lote mensual de lácteos y derivados sucursal central',
-    estado: 'pendiente'
-  },
-  {
-    id: 'OP-502',
-    proveedor: 'Embotelladora Boliviana (EMBOL)',
-    nit: '8090102030',
-    monto: 5200.50,
-    fechaEmision: '2026-09-22',
-    fechaVencimiento: '2026-10-05',
-    concepto: 'Reposición de bebidas gaseosas y jugos',
-    estado: 'pendiente'
-  },
-  {
-    id: 'OP-503',
-    proveedor: 'Molino Andino S.A.',
-    nit: '3040506070',
-    monto: 1800.00,
-    fechaEmision: '2026-09-24',
-    fechaVencimiento: '2026-10-02',
-    concepto: 'Harina especial y premezclas de panadería',
-    estado: 'pendiente'
-  }
-];
+import React, { useState, useEffect } from 'react';
+import { obtenerOrdenesPendientes } from '../api/ordenesPago.js';
 
 export default function OrdenesProveedores() {
-  const [ordenes, setOrdenes] = useState(ORDENES_INICIALES);
+  const [ordenes, setOrdenes] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    async function cargarOrdenes() {
+      try {
+        const respuesta = await obtenerOrdenesPendientes();
+        setOrdenes(respuesta.data || []);
+      } catch (err) {
+        setError(err.message || 'Error al cargar las órdenes pendientes');
+      } finally {
+        setCargando(false);
+      }
+    }
+    cargarOrdenes();
+  }, []);
 
   // TDSI-397:
   const [filtroProveedor, setFiltroProveedor] = useState('');
@@ -192,7 +176,7 @@ export default function OrdenesProveedores() {
                     {orden.proveedor}
                   </td>
                   <td style={{ padding: '0.85rem 0.5rem', color: '#64748b' }}>{orden.fechaEmision}</td>
-                  <td style={{ padding: '0.85rem 0.5rem', color: '#b45309', fontWeight: '500' }}>{orden.fechaVencimiento}</td>
+                  <td style={{ padding: '0.85rem 0.5rem', color: '#b45309', fontWeight: '500' }}>{orden.fechaVencimiento ?? '—'}</td>
                   <td style={{ padding: '0.85rem 0.5rem', fontWeight: 'bold', color: '#dc2626' }}>
                     Bs. {orden.monto.toFixed(2)}
                   </td>
@@ -275,10 +259,10 @@ export default function OrdenesProveedores() {
             <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '10px', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div><strong>Proveedor:</strong> {ordenSeleccionada.proveedor}</div>
               <div><strong>NIT Proveedor:</strong> {ordenSeleccionada.nit}</div>
-              <div><strong>Concepto:</strong> {ordenSeleccionada.concepto}</div>
+              <div><strong>Concepto:</strong> {ordenSeleccionada.concepto ?? '—'}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
                 <div><span style={{ color: '#64748b' }}>Fecha Emisión:</span> <br /><strong>{ordenSeleccionada.fechaEmision}</strong></div>
-                <div><span style={{ color: '#64748b' }}>Fecha Límite:</span> <br /><strong style={{ color: '#b45309' }}>{ordenSeleccionada.fechaVencimiento}</strong></div>
+                <div><span style={{ color: '#64748b' }}>Fecha Límite:</span> <br /><strong style={{ color: '#b45309' }}>{ordenSeleccionada.fechaVencimiento ?? '—'}</strong></div>
               </div>
             </div>
 

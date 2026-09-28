@@ -1,6 +1,29 @@
 const { AppError } = require("../utils/AppError");
 const ordenesPagoRepo = require("../data/ordenesPagoRepo");
 
+const CONCEPTO_MAX = 200;
+
+// TDSI-392: fecha de vencimiento opcional, pero si viene debe ser un dia real "YYYY-MM-DD"
+function normalizarFechaVencimiento(valor) {
+  if (valor === undefined || valor === null || valor === "") return null;
+  const texto = typeof valor === "string" ? valor.trim() : "";
+  const esDiaReal = /^\d{4}-\d{2}-\d{2}$/.test(texto) &&
+    new Date(`${texto}T00:00:00Z`).toISOString().slice(0, 10) === texto;
+  if (!esDiaReal) {
+    throw new AppError("La 'fechaVencimiento' debe ser una fecha valida con formato YYYY-MM-DD", 400, { fechaVencimiento: valor });
+  }
+  return texto;
+}
+
+// TDSI-392: concepto opcional, texto de hasta CONCEPTO_MAX caracteres
+function normalizarConcepto(valor) {
+  if (valor === undefined || valor === null || valor === "") return null;
+  if (typeof valor !== "string" || valor.trim().length > CONCEPTO_MAX) {
+    throw new AppError(`El 'concepto' debe ser texto de maximo ${CONCEPTO_MAX} caracteres`, 400);
+  }
+  return valor.trim();
+}
+
 async function recibirOrdenPago(payload) {
   const { numero, ordenCompraId, monto, proveedor } = payload;
 
@@ -14,6 +37,9 @@ async function recibirOrdenPago(payload) {
   if (!proveedor.nit || !proveedor.razonSocial || !proveedor.cuentaBancaria || !proveedor.banco)
     throw new AppError("El proveedor debe incluir nit, razonSocial, cuentaBancaria y banco", 400);
 
+  const fechaVencimiento = normalizarFechaVencimiento(payload.fechaVencimiento);
+  const concepto = normalizarConcepto(payload.concepto);
+
   const existe = await ordenesPagoRepo.existeOrden(ordenCompraId);
   if (existe)
     throw new AppError(
@@ -22,7 +48,7 @@ async function recibirOrdenPago(payload) {
       { ordenCompraId }
     );
 
-  const ordenGuardada = await ordenesPagoRepo.guardarOrdenPendiente(payload);
+  const ordenGuardada = await ordenesPagoRepo.guardarOrdenPendiente({ ...payload, fechaVencimiento, concepto });
 
   const mensajeNotificacion = `Nueva orden ${numero} pendiente para ${proveedor.razonSocial} por BOB ${monto}`;
   await ordenesPagoRepo.guardarNotificacionAdmin(ordenGuardada.id, mensajeNotificacion);
@@ -35,6 +61,11 @@ async function recibirOrdenPago(payload) {
     estado: ordenGuardada.estado,
     mensaje: "Orden de pago procesada y notificada con éxito",
   };
+}
+
+// TDSI-116 / TDSI-395: lista de ordenes pendientes para la bandeja del administrador
+async function listarOrdenesPendientes() {
+  return ordenesPagoRepo.listarPendientes();
 }
 
 /** TDSI-404: consulta la orden por numero */
@@ -59,6 +90,7 @@ async function liquidarOrden(orden_pago_id, liquidada_por) {
 
 module.exports = {
   recibirOrdenPago,
+  listarOrdenesPendientes,
   consultarOrdenPorNumero,
   validarOrdenPagable,
   liquidarOrden,
