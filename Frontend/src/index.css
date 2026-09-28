@@ -1,5 +1,19 @@
+/* Paleta de marca de TallerSis: usar estas variables en todo el proyecto en vez de colores sueltos. */
+:root {
+  --color-brand-dark: #345c32;
+  --color-brand-olive: #9cac54;
+  --color-brand-mint: #a7f0dd;
+  --color-brand-green: #97cd97;
+}
+
 * {
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
