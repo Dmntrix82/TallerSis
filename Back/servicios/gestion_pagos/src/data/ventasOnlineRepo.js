@@ -70,8 +70,8 @@ async function guardarSolicitudAnulacion({ ordenId, motivo, solicitadoPor }) {
 
 async function listarSolicitudesPendientes() {
   const { rows } = await pool.query(`
-    SELECT a.id, a.orden_id as "codigoTransaccion", v.cliente_id as cliente, 
-           v.total as monto, a.fecha as "fechaSolicitud", a.motivo, v.estado
+    SELECT a.id, a.orden_id as "codigoTransaccion", v.cliente_id as cliente,
+           v.total as monto, a.anulado_en as "fechaSolicitud", a.motivo, v.estado
     FROM pagos.anulaciones_online a
     JOIN pagos.ventas_online v ON a.orden_id = v.orden_id
     WHERE v.estado = 'Anulacion Pendiente'
@@ -90,7 +90,7 @@ async function procesarAnulacion(id, nuevoEstado) {
     const { orden_id: ordenId, motivo } = rows[0];
 
     // Actualiza la venta
-    const estadoVenta = nuevoEstado === 'APROBADA' ? 'Anulado' : 'Completado';
+    const estadoVenta = nuevoEstado === 'APROBADA' ? 'Anulado' : 'Pagado';
     await client.query(
       `UPDATE pagos.ventas_online SET estado = $2 WHERE orden_id = $1`,
       [ordenId, estadoVenta]
