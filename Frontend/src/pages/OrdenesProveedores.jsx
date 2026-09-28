@@ -176,7 +176,7 @@ export default function OrdenesProveedores() {
                     {orden.proveedor}
                   </td>
                   <td style={{ padding: '0.85rem 0.5rem', color: '#64748b' }}>{orden.fechaEmision}</td>
-                  <td style={{ padding: '0.85rem 0.5rem', color: '#b45309', fontWeight: '500' }}>{orden.fechaVencimiento}</td>
+                  <td style={{ padding: '0.85rem 0.5rem', color: '#b45309', fontWeight: '500' }}>{orden.fechaVencimiento ?? '—'}</td>
                   <td style={{ padding: '0.85rem 0.5rem', fontWeight: 'bold', color: '#dc2626' }}>
                     Bs. {orden.monto.toFixed(2)}
                   </td>
@@ -259,10 +259,10 @@ export default function OrdenesProveedores() {
             <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '10px', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div><strong>Proveedor:</strong> {ordenSeleccionada.proveedor}</div>
               <div><strong>NIT Proveedor:</strong> {ordenSeleccionada.nit}</div>
-              <div><strong>Concepto:</strong> {ordenSeleccionada.concepto}</div>
+              <div><strong>Concepto:</strong> {ordenSeleccionada.concepto ?? '—'}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
                 <div><span style={{ color: '#64748b' }}>Fecha Emisión:</span> <br /><strong>{ordenSeleccionada.fechaEmision}</strong></div>
-                <div><span style={{ color: '#64748b' }}>Fecha Límite:</span> <br /><strong style={{ color: '#b45309' }}>{ordenSeleccionada.fechaVencimiento}</strong></div>
+                <div><span style={{ color: '#64748b' }}>Fecha Límite:</span> <br /><strong style={{ color: '#b45309' }}>{ordenSeleccionada.fechaVencimiento ?? '—'}</strong></div>
               </div>
             </div>
 

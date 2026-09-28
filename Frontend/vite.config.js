@@ -14,6 +14,10 @@ export default defineConfig({
         target: 'http://localhost:4005',
         changeOrigin: true,
       },
+      '/api/proveedores': {
+        target: 'http://localhost:4006',
+        changeOrigin: true,
+      },
     },
   },
 })
