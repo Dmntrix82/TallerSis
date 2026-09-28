@@ -58,4 +58,30 @@ async function listarPendientes() {
   return rows.map((r) => ({ ...r, monto: Number(r.monto) }));
 }
 
-module.exports = { existeOrden, guardarOrdenPendiente, guardarNotificacionAdmin, listarPendientes };
+// TDSI-394: notificaciones del administrador (por defecto solo las no leidas), la mas reciente primero
+async function listarNotificaciones({ incluirLeidas = false } = {}) {
+  const { rows } = await pool.query(
+    `SELECT n.id, o.numero AS "ordenId", n.mensaje, n.leida, n.creado_en AS "creadaEn"
+     FROM proveedores.notificaciones_admin n
+     JOIN proveedores.ordenes_pago o ON o.id = n.orden_pago_id
+     WHERE ($1::boolean OR n.leida = false)
+     ORDER BY n.creado_en DESC, n.id DESC`,
+    [incluirLeidas]
+  );
+  return rows;
+}
+
+// TDSI-394: marca una notificacion como leida (devuelve null si no existe)
+async function marcarNotificacionLeida(id) {
+  const { rows } = await pool.query(
+    `UPDATE proveedores.notificaciones_admin SET leida = true WHERE id = $1
+     RETURNING id, mensaje, leida, creado_en AS "creadaEn"`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+module.exports = {
+  existeOrden, guardarOrdenPendiente, guardarNotificacionAdmin, listarPendientes,
+  listarNotificaciones, marcarNotificacionLeida,
+};

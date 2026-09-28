@@ -6,6 +6,7 @@ app.use(express.json());
 
 // Conexión de rutas
 app.use("/api/proveedores", require("./routes/ordenPagoRoutes"));
+app.use("/api/proveedores/notificaciones", require("./routes/notificacionRoutes"));
 
 // Manejo de errores genérico
 app.use((err, req, res, next) => {

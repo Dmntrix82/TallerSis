@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { recibirOrdenPago, listarOrdenesPendientes } = require("../services/ordenPagoService");
+const { listarNotificaciones, marcarNotificacionLeida } = require("../services/notificacionService");
 const { pool } = require("../config/db");
 
 const basePayload = () => ({
@@ -72,4 +73,43 @@ test("TDSI-393: guarda fechaVencimiento y concepto y los muestra en la bandeja",
     );
     await pool.query("DELETE FROM proveedores.ordenes_pago WHERE numero = $1", [payload.numero]);
   }
+});
+
+
+test("TDSI-394: la notificacion de una orden nueva sale sin leer y se puede marcar como leida", async () => {
+  const payload = basePayload();
+
+  try {
+    await recibirOrdenPago(payload);
+
+    const sinLeer = await listarNotificaciones();
+    const mia = sinLeer.notificaciones.find((n) => n.ordenId === payload.numero);
+    assert.ok(mia, "la notificacion debe aparecer entre las no leidas");
+    assert.equal(mia.leida, false);
+    assert.ok(mia.mensaje.includes(payload.numero));
+
+    const marcada = await marcarNotificacionLeida(mia.id);
+    assert.equal(marcada.leida, true);
+    // repetir la accion no falla: sigue leida
+    assert.equal((await marcarNotificacionLeida(mia.id)).leida, true);
+
+    const despues = await listarNotificaciones();
+    assert.ok(!despues.notificaciones.some((n) => n.id === mia.id), "ya no debe salir entre las no leidas");
+
+    const todas = await listarNotificaciones({ incluirLeidas: true });
+    assert.ok(todas.notificaciones.some((n) => n.id === mia.id && n.leida === true), "debe salir al incluir leidas");
+  } finally {
+    await pool.query(
+      "DELETE FROM proveedores.notificaciones_admin WHERE orden_pago_id IN (SELECT id FROM proveedores.ordenes_pago WHERE numero = $1)",
+      [payload.numero]
+    );
+    await pool.query("DELETE FROM proveedores.ordenes_pago WHERE numero = $1", [payload.numero]);
+  }
+});
+
+test("TDSI-394: marcar leida rechaza un id invalido (400) o inexistente (404)", async () => {
+  for (const id of ["abc", "-1", "1.5", ""]) {
+    await assert.rejects(() => marcarNotificacionLeida(id), (e) => e.status === 400);
+  }
+  await assert.rejects(() => marcarNotificacionLeida("999999999999"), (e) => e.status === 404);
 });
