@@ -9,6 +9,7 @@ function Navbar() {
       </NavLink>
       <NavLink to="/cajeros">Cajeros</NavLink>
       <NavLink to="/pagos">Pagos</NavLink>
+      <NavLink to="/ordenes-proveedores">Órdenes a Prov.</NavLink>
     </nav>
   )
 }

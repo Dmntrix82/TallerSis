@@ -1,40 +1,24 @@
-import React, { useState } from 'react';
-
-const ORDENES_INICIALES = [
-  {
-    id: 'OP-501',
-    proveedor: 'Distribuidora PIL Andina S.A.',
-    nit: '1020304050',
-    monto: 3450.00,
-    fechaEmision: '2026-09-20',
-    fechaVencimiento: '2026-09-30',
-    concepto: 'Lote mensual de lácteos y derivados sucursal central',
-    estado: 'pendiente'
-  },
-  {
-    id: 'OP-502',
-    proveedor: 'Embotelladora Boliviana (EMBOL)',
-    nit: '8090102030',
-    monto: 5200.50,
-    fechaEmision: '2026-09-22',
-    fechaVencimiento: '2026-10-05',
-    concepto: 'Reposición de bebidas gaseosas y jugos',
-    estado: 'pendiente'
-  },
-  {
-    id: 'OP-503',
-    proveedor: 'Molino Andino S.A.',
-    nit: '3040506070',
-    monto: 1800.00,
-    fechaEmision: '2026-09-24',
-    fechaVencimiento: '2026-10-02',
-    concepto: 'Harina especial y premezclas de panadería',
-    estado: 'pendiente'
-  }
-];
+import React, { useState, useEffect } from 'react';
+import { obtenerOrdenesPendientes } from '../api/ordenesPago.js';
 
 export default function OrdenesProveedores() {
-  const [ordenes, setOrdenes] = useState(ORDENES_INICIALES);
+  const [ordenes, setOrdenes] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    async function cargarOrdenes() {
+      try {
+        const respuesta = await obtenerOrdenesPendientes();
+        setOrdenes(respuesta.data || []);
+      } catch (err) {
+        setError(err.message || 'Error al cargar las órdenes pendientes');
+      } finally {
+        setCargando(false);
+      }
+    }
+    cargarOrdenes();
+  }, []);
 
   // TDSI-397:
   const [filtroProveedor, setFiltroProveedor] = useState('');
