@@ -226,3 +226,28 @@
   color: #b91c1c;
   font-weight: 600;
 }
+
+.consulta-form,
+.consulta-resultado {
+  max-width: 420px;
+}
+
+.estado-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.estado-verde {
+  background-color: #1a7f37;
+}
+
+.estado-amarillo {
+  background-color: #b7791f;
+}
+
+.estado-rojo {
+  background-color: #b91c1c;
+}
