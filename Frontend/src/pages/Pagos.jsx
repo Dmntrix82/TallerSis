@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { registrarPago } from '../api/pagos.js'
+import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
 
 const METODOS_PAGO = ['Efectivo', 'Tarjeta', 'QR']
 
@@ -10,6 +11,7 @@ const ESTADO_INICIAL = {
 }
 
 function Pagos() {
+  const [tipoPago, setTipoPago] = useState('simple') // 'simple' | 'mixto'
   const [datos, setDatos] = useState(ESTADO_INICIAL)
   const [paso, setPaso] = useState('formulario') // 'formulario' | 'confirmacion' | 'listo'
   const [errorValidacion, setErrorValidacion] = useState(null)
@@ -70,89 +72,113 @@ function Pagos() {
 
   return (
     <section>
-      <h1>Método de pago</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Método de pago</h1>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button 
+            onClick={() => setTipoPago('simple')} 
+            className="btn" 
+            style={{ opacity: tipoPago === 'simple' ? 1 : 0.6 }}
+          >
+            Pago Simple
+          </button>
+          <button 
+            onClick={() => setTipoPago('mixto')} 
+            className="btn" 
+            style={{ opacity: tipoPago === 'mixto' ? 1 : 0.6 }}
+          >
+            Pago Mixto
+          </button>
+        </div>
+      </div>
 
-      {paso === 'formulario' && (
-        <form className="pago-form" onSubmit={continuar}>
-          <label className="campo">
-            ID de transacción
-            <input
-              type="number"
-              value={datos.idTransaccion}
-              onChange={(e) => actualizarCampo('idTransaccion', e.target.value)}
-            />
-          </label>
-
-          <label className="campo">
-            Monto (Bs.)
-            <input
-              type="number"
-              step="0.01"
-              value={datos.monto}
-              onChange={(e) => actualizarCampo('monto', e.target.value)}
-            />
-          </label>
-
-          <fieldset className="metodo-opciones">
-            <legend>Método de pago</legend>
-            {METODOS_PAGO.map((metodo) => (
-              <label key={metodo} className="metodo-opcion">
+      {tipoPago === 'mixto' ? (
+        <PagoMixtoForm />
+      ) : (
+        <>
+          {paso === 'formulario' && (
+            <form className="pago-form" onSubmit={continuar}>
+              <label className="campo">
+                ID de transacción
                 <input
-                  type="radio"
-                  name="metodo"
-                  value={metodo}
-                  checked={datos.metodo === metodo}
-                  onChange={(e) => actualizarCampo('metodo', e.target.value)}
+                  type="number"
+                  value={datos.idTransaccion}
+                  onChange={(e) => actualizarCampo('idTransaccion', e.target.value)}
                 />
-                {metodo}
               </label>
-            ))}
-          </fieldset>
 
-          {errorValidacion && <p className="error">{errorValidacion}</p>}
+              <label className="campo">
+                Monto (Bs.)
+                <input
+                  type="number"
+                  step="0.01"
+                  value={datos.monto}
+                  onChange={(e) => actualizarCampo('monto', e.target.value)}
+                />
+              </label>
 
-          <button type="submit" className="btn">
-            Continuar
-          </button>
-        </form>
-      )}
+              <fieldset className="metodo-opciones">
+                <legend>Método de pago</legend>
+                {METODOS_PAGO.map((metodo) => (
+                  <label key={metodo} className="metodo-opcion">
+                    <input
+                      type="radio"
+                      name="metodo"
+                      value={metodo}
+                      checked={datos.metodo === metodo}
+                      onChange={(e) => actualizarCampo('metodo', e.target.value)}
+                    />
+                    {metodo}
+                  </label>
+                ))}
+              </fieldset>
 
-      {paso === 'confirmacion' && (
-        <div className="pago-resumen">
-          <h2>Confirmar cobro</h2>
-          <ul>
-            <li>ID de transacción: {datos.idTransaccion}</li>
-            <li>Monto: Bs. {datos.monto}</li>
-            <li>Método de pago: {datos.metodo}</li>
-          </ul>
+              {errorValidacion && <p className="error">{errorValidacion}</p>}
 
-          {errorApi && <p className="error">Error: {errorApi}</p>}
+              <button type="submit" className="btn">
+                Continuar
+              </button>
+            </form>
+          )}
 
-          <div className="pago-acciones">
-            <button type="button" className="btn btn-secundario" onClick={cambiarMetodo} disabled={enviando}>
-              Cambiar método
-            </button>
-            <button type="button" className="btn" onClick={confirmarCobro} disabled={enviando}>
-              {enviando ? 'Confirmando...' : 'Confirmar cobro'}
-            </button>
-          </div>
-        </div>
-      )}
+          {paso === 'confirmacion' && (
+            <div className="pago-resumen">
+              <h2>Confirmar cobro</h2>
+              <ul>
+                <li>ID de transacción: {datos.idTransaccion}</li>
+                <li>Monto: Bs. {datos.monto}</li>
+                <li>Método de pago: {datos.metodo}</li>
+              </ul>
 
-      {paso === 'listo' && pagoRegistrado && (
-        <div className="pago-exito">
-          <h2>Pago registrado</h2>
-          <ul>
-            <li>ID de transacción: {pagoRegistrado.id_transaccion}</li>
-            <li>Método de pago: {pagoRegistrado.metodo}</li>
-            <li>Monto: Bs. {pagoRegistrado.monto}</li>
-            <li>Estado: {pagoRegistrado.estado}</li>
-            <li>Fecha: {new Date(pagoRegistrado.fecha).toLocaleString()}</li>
-          </ul>
-          <button type="button" className="btn" onClick={registrarOtro}>
-            Registrar otro pago
-          </button>
-        </div>
+              {errorApi && <p className="error">Error: {errorApi}</p>}
+
+              <div className="pago-acciones">
+                <button type="button" className="btn btn-secundario" onClick={cambiarMetodo} disabled={enviando}>
+                  Cambiar método
+                </button>
+                <button type="button" className="btn" onClick={confirmarCobro} disabled={enviando}>
+                  {enviando ? 'Confirmando...' : 'Confirmar cobro'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {paso === 'listo' && pagoRegistrado && (
+            <div className="pago-exito">
+              <h2>Pago registrado</h2>
+              <ul>
+                <li>ID de transacción: {pagoRegistrado.id_transaccion}</li>
+                <li>Método de pago: {pagoRegistrado.metodo}</li>
+                <li>Monto: Bs. {pagoRegistrado.monto}</li>
+                <li>Estado: {pagoRegistrado.estado}</li>
+                <li>Fecha: {new Date(pagoRegistrado.fecha).toLocaleString()}</li>
+              </ul>
+              <button type="button" className="btn" onClick={registrarOtro}>
+                Registrar otro pago
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   )

@@ -10,6 +10,7 @@ import AperturaTurno from './pages/AperturaTurno.jsx'
 import GenerarToken from './pages/GenerarToken.jsx'
 import ConsultaTransaccion from './pages/ConsultaTransaccion.jsx'
 import OrdenesPago from './pages/OrdenesPago.jsx'
+import PagoMixtoForm from './components/PagoMixtoForm';
 import './App.css'
 
 function App() {
@@ -28,6 +29,7 @@ function App() {
           <Route path="/credenciales" element={<GenerarToken />} />
           <Route path="/consulta-transaccion" element={<ConsultaTransaccion />} />
           <Route path="/ordenes-pago" element={<OrdenesPago />} />
+          <Route path="/pago-mixto" element={<PagoMixtoForm />} />
         </Routes>
       </main>
     </>

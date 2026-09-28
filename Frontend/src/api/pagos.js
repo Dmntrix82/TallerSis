@@ -12,3 +12,25 @@ export function registrarPago(pago) {
     PAGOS_API_BASE_URL,
   )
 }
+
+export function calcularPagoMixto(payload) {
+  return apiFetch(
+    '/api/pagos/mixto/calcular',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    PAGOS_API_BASE_URL,
+  )
+}
+
+export function registrarPagoMixto(payload) {
+  return apiFetch(
+    '/api/pagos/mixto',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    PAGOS_API_BASE_URL,
+  )
+}
