@@ -17,6 +17,7 @@ function AdminNavbar() {
       <NavLink to="/admin/documentos-factura">Documentos</NavLink>
       <NavLink to="/admin/egresos">Egresos</NavLink>
       <NavLink to="/admin/ordenes-proveedores">Órdenes a Prov.</NavLink>
+      <NavLink to="/admin/anulaciones-online">Anulaciones</NavLink>
 
       <div className="navbar-sesion">
         <span className="navbar-cajero">{administrador?.nombre}</span>

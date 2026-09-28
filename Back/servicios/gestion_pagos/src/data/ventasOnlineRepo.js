@@ -45,12 +45,12 @@ async function marcarDespachada(ordenId) {
   return rows[0] || null;
 }
 
-async function guardarAnulacion({ ordenId, motivo, solicitadoPor }) {
+async function guardarSolicitudAnulacion({ ordenId, motivo, solicitadoPor }) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     await client.query(
-      `UPDATE pagos.ventas_online SET estado = 'Anulado' WHERE orden_id = $1`,
+      `UPDATE pagos.ventas_online SET estado = 'Anulacion Pendiente' WHERE orden_id = $1`,
       [ordenId]
     );
     const { rows } = await client.query(
@@ -60,6 +60,44 @@ async function guardarAnulacion({ ordenId, motivo, solicitadoPor }) {
     );
     await client.query("COMMIT");
     return rows[0];
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function listarSolicitudesPendientes() {
+  const { rows } = await pool.query(`
+    SELECT a.id, a.orden_id as "codigoTransaccion", v.cliente_id as cliente,
+           v.total as monto, a.anulado_en as "fechaSolicitud", a.motivo, v.estado
+    FROM pagos.anulaciones_online a
+    JOIN pagos.ventas_online v ON a.orden_id = v.orden_id
+    WHERE v.estado = 'Anulacion Pendiente'
+  `);
+  return rows;
+}
+
+async function procesarAnulacion(id, nuevoEstado) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    // Obtener la anulación para saber la orden
+    const { rows } = await client.query(`SELECT orden_id, motivo FROM pagos.anulaciones_online WHERE id = $1`, [id]);
+    if (!rows[0]) throw new Error("Solicitud no encontrada");
+    const { orden_id: ordenId, motivo } = rows[0];
+
+    // Actualiza la venta
+    const estadoVenta = nuevoEstado === 'APROBADA' ? 'Anulado' : 'Pagado';
+    await client.query(
+      `UPDATE pagos.ventas_online SET estado = $2 WHERE orden_id = $1`,
+      [ordenId, estadoVenta]
+    );
+
+    await client.query("COMMIT");
+    return { ordenId, motivo };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -79,5 +117,6 @@ async function marcarAnulacionNotificada(ordenId) {
 
 module.exports = { 
   existeOrden, obtenerVenta, guardarVenta, marcarDespachada, 
-  guardarAnulacion, marcarAnulacionNotificada 
+  guardarSolicitudAnulacion, listarSolicitudesPendientes, procesarAnulacion,
+  marcarAnulacionNotificada 
 };

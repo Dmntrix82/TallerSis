@@ -1,38 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
-// Datos simulados 
-const SOLICITUDES_MOCK = [
-  {
-    id: 1,
-    codigoTransaccion: 'TX-ONLINE-9812',
-    cliente: 'Carla Morales V.',
-    monto: 450.00,
-    fechaSolicitud: '2026-09-26 14:20',
-    motivo: 'El cliente solicitó reembolso por cobro duplicado en pasarela web.',
-    estado: 'PENDIENTE'
-  },
-  {
-    id: 2,
-    codigoTransaccion: 'TX-ONLINE-9815',
-    cliente: 'Roberto Gómez P.',
-    monto: 1200.50,
-    fechaSolicitud: '2026-09-26 15:05',
-    motivo: 'Producto agotado en almacén central tras procesar el pago.',
-    estado: 'PENDIENTE'
-  },
-  {
-    id: 3,
-    codigoTransaccion: 'TX-ONLINE-9801',
-    cliente: 'Andrea Fernández',
-    monto: 310.00,
-    fechaSolicitud: '2026-09-26 11:30',
-    motivo: 'Error en monto de facturación por parte del usuario.',
-    estado: 'PENDIENTE'
-  }
-];
-
 export default function AnulacionesOnlinePage() {
-  const [solicitudes, setSolicitudes] = useState(SOLICITUDES_MOCK);
+  const [solicitudes, setSolicitudes] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [mensajeConfirmacion, setMensajeConfirmacion] = useState(null);
 
@@ -40,13 +9,10 @@ export default function AnulacionesOnlinePage() {
   useEffect(() => {
     const fetchSolicitudes = async () => {
       try {
-        // Descomenta y ajusta la URL cuando el endpoint esté disponible
-        /*
-        const res = await fetch('http://localhost:8080/api/anulaciones-online/pendientes');
+        const res = await fetch('/api/pagos/online/anulaciones/pendientes');
         if (!res.ok) throw new Error('Error al cargar solicitudes');
         const data = await res.json();
         setSolicitudes(data);
-        */
       } catch (err) {
         console.error('Error al conectar con backend:', err);
       }
@@ -62,14 +28,12 @@ export default function AnulacionesOnlinePage() {
 
     try {
       // CONEXIÓN CON BACKEND: Envío del resultado
-      /*
-      const res = await fetch(`http://localhost:8080/api/anulaciones-online/${id}/procesar`, {
+      const res = await fetch(`/api/pagos/online/anulaciones/${id}/procesar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accion: nuevoEstado })
       });
       if (!res.ok) throw new Error('Error al procesar anulación');
-      */
 
       // Actualización del estado local
       setSolicitudes(prev => prev.filter(item => item.id !== id));
@@ -154,17 +118,17 @@ export default function AnulacionesOnlinePage() {
                     {item.codigoTransaccion}
                   </span>
                   <span style={{ marginLeft: '0.75rem', fontSize: '0.875rem', color: '#64748b' }}>
-                    {item.fechaSolicitud}
+                    {new Date(item.fechaSolicitud).toLocaleString()}
                   </span>
                 </div>
                 <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#0f172a' }}>
-                  Bs. {item.monto.toFixed(2)}
+                  Bs. {Number(item.monto).toFixed(2)}
                 </div>
               </div>
 
               {/* Datos del cliente */}
               <div style={{ fontSize: '0.875rem', marginBottom: '0.5rem', color: '#334155' }}>
-                <strong>Cliente:</strong> {item.cliente}
+                <strong>Cliente ID:</strong> {item.cliente}
               </div>
 
               {/* TDSI-373: Motivo enviado por Sistema Cliente */}

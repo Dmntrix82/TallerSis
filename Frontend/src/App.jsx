@@ -5,6 +5,7 @@ import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import Cajeros from './pages/Cajeros.jsx'
 import Pagos from './pages/Pagos.jsx'
+import AnulacionesOnlinePage from './pages/AnulacionesOnline.jsx'
 import Clientes from './pages/Clientes.jsx'
 import AutorizacionAnulacion from './pages/AutorizacionAnulacion.jsx'
 import VentasOnline from './pages/VentasOnline';
@@ -69,6 +70,7 @@ function App() {
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/egresos" element={<RutaProtegidaAdmin><EgresoProveedor /></RutaProtegidaAdmin>} />
           <Route path="/admin/ordenes-proveedores" element={<RutaProtegidaAdmin><OrdenesProveedores /></RutaProtegidaAdmin>} />
+          <Route path="/admin/anulaciones-online" element={<RutaProtegidaAdmin><AnulacionesOnlinePage /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

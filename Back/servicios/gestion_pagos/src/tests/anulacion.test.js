@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { anularPagoOnline } = require("../services/anulacionService");
+const { anularPagoOnline, listarAnulacionesPendientes, procesarSolicitudAnulacion } = require("../services/anulacionService");
 const { recibirVenta } = require("../services/ventaOnlineService");
 const repo = require("../data/ventasOnlineRepo"); 
 
@@ -30,13 +30,9 @@ test("TDSI-368: no permite anular una compra que ya fue despachada", async () =>
   );
 });
 
-test("TDSI-369: anula la orden y rechaza un segundo intento de anulación", async () => {
+test("TDSI-369: crea solicitud y rechaza un segundo intento de anulación", async () => {
   const payload = basePayload();
   await recibirVenta(payload);
-
-  // Sobrescribimos temporalmente fetch para que falle (simula sistema caído)
-  const originalFetch = global.fetch;
-  global.fetch = async () => ({ ok: false });
 
   const r = await anularPagoOnline({
     ordenId: payload.ordenId,
@@ -44,33 +40,34 @@ test("TDSI-369: anula la orden y rechaza un segundo intento de anulación", asyn
   });
 
   assert.equal(r.anulacionRecibida, true);
-  assert.equal(r.estado, "ANULADO");
-  assert.equal(r.detalle.notificado, false); // Falló la notificación, pero sí anuló
-  
-  global.fetch = originalFetch; // Restauramos
+  assert.equal(r.estado, "Anulacion Pendiente");
 
   await assert.rejects(
     () => anularPagoOnline({ ordenId: payload.ordenId, motivo: "Intento duplicado" }),
-    (e) => e.status === 409 && e.message.includes("ya fue anulado")
+    (e) => e.status === 409 && e.message.includes("pendiente")
   );
 });
 
-// NUEVO: Test TDSI-370
-test("TDSI-370: notifica al sistema cliente y actualiza estado notificado", async () => {
+test("TDSI-370: notifica al sistema cliente al aprobar la solicitud", async () => {
   const payload = basePayload();
   await recibirVenta(payload);
-
-  // Simulamos que el sistema cliente responde 200 OK
-  const originalFetch = global.fetch;
-  global.fetch = async () => ({ ok: true });
 
   const r = await anularPagoOnline({
     ordenId: payload.ordenId,
     motivo: "Cancelación exitosa con notificación"
   });
 
-  assert.equal(r.detalle.notificado, true);
-  assert.equal(r.mensaje, "Pago anulado y sistema notificado");
+  const pendientes = await listarAnulacionesPendientes();
+  const solicitud = pendientes.find(s => s.codigoTransaccion === payload.ordenId);
+  assert.ok(solicitud, "Debe existir la solicitud pendiente");
+
+  // Simulamos que el sistema cliente responde 200 OK
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: true });
+
+  const rProc = await procesarSolicitudAnulacion(solicitud.id, 'APROBADA');
+  assert.equal(rProc.notificado, true);
+  assert.equal(rProc.accion, 'APROBADA');
 
   global.fetch = originalFetch;
 });
