@@ -8,7 +8,11 @@ export async function apiFetch(path, options = {}, baseUrl = API_BASE_URL) {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null)
-    throw new Error(body?.mensaje ?? `Error ${response.status}: ${response.statusText}`)
+    const error = new Error(body?.mensaje ?? `Error ${response.status}: ${response.statusText}`)
+    if (body) {
+      Object.assign(error, body);
+    }
+    throw error;
   }
 
   return response.json()

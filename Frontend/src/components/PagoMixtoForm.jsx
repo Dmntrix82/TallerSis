@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { calcularPagoMixto, registrarPagoMixto as registrarMixtoApi } from '../api/pagos';
 
 export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
   // TDSI-88: Captura de montos y métodos
@@ -19,11 +20,9 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
   const sumaTotal = +(numMonto1 + numMonto2).toFixed(2);
   const diferencia = +(totalVenta - sumaTotal).toFixed(2);
 
-  // TDSI-278: Validaciones
+  // Validaciones front
   const montosCompletos = numMonto1 > 0 && numMonto2 > 0;
   const metodosDistintos = metodo1 !== metodo2;
-  const cuadraExacto = Math.abs(diferencia) === 0;
-  const esValido = montosCompletos && metodosDistintos && cuadraExacto;
 
   const evitarCaracteresInvalidos = (e) => {
     if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
@@ -32,25 +31,46 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
   const manejarCambioMonto = (setter) => (e) => {
     const valor = e.target.value;
     if (valor === '' || parseFloat(valor) >= 0) setter(valor);
+    setErrorBackend(null); // Limpiar error si el usuario cambia el monto
   };
 
-  const irAResumen = (e) => {
+  const irAResumen = async (e) => {
     e.preventDefault();
-    if (esValido) setEtapa('resumen');
+    if (!montosCompletos || !metodosDistintos) return;
+
+    setEnviando(true);
+    setErrorBackend(null);
+
+    const payloadCalculo = {
+      total: Number(totalVenta.toFixed(2)),
+      metodos: [
+        { metodo: metodo1, monto: numMonto1 },
+        { metodo: metodo2, monto: numMonto2 }
+      ]
+    };
+
+    try {
+      // TDSI-264: Mostrar el resumen consumiendo el endpoint de calcular
+      await calcularPagoMixto(payloadCalculo);
+      setEtapa('resumen');
+    } catch (error) {
+      // TDSI-278: Mostrar mensaje de error visual si los montos no cuadran
+      setErrorBackend(error.mensaje || 'Error al validar los montos');
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const confirmarPago = async () => {
     setEnviando(true);
     setErrorBackend(null);
 
-    // Cálculos de porcentaje requeridos por la tabla pagos.detalles_pago
     const porcentaje1 = Number(((numMonto1 / totalVenta) * 100).toFixed(2));
     const porcentaje2 = Number(((numMonto2 / totalVenta) * 100).toFixed(2));
 
-    // Estructura exacta que requiere registrarPagoMixtoCompleto
     const payload = {
       id_transaccion: 'TX-MIX-' + Date.now(),
-      cajaId: 1, // ID por defecto de la terminal POS
+      cajaId: 1, // ID por defecto
       turnoId: 1,
       total: Number(totalVenta.toFixed(2)),
       metodos: [
@@ -72,32 +92,16 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
     };
 
     try {
-      // Puerto 4005 de gestion_pagos y endpoint POST /mixto
-      const respuesta = await fetch('api/pagos/mixto', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const resultado = await respuesta.json();
-
-      if (!respuesta.ok || !resultado.ok) {
-        throw new Error(resultado.mensaje || 'Error al asentar el pago en base de datos');
-      }
-
-      console.log('Pago mixto guardado en Supabase con éxito:', resultado.data);
+      const resultado = await registrarMixtoApi(payload);
+      console.log('Pago mixto guardado con éxito:', resultado.data);
       setEtapa('comprobante');
 
       if (onFinalizar) {
         onFinalizar(resultado.data);
       }
     } catch (err) {
-      console.warn('Backend local no disponible o error:', err.message);
-      setErrorBackend(`Servidor no disponible (${err.message}). Avanzando en modo local para pruebas.`);
-      // Permite continuar la prueba en la interfaz aunque el backend local esté apagado
-      setTimeout(() => setEtapa('comprobante'), 1200);
+      console.warn('Error al confirmar pago:', err.message);
+      setErrorBackend(err.mensaje || err.message || 'Error al asentar el pago');
     } finally {
       setEnviando(false);
     }
@@ -208,15 +212,15 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
             </div>
           </div>
 
-          {/* Resumen dinámico y validación visual TDSI-278 */}
+          {/* Resumen dinámico y validación visual */}
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '0.75rem 1rem',
             borderRadius: '10px',
-            backgroundColor: cuadraExacto && montosCompletos ? '#ecfdf5' : '#fff1f2',
-            border: `1px solid ${cuadraExacto && montosCompletos ? '#a7f3d0' : '#fecdd3'}`
+            backgroundColor: diferencia === 0 && montosCompletos ? '#ecfdf5' : '#fff1f2',
+            border: `1px solid ${diferencia === 0 && montosCompletos ? '#a7f3d0' : '#fecdd3'}`
           }}>
             <div>
               <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Suma registrada:</span>
@@ -226,7 +230,7 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
             <div style={{ textAlign: 'right' }}>
               {!metodosDistintos ? (
                 <span style={{ fontSize: '0.75rem', color: '#e11d48', fontWeight: '600' }}>Elige métodos distintos</span>
-              ) : cuadraExacto && montosCompletos ? (
+              ) : diferencia === 0 && montosCompletos ? (
                 <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '700' }}>✓ Montos cuadrados</span>
               ) : (
                 <span style={{ fontSize: '0.75rem', color: '#e11d48', fontWeight: '600' }}>
@@ -236,23 +240,38 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
             </div>
           </div>
 
+          {/* Error del Backend TDSI-278 */}
+          {errorBackend && (
+            <div style={{
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fde68a',
+              color: '#dc2626',
+              padding: '0.65rem 0.85rem',
+              borderRadius: '8px',
+              fontSize: '0.85rem',
+              fontWeight: '600'
+            }}>
+              ⚠️ {errorBackend}
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={!esValido}
+            disabled={!montosCompletos || !metodosDistintos || enviando}
             style={{
               marginTop: '0.5rem',
               padding: '0.75rem',
               borderRadius: '10px',
               border: 'none',
-              backgroundColor: esValido ? '#4f46e5' : '#cbd5e1',
+              backgroundColor: (montosCompletos && metodosDistintos) ? '#4f46e5' : '#cbd5e1',
               color: '#ffffff',
               fontSize: '0.9rem',
               fontWeight: 'bold',
-              cursor: esValido ? 'pointer' : 'not-allowed',
+              cursor: (montosCompletos && metodosDistintos && !enviando) ? 'pointer' : 'not-allowed',
               transition: 'background-color 0.2s'
             }}
           >
-            Continuar a Resumen
+            {enviando ? 'Validando con Backend...' : 'Validar y Continuar a Resumen'}
           </button>
         </form>
       </div>
@@ -294,17 +313,16 @@ export default function PagoMixtoForm({ totalVenta = 350.00, onFinalizar }) {
           </div>
         </div>
 
-        {/* Aviso de error de backend (modo local) */}
         {errorBackend && (
           <div style={{
             backgroundColor: '#fffbeb',
             border: '1px solid #fde68a',
-            color: '#92400e',
+            color: '#dc2626',
             padding: '0.65rem 0.85rem',
             borderRadius: '8px',
-            fontSize: '0.78rem',
-            marginBottom: '1rem',
-            fontWeight: '600'
+            fontSize: '0.85rem',
+            fontWeight: '600',
+            marginBottom: '1rem'
           }}>
             ⚠️ {errorBackend}
           </div>
