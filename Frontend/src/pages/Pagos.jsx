@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { registrarPago } from '../api/pagos.js'
+import TirillaFactura from '../components/TirillaFactura.jsx'
 
 const METODOS_PAGO = ['Efectivo', 'Tarjeta', 'QR']
 
@@ -149,9 +150,15 @@ function Pagos() {
             <li>Estado: {pagoRegistrado.estado}</li>
             <li>Fecha: {new Date(pagoRegistrado.fecha).toLocaleString()}</li>
           </ul>
-          <button type="button" className="btn" onClick={registrarOtro}>
-            Registrar otro pago
-          </button>
+
+          {/* TDSI-299: Botón Imprimir factura en pantalla de venta */}
+          <TirillaFactura numeroFactura={`F-001`} />
+
+          <div style={{ marginTop: '1rem' }}>
+            <button type="button" className="btn btn-secundario" onClick={registrarOtro}>
+              Registrar otro pago
+            </button>
+          </div>
         </div>
       )}
     </section>
