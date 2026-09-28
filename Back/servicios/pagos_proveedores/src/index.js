@@ -4,11 +4,19 @@ const cors = require("cors");
 const { query } = require("./config/db");
 const { errorHandler } = require("./middlewares/errorHandler");
 const egresosRoutes = require("./routes/egresosRoutes");
+const confirmacionesRoutes = require("./routes/confirmacionesRoutes");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+app.get("/pagos-proveedores", (req, res) => {
+  res.json({
+    mensaje: "Microservicio de Pagos a Proveedores funcionando",
+    estado: "activo"
+  });
+});
 
 app.get("/health", async (req, res) => {
   try {
@@ -22,10 +30,12 @@ app.get("/health", async (req, res) => {
 app.use("/api/egresos", egresosRoutes);
 app.use("/api/proveedores", require("./routes/ordenPagoRoutes"));
 app.use("/api/proveedores/notificaciones", require("./routes/notificacionRoutes"));
+app.use("/ordenes-pago", confirmacionesRoutes);
 
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4006;
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`[PagosProveedores] Servidor corriendo en puerto ${PORT}`);
+  require("./jobs/reintentoConfirmaciones").iniciar();
 });
