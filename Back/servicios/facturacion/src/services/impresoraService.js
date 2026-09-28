@@ -25,8 +25,18 @@ function conmutarImpresora(conectada) {
   return estadoImpresora();
 }
 
+/** TDSI-306: no se puede modificar una factura mientras esta en revision */
+function rechazarSiBloqueada(factura) {
+  if (factura.bloqueada) {
+    const e = new Error("La factura esta bloqueada por una anulacion en revision.");
+    e.status = 409;
+    throw e;
+  }
+}
+
 async function imprimir(numero) {
   const factura = await obtenerFactura(numero);
+  rechazarSiBloqueada(factura);
   if (factura.impresa) {
     const e = new Error("La factura ya fue impresa. Use el endpoint de reimpresion.");
     e.status = 409;
@@ -43,6 +53,7 @@ async function imprimir(numero) {
 
 async function reimprimir(numero, motivo) {
   const factura = await obtenerFactura(numero);
+  rechazarSiBloqueada(factura);
   if (!factura.impresa) {
     const e = new Error("La factura aun no fue impresa. Use /imprimir primero.");
     e.status = 409;
