@@ -1,12 +1,16 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
 const turnosRoutes = require("./routes/turnosRoutes");
+const authRoutes = require("./routes/authRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 
 const app = express();
 const PORT = process.env.PORT || 4004;
 
+// Permite que el Frontend (Vite en localhost:5173, u otro origen en produccion) consuma este WS.
+app.use(cors());
 app.use(express.json());
 
 app.get("/health", async (req, res) => {
@@ -19,6 +23,7 @@ app.get("/health", async (req, res) => {
 });
 
 app.use("/api/caja", turnosRoutes);
+app.use("/auth", authRoutes);
 
 app.use(errorHandler);
 

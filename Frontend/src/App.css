@@ -22,6 +22,38 @@
   color: var(--color-brand-mint);
 }
 
+/* Sesión del cajero en el navbar (TDSI-269 / TDSI-270) */
+.navbar-sesion {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.navbar-cajero {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.12);
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.navbar-cajero--vacio {
+  color: rgba(255, 255, 255, 0.6);
+  background-color: transparent;
+}
+
+.btn-logout {
+  background-color: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 0.4rem 0.9rem;
+}
+
+.btn-logout:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
 .container {
   max-width: 960px;
   margin: 0 auto;
@@ -32,49 +64,9 @@
   color: #b91c1c;
 }
 
-.pago-form,
-.pago-resumen,
-.pago-exito {
-  max-width: 420px;
-}
-
-.campo {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin-bottom: 1rem;
-}
-
-.campo input {
-  padding: 0.5rem;
-  border: 1px solid #cbd2d9;
-  border-radius: 4px;
-}
-
-.campo input:focus {
-  outline: none;
-  border-color: var(--color-brand-olive);
-}
-
-.metodo-opciones {
-  border: 1px solid #cbd2d9;
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-}
-
-.metodo-opcion {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.pago-acciones {
-  display: flex;
-  gap: 0.75rem;
-}
-
+/* =========================================================================
+   Botones
+   ========================================================================= */
 .btn {
   padding: 0.5rem 1.25rem;
   background-color: var(--color-brand-dark);
@@ -104,7 +96,59 @@
   color: var(--color-brand-dark);
 }
 
-/* Tipo de venta: "Sin Factura" / "Con NIT" (TDSI-285) */
+/* =========================================================================
+   Formularios comunes
+   ========================================================================= */
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.campo input {
+  padding: 0.5rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+}
+
+.campo input:focus {
+  outline: none;
+  border-color: var(--color-brand-olive);
+}
+
+.campo-usuario {
+  max-width: 280px;
+}
+
+.pago-form,
+.pago-resumen,
+.pago-exito {
+  max-width: 420px;
+}
+
+.metodo-opciones {
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.metodo-opcion {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.pago-acciones {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* =========================================================================
+   Tipo de venta (TDSI-285)
+   ========================================================================= */
 .tipo-venta-opciones {
   display: flex;
   gap: 0.75rem;
@@ -133,6 +177,9 @@
   font-weight: 600;
 }
 
+/* =========================================================================
+   Facturación (TDSI-89)
+   ========================================================================= */
 .factura-form,
 .factura-resumen,
 .factura-exito {
@@ -143,6 +190,10 @@
   display: flex;
   gap: 0.75rem;
 }
+
+/* =========================================================================
+   Cliente buscador (TDSI-5)
+   ========================================================================= */
 .cliente-buscador {
   position: relative;
   max-width: 420px;
@@ -187,6 +238,9 @@
   margin-top: 1.5rem;
 }
 
+/* =========================================================================
+   Anulaciones (TDSI-17)
+   ========================================================================= */
 .confirmacion {
   color: #065f46;
   background-color: #ecfdf5;
@@ -226,6 +280,9 @@
   flex-shrink: 0;
 }
 
+/* =========================================================================
+   Modales
+   ========================================================================= */
 .modal-fondo {
   position: fixed;
   inset: 0;
@@ -244,11 +301,17 @@
   width: 100%;
 }
 
+/* =========================================================================
+   Turnos (TDSI-8)
+   ========================================================================= */
 .turno-form,
 .turno-exito {
   max-width: 420px;
 }
 
+/* =========================================================================
+   Tokens (TDSI-11)
+   ========================================================================= */
 .token-form,
 .token-resultado {
   max-width: 480px;
@@ -281,6 +344,9 @@
   font-weight: 600;
 }
 
+/* =========================================================================
+   Consulta de transacción (TDSI-14)
+   ========================================================================= */
 .consulta-form,
 .consulta-resultado {
   max-width: 420px;
@@ -306,10 +372,9 @@
   background-color: #b91c1c;
 }
 
-.campo-usuario {
-  max-width: 280px;
-}
-
+/* =========================================================================
+   Órdenes de pago (TDSI-20 / TDSI-18)
+   ========================================================================= */
 .orden-lista {
   list-style: none;
   padding: 0;
@@ -358,4 +423,166 @@
   background-color: #fef2f2;
   color: #b91c1c;
   border: 1px solid #fecaca;
+}
+
+/* =========================================================================
+   Pantalla de Login del terminal POS (TDSI-1 / TDSI-84 / TDSI-261)
+   ========================================================================= */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+}
+
+.login-hero {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 3rem;
+  background-color: var(--color-brand-dark);
+  color: #fff;
+}
+
+.login-hero::before {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background-image: repeating-radial-gradient(
+    circle at 10% 10%,
+    transparent 0,
+    transparent 70px,
+    rgba(255, 255, 255, 0.06) 71px,
+    rgba(255, 255, 255, 0.06) 72px
+  );
+  pointer-events: none;
+}
+
+.login-hero-content {
+  position: relative;
+  z-index: 1;
+  margin-top: 3rem;
+}
+
+.login-hero-logo {
+  margin-bottom: 2rem;
+  color: var(--color-brand-mint);
+}
+
+.login-hero-content h1 {
+  margin: 0 0 1.5rem;
+  font-size: 2.5rem;
+  line-height: 1.15;
+}
+
+.login-hero-content p {
+  max-width: 380px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.5;
+}
+
+.login-hero-footer {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+}
+
+.login-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background-color: #fff;
+}
+
+.login-panel-inner {
+  width: 100%;
+  max-width: 340px;
+}
+
+.login-brand {
+  display: block;
+  margin-bottom: 3rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--color-brand-dark);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 640px;
+}
+
+.login-titulo {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+}
+
+.login-subtitulo {
+  margin: 0 0 2rem;
+  color: #616e7c;
+  font-size: 0.9rem;
+}
+
+.login-form .campo {
+  color: #3e4c59;
+  font-size: 0.85rem;
+}
+
+.login-form .campo input {
+  padding: 0.5rem 0.25rem;
+  border: none;
+  border-bottom: 1px solid #cbd2d9;
+  border-radius: 0;
+  background: transparent;
+}
+
+.login-form .campo input:focus {
+  border-bottom-color: var(--color-brand-dark);
+}
+
+.login-btn {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .login-page {
+    flex-direction: column;
+  }
+
+  .login-hero {
+    min-height: 220px;
+    padding: 2rem;
+  }
+
+  .login-hero-content {
+    margin-top: 0.5rem;
+  }
+}
+
+/* =========================================================================
+   Encabezado del terminal (TDSI-269)
+   ========================================================================= */
+.terminal-header {
+  border-left: 4px solid var(--color-brand-dark);
+  background-color: #fff;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.terminal-header h1 {
+  margin: 0 0 0.25rem;
+}
+
+.terminal-header-caja {
+  margin: 0;
+  color: #616e7c;
 }

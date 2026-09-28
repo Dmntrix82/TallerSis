@@ -22,6 +22,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=4005
+    env_file:
+      - ./servicios/gestion_pagos/.env
     networks:
       - app-network
 
