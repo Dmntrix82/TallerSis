@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const egresosRepo = require("../data/egresosRepo");
 const { validarOrdenPagable, liquidarOrden } = require("./ordenPagoService");
+const { actualizarFlujoTrasEgreso } = require("./flujoCajaService");
 
 const METODOS_VALIDOS = ["TRANSFERENCIA", "CHEQUE", "EFECTIVO"];
 
@@ -17,12 +18,23 @@ async function registrarEgreso({ orden_pago_id, monto, metodo, descripcion, regi
     throw new AppError(`El metodo "${metodoFinal}" no esta permitido. Use: ${METODOS_VALIDOS.join(", ")}.`, 400);
   }
 
-  await validarOrdenPagable(orden_pago_id);
+  const ordenPendiente = await validarOrdenPagable(orden_pago_id);
+
+  // TDSI-406: el monto pagado debe coincidir con lo adeudado en la orden (tolerancia de 1 centavo).
+  const montoAdeudado = Number(ordenPendiente.monto);
+  if (Math.abs(montoAdeudado - monto) > 0.01) {
+    throw new AppError(
+      `El monto pagado (${monto.toFixed(2)}) no coincide con el monto adeudado (${montoAdeudado.toFixed(2)}).`,
+      422,
+      { monto_pagado: monto, monto_adeudado: montoAdeudado }
+    );
+  }
 
   const egreso = await egresosRepo.insertarEgreso({ orden_pago_id, monto, metodo: metodoFinal, descripcion, registrado_por });
   const orden = await liquidarOrden(orden_pago_id, registrado_por);
+  const flujoDia = await actualizarFlujoTrasEgreso(monto);
 
-  return { egreso, orden };
+  return { egreso, orden, flujoDia };
 }
 
 /** TDSI-402: historial de egresos (movimientos financieros de este esquema) */

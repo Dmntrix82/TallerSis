@@ -2,6 +2,7 @@ const { Router } = require("express");
 const { autenticarCajero } = require("../services/authService");
 const { validarCajaDisponible } = require("../services/cajaService");
 const { registrarInicioSesion, cerrarSesionesInactivas } = require("../services/sesionCajeroService");
+const { autenticarAdministrador } = require("../services/administradorAuthService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -15,6 +16,12 @@ router.post("/login", wrap(async (req, res) => {
     caja_id: caja.codigo,
   });
   res.json({ ok: true, mensaje: "Login exitoso, terminal habilitado", data: { cajero, caja, sesion } });
+}));
+
+// Login de Administrador: mismo Supabase Auth que el cajero, sin caja_id ni sesion de terminal.
+router.post("/login-administrador", wrap(async (req, res) => {
+  const administrador = await autenticarAdministrador(req.body);
+  res.json({ ok: true, mensaje: "Login exitoso", data: { administrador } });
 }));
 
 // Fuerza el cierre de sesiones inactivas ahora mismo (util para pruebas manuales)

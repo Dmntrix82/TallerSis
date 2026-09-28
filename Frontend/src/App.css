@@ -3,7 +3,7 @@
   align-items: center;
   gap: 1.5rem;
   padding: 1rem 2rem;
-  background-color: #1f2933;
+  background-color: var(--color-brand-dark);
 }
 
 .navbar-brand {
@@ -13,13 +13,44 @@
 }
 
 .navbar a {
-  color: #cbd2d9;
+  color: rgba(255, 255, 255, 0.75);
   text-decoration: none;
 }
 
 .navbar a.active,
 .navbar a:hover {
+  color: var(--color-brand-mint);
+}
+
+.navbar-sesion {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.navbar-cajero {
   color: #fff;
+  background-color: rgba(255, 255, 255, 0.12);
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.navbar-cajero--vacio {
+  color: rgba(255, 255, 255, 0.6);
+  background-color: transparent;
+}
+
+.btn-logout {
+  background-color: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 0.4rem 0.9rem;
+}
+
+.btn-logout:hover {
+  background-color: rgba(255, 255, 255, 0.15);
 }
 
 .container {
@@ -32,12 +63,37 @@
   color: #b91c1c;
 }
 
-.pago-form,
-.pago-resumen,
-.pago-exito {
-  max-width: 420px;
+/* Botones */
+.btn {
+  padding: 0.5rem 1.25rem;
+  background-color: var(--color-brand-dark);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
+.btn:hover:not(:disabled) {
+  background-color: var(--color-brand-olive);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secundario {
+  background-color: transparent;
+  color: var(--color-brand-dark);
+  border: 1px solid var(--color-brand-dark);
+}
+
+.btn-secundario:hover:not(:disabled) {
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+}
+
+/* Formularios */
 .campo {
   display: flex;
   flex-direction: column;
@@ -45,10 +101,29 @@
   margin-bottom: 1rem;
 }
 
-.campo input {
+.campo input,
+.campo textarea {
   padding: 0.5rem;
   border: 1px solid #cbd2d9;
   border-radius: 4px;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.campo input:focus,
+.campo textarea:focus {
+  outline: none;
+  border-color: var(--color-brand-olive);
+}
+
+.campo-usuario {
+  max-width: 280px;
+}
+
+.pago-form,
+.pago-resumen,
+.pago-exito {
+  max-width: 420px;
 }
 
 .metodo-opciones {
@@ -70,30 +145,560 @@
   gap: 0.75rem;
 }
 
-.btn {
-  padding: 0.5rem 1.25rem;
-  background-color: #1f2933;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
+/* Tipo de venta (TDSI-285) */
+.tipo-venta-opciones {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.tipo-venta-opcion {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
   cursor: pointer;
+  text-align: center;
+  background-color: #fff;
+  color: #3e4c59;
 }
 
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.tipo-venta-opcion:hover {
+  border-color: var(--color-brand-olive);
 }
 
-.btn-secundario {
-  background-color: transparent;
+.tipo-venta-opcion.activa {
+  border-color: var(--color-brand-dark);
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+  font-weight: 600;
+}
+
+/* Facturación */
+.factura-form,
+.factura-resumen,
+.factura-exito {
+  max-width: 420px;
+}
+
+.factura-acciones {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Lista de facturas (TDSI-96) */
+.tabla-facturas {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tabla-facturas th,
+.tabla-facturas td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e4e7eb;
+}
+
+.tabla-facturas th {
+  background-color: var(--color-brand-dark);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tabla-facturas tr:last-child td {
+  border-bottom: none;
+}
+
+.badge-estado {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background-color: #e4e7eb;
+  color: #3e4c59;
+}
+
+.badge-estado--emitida {
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+}
+
+.badge-estado--solicitada {
+  background-color: var(--color-brand-olive);
+  color: #fff;
+}
+
+.anulacion-form {
+  max-width: 420px;
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background-color: #fff;
+  border-left: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.anulacion-form h2 {
+  margin-top: 0;
+}
+
+.anulacion-solicitante {
+  margin: 0 0 1rem;
+  color: #616e7c;
+  font-size: 0.9rem;
+}
+
+.anulacion-acciones {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.mensaje-exito {
+  padding: 0.75rem 1rem;
+  margin: 0;
+  background-color: var(--color-brand-mint);
+  border-left: 4px solid var(--color-brand-dark);
+  border-radius: 6px;
+  color: var(--color-brand-dark);
+}
+
+/* Tablero (TDSI-16) */
+.tablero-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.tablero-filtros .campo {
+  margin-bottom: 0;
+}
+
+.tablero-sucursal {
+  color: #616e7c;
+  font-size: 0.9rem;
+}
+
+.tablero-en-vivo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-brand-dark);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.tablero-en-vivo::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-brand-olive);
+}
+
+.tablero-resumen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.tablero-stat {
+  min-width: 160px;
+  padding: 1rem 1.25rem;
+  background-color: #fff;
+  border-top: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.tablero-stat-etiqueta {
+  display: block;
+  color: #616e7c;
+  font-size: 0.85rem;
+}
+
+.tablero-stat-valor {
+  display: block;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-brand-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.tablero-grafico {
+  margin-bottom: 2rem;
+}
+
+.tablero-grafico h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.grafico-barras {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background-color: #fff;
+  padding: 1.25rem;
+  border-radius: 8px;
+}
+
+.grafico-barra-fila {
+  display: grid;
+  grid-template-columns: 140px 1fr 120px;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.grafico-barra-etiqueta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #52514e;
+  font-size: 0.9rem;
+}
+
+.grafico-barra-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.grafico-barra-track {
+  position: relative;
+  height: 22px;
+  background-color: #e1e0d9;
+  border-radius: 4px;
+}
+
+.grafico-barra-fill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.grafico-barra-valor {
+  text-align: right;
+  font-weight: 600;
+  color: #0b0b0b;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Documentos de factura (TDSI-355 a 358) */
+.documentos-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.documentos-form .campo {
+  margin-bottom: 0;
+}
+
+.documentos-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.documento-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 200px;
+  padding: 1rem 1.25rem;
+  background-color: #fff;
+  border-top: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.documento-tipo {
+  font-weight: 700;
+  color: #3e4c59;
+}
+
+/* Enviar factura por correo (TDSI-107/108) */
+.factura-correo {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background-color: #fff;
+  border-left: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.factura-correo-acciones {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Resumen de ventas del turno (TDSI-102) */
+.resumen-turno-actual {
+  color: #616e7c;
+  margin-bottom: 1rem;
+}
+
+.campo-turno-dia {
+  max-width: 320px;
+  margin-bottom: 1.5rem;
+}
+
+.campo-turno-dia select {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  background-color: #fff;
+  font-size: 1rem;
   color: #1f2933;
-  border: 1px solid #1f2933;
 }
 
-.campo-usuario {
-  max-width: 280px;
+.campo-turno-dia select:focus {
+  outline: none;
+  border-color: var(--color-brand-olive);
 }
 
+.resumen-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.resumen-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 160px;
+  padding: 1rem 1.25rem;
+  background-color: #fff;
+  border-top: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.resumen-card-metodo {
+  font-weight: 600;
+  color: #3e4c59;
+}
+
+.resumen-card-total {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-brand-dark);
+}
+
+.resumen-card-cantidad {
+  font-size: 0.85rem;
+  color: #616e7c;
+}
+
+.resumen-total {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+/* Registro de egreso a proveedor (TDSI-118: TDSI-403 a 406) */
+.egreso-buscar,
+.egreso-form,
+.egreso-exito {
+  max-width: 420px;
+}
+
+.egreso-orden-info {
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  background-color: #fff;
+  border-left: 4px solid var(--color-brand-dark);
+  border-radius: 8px;
+}
+
+.egreso-orden-info p {
+  margin: 0.25rem 0;
+}
+
+.egreso-acciones {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Cliente buscador (TDSI-5) */
+.cliente-buscador {
+  position: relative;
+  max-width: 420px;
+}
+
+.cliente-sugerencias {
+  list-style: none;
+  margin: -0.75rem 0 1rem;
+  padding: 0;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  background-color: #fff;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.cliente-sugerencias li + li {
+  border-top: 1px solid #e4e7eb;
+}
+
+.cliente-sugerencias button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: #1f2933;
+}
+
+.cliente-sugerencias button:hover {
+  background-color: #f5f6fa;
+}
+
+.cliente-estado {
+  color: #52606d;
+  margin: -0.5rem 0 1rem;
+}
+
+.cliente-resumen {
+  margin-top: 1.5rem;
+}
+
+/* Anulaciones (TDSI-17) */
+.confirmacion {
+  color: #065f46;
+  background-color: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.anulaciones-lista {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 640px;
+}
+
+.anulaciones-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+}
+
+.anulaciones-detalle {
+  color: #52606d;
+  font-size: 0.875rem;
+}
+
+.anulaciones-acciones {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Modales */
+.modal-fondo {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 30, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-caja {
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 360px;
+  width: 100%;
+}
+
+/* Turnos (TDSI-8) */
+.turno-form,
+.turno-exito {
+  max-width: 420px;
+}
+
+/* Tokens (TDSI-11) */
+.token-form,
+.token-resultado {
+  max-width: 480px;
+}
+
+.token-copia {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.token-copia input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.token-estado {
+  margin: 1rem 0;
+}
+
+.estado-activo {
+  color: #1a7f37;
+  font-weight: 600;
+}
+
+.estado-inactivo {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+/* Consulta de transacción (TDSI-14) */
+.consulta-form,
+.consulta-resultado {
+  max-width: 420px;
+}
+
+.estado-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.estado-verde {
+  background-color: #1a7f37;
+}
+
+.estado-amarillo {
+  background-color: #b7791f;
+}
+
+.estado-rojo {
+  background-color: #b91c1c;
+}
+
+/* Órdenes de pago (TDSI-20 / TDSI-18) */
 .orden-lista {
   list-style: none;
   padding: 0;
@@ -142,4 +747,220 @@
   background-color: #fef2f2;
   color: #b91c1c;
   border: 1px solid #fecaca;
+}
+
+/* Login (TDSI-1 / TDSI-84 / TDSI-261) */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+}
+
+.login-hero {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 3rem;
+  background-color: var(--color-brand-dark);
+  color: #fff;
+}
+
+.login-hero::before {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background-image: repeating-radial-gradient(
+    circle at 10% 10%,
+    transparent 0,
+    transparent 70px,
+    rgba(255, 255, 255, 0.06) 71px,
+    rgba(255, 255, 255, 0.06) 72px
+  );
+  pointer-events: none;
+}
+
+.login-hero-content {
+  position: relative;
+  z-index: 1;
+  margin-top: 3rem;
+}
+
+.login-hero-logo {
+  margin-bottom: 2rem;
+  color: var(--color-brand-mint);
+}
+
+.login-hero-content h1 {
+  margin: 0 0 1.5rem;
+  font-size: 2.5rem;
+  line-height: 1.15;
+}
+
+.login-hero-content p {
+  max-width: 380px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.5;
+}
+
+.login-hero-footer {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+}
+
+.login-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background-color: #fff;
+}
+
+.login-panel-inner {
+  width: 100%;
+  max-width: 340px;
+}
+
+.login-brand {
+  display: block;
+  margin-bottom: 3rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--color-brand-dark);
+}
+
+/* Selector Cajero / Administrador (TDSI-19) */
+.selector-modo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 44px;
+  padding: 4px;
+  margin-bottom: 2rem;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-olive);
+  cursor: pointer;
+  transition: background-color 0.25s ease;
+}
+
+.selector-modo--admin {
+  background-color: var(--color-brand-dark);
+}
+
+.selector-modo-opcion {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  transition: color 0.25s ease;
+}
+
+.selector-modo-opcion.activo {
+  color: var(--color-brand-dark);
+}
+
+.selector-modo--admin .selector-modo-opcion.activo {
+  color: var(--color-brand-dark);
+}
+
+.selector-modo-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 999px;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.25s ease;
+}
+
+.selector-modo--admin .selector-modo-thumb {
+  transform: translateX(100%);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 640px;
+}
+
+.login-titulo {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+}
+
+.login-subtitulo {
+  margin: 0 0 2rem;
+  color: #616e7c;
+  font-size: 0.9rem;
+}
+
+.login-form .campo {
+  color: #3e4c59;
+  font-size: 0.85rem;
+}
+
+.login-form .campo input {
+  padding: 0.5rem 0.25rem;
+  border: none;
+  border-bottom: 1px solid #cbd2d9;
+  border-radius: 0;
+  background: transparent;
+}
+
+.login-form .campo input:focus {
+  border-bottom-color: var(--color-brand-dark);
+}
+
+.login-btn {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .login-page {
+    flex-direction: column;
+  }
+
+  .login-hero {
+    min-height: 220px;
+    padding: 2rem;
+  }
+
+  .login-hero-content {
+    margin-top: 0.5rem;
+  }
+}
+
+/* Encabezado del terminal (TDSI-269) */
+.terminal-header {
+  border-left: 4px solid var(--color-brand-dark);
+  background-color: #fff;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.terminal-header h1 {
+  margin: 0 0 0.25rem;
+}
+
+.terminal-header-caja {
+  margin: 0;
+  color: #616e7c;
 }
