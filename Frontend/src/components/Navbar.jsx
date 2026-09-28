@@ -27,6 +27,7 @@ function Navbar() {
           <NavLink to="/facturacion">Facturación</NavLink>
           <NavLink to="/facturas">Facturas</NavLink>
           <NavLink to="/tablero">Tablero</NavLink>
+          <NavLink to="/documentos-factura">Documentos</NavLink>
         </>
       )}
 
