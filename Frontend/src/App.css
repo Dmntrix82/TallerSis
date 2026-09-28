@@ -3,7 +3,7 @@
   align-items: center;
   gap: 1.5rem;
   padding: 1rem 2rem;
-  background-color: #1f2933;
+  background-color: var(--color-brand-dark);
 }
 
 .navbar-brand {
@@ -13,13 +13,13 @@
 }
 
 .navbar a {
-  color: #cbd2d9;
+  color: rgba(255, 255, 255, 0.75);
   text-decoration: none;
 }
 
 .navbar a.active,
 .navbar a:hover {
-  color: #fff;
+  color: var(--color-brand-mint);
 }
 
 .container {
@@ -51,6 +51,11 @@
   border-radius: 4px;
 }
 
+.campo input:focus {
+  outline: none;
+  border-color: var(--color-brand-olive);
+}
+
 .metodo-opciones {
   border: 1px solid #cbd2d9;
   border-radius: 4px;
@@ -72,11 +77,15 @@
 
 .btn {
   padding: 0.5rem 1.25rem;
-  background-color: #1f2933;
+  background-color: var(--color-brand-dark);
   color: #fff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: var(--color-brand-olive);
 }
 
 .btn:disabled {
@@ -86,8 +95,53 @@
 
 .btn-secundario {
   background-color: transparent;
-  color: #1f2933;
-  border: 1px solid #1f2933;
+  color: var(--color-brand-dark);
+  border: 1px solid var(--color-brand-dark);
+}
+
+.btn-secundario:hover:not(:disabled) {
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+}
+
+/* Tipo de venta: "Sin Factura" / "Con NIT" (TDSI-285) */
+.tipo-venta-opciones {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.tipo-venta-opcion {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  background-color: #fff;
+  color: #3e4c59;
+}
+
+.tipo-venta-opcion:hover {
+  border-color: var(--color-brand-olive);
+}
+
+.tipo-venta-opcion.activa {
+  border-color: var(--color-brand-dark);
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+  font-weight: 600;
+}
+
+.factura-form,
+.factura-resumen,
+.factura-exito {
+  max-width: 420px;
+}
+
+.factura-acciones {
+  display: flex;
+  gap: 0.75rem;
 }
 .cliente-buscador {
   position: relative;

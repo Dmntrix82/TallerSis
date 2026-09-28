@@ -1,12 +1,15 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
 const facturacionRoutes = require("./routes/facturacionRoutes");
 const clientesRoutes = require("./routes/clientesRoutes");
-const anulacionesRoutes = require("./routes/anulacionesRoutes");       
+const anulacionesRoutes = require("./routes/anulacionesRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 
 const app = express();
+// Permite que el Frontend (Vite en localhost:5173, u otro origen en produccion) consuma este WS.
+app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 4002;
