@@ -24,7 +24,6 @@ app.get("/health", async (req, res) => {
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/pagos", pagoMixtoRoutes);
 app.use("/api/pagos", ventaOnlineRoutes);
-app.use("/api/pagos/ordenes", require("./routes/ordenesPagoRoutes"));
 
 app.use(errorHandler);
 
