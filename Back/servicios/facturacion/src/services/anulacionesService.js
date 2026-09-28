@@ -9,6 +9,11 @@ function err(mensaje, status = 400, detalle = null) {
 }
 
 const DECISIONES = ["APROBAR", "RECHAZAR"];
+const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000; // TDSI-95/384/385: 2 horas desde la emision
+
+function dentroDelPlazo(fechaEmision) {
+  return Date.now() - new Date(fechaEmision).getTime() <= PLAZO_ANULACION_MS;
+}
 
 /** TDSI-95/305: el cajero solicita la anulacion de una factura recien emitida */
 async function solicitarAnulacion({ factura_numero, motivo, solicitado_por } = {}) {
@@ -20,12 +25,19 @@ async function solicitarAnulacion({ factura_numero, motivo, solicitado_por } = {
   if (motivo.trim().length > 300)
     throw err("El motivo debe tener máximo 300 caracteres");
 
-  // TDSI-305: se debe registrar quien solicito la anulacion, no puede quedar anonima
   if (typeof solicitado_por !== "string" || !solicitado_por.trim())
     throw err("El usuario que solicita la anulación es obligatorio");
 
   const factura = await repo.buscarFacturaPorNumero(numero);
   if (!factura) throw err("Factura no encontrada", 404);
+
+  if (!dentroDelPlazo(factura.fecha)) {
+    throw err(
+      `La factura "${numero}" ya supero el plazo de 2 horas para solicitar su anulación.`,
+      409,
+      { fecha_emision: factura.fecha }
+    );
+  }
 
   return repo.crear(
     { factura_id: factura.id, motivo: motivo.trim(), solicitado_por: solicitado_por.trim() },
@@ -54,6 +66,14 @@ async function autorizarAnulacion(id, { supervisor_id, pin, decision, observacio
   if (!anulacion) throw err("Solicitud de anulación no encontrada", 404);
   if (anulacion.estado !== "Solicitada")
     throw err(`La solicitud ya fue resuelta (${anulacion.estado})`, 409);
+
+  if (!dentroDelPlazo(anulacion.factura_fecha)) {
+    throw err(
+      "Ya pasaron 2 horas desde la emisión de la factura; esta solicitud ya no se puede resolver.",
+      409,
+      { fecha_emision: anulacion.factura_fecha }
+    );
+  }
 
   const supervisor = await validarPin(supervisor_id, pin);
 

@@ -17,3 +17,15 @@ export function solicitarAnulacion({ factura_numero, motivo, solicitado_por }) {
     FACTURACION_API_BASE_URL,
   )
 }
+
+// TDSI-384/385: el supervisor aprueba o rechaza con su usuario + PIN, en el momento.
+export function autorizarAnulacion(anulacionId, { supervisor_id, pin, decision, observacion }) {
+  return apiFetch(
+    `/anulaciones/${anulacionId}/autorizar`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ supervisor_id, pin, decision, observacion }),
+    },
+    FACTURACION_API_BASE_URL,
+  )
+}

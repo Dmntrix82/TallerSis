@@ -54,9 +54,15 @@ async function obtenerFacturaCompleta(numero) {
 }
 
 async function listarFacturas() {
+  // anulacion_id: id de la solicitud de anulacion pendiente (si la hay), para que el
+  // frontend pueda autorizarla/rechazarla sin tener que buscarla por separado.
   const { rows } = await query(
-    `SELECT numero, cliente_nombre, cliente_nit, total, estado, impresa, fecha
-     FROM facturacion.facturas ORDER BY fecha DESC`
+    `SELECT f.numero, f.cliente_nombre, f.cliente_nit, f.total, f.estado, f.impresa, f.fecha,
+            fa.id AS anulacion_id
+     FROM facturacion.facturas f
+     LEFT JOIN facturacion.factura_anulaciones fa
+       ON fa.factura_id = f.id AND fa.estado = 'Solicitada'
+     ORDER BY f.fecha DESC`
   );
   return rows;
 }

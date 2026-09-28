@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listarFacturas, solicitarAnulacion } from '../api/facturas.js'
+import { autorizarAnulacion, listarFacturas, solicitarAnulacion } from '../api/facturas.js'
 import { useAuth } from '../context/AuthContext.jsx'
 
 const MOTIVO_MAX = 300
@@ -26,6 +26,12 @@ function Facturas() {
   const [errorApi, setErrorApi] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [confirmacion, setConfirmacion] = useState(null)
+
+  // Autorización del supervisor (TDSI-384/385): código puntual, no es una sesión aparte.
+  const [facturaParaAutorizar, setFacturaParaAutorizar] = useState(null)
+  const [credenciales, setCredenciales] = useState({ supervisor_id: '', pin: '', observacion: '' })
+  const [errorAutorizacion, setErrorAutorizacion] = useState(null)
+  const [autorizando, setAutorizando] = useState(false)
 
   async function cargarFacturas() {
     try {
@@ -101,6 +107,52 @@ function Facturas() {
     }
   }
 
+  function abrirAutorizacion(factura) {
+    setFacturaParaAutorizar(factura)
+    setCredenciales({ supervisor_id: '', pin: '', observacion: '' })
+    setErrorAutorizacion(null)
+    setConfirmacion(null)
+  }
+
+  function cancelarAutorizacion() {
+    setFacturaParaAutorizar(null)
+    setErrorAutorizacion(null)
+  }
+
+  function actualizarCredencial(campo, valor) {
+    setCredenciales((prev) => ({ ...prev, [campo]: valor }))
+  }
+
+  // TDSI-384/385: el supervisor escribe su usuario + PIN ahí mismo, en la pantalla del cajero.
+  async function resolverAnulacion(decision) {
+    if (!credenciales.supervisor_id.trim() || !credenciales.pin.trim()) {
+      setErrorAutorizacion('Ingrese el usuario y el PIN del supervisor.')
+      return
+    }
+
+    setErrorAutorizacion(null)
+    setAutorizando(true)
+    try {
+      await autorizarAnulacion(facturaParaAutorizar.anulacion_id, {
+        supervisor_id: credenciales.supervisor_id.trim(),
+        pin: credenciales.pin.trim(),
+        decision,
+        observacion: credenciales.observacion.trim() || undefined,
+      })
+      setConfirmacion(
+        decision === 'APROBAR'
+          ? `La factura ${facturaParaAutorizar.numero} quedó anulada.`
+          : `La anulación de ${facturaParaAutorizar.numero} fue rechazada; la factura sigue Emitida.`,
+      )
+      setFacturaParaAutorizar(null)
+      await cargarFacturas()
+    } catch (err) {
+      setErrorAutorizacion(err.message)
+    } finally {
+      setAutorizando(false)
+    }
+  }
+
   return (
     <section>
       <h1>Facturas</h1>
@@ -142,6 +194,12 @@ function Facturas() {
                         Solicitar anulación
                       </button>
                     )}
+                    {/* Autorización del supervisor (TDSI-384/385) */}
+                    {factura.estado === 'AnulacionSolicitada' && factura.anulacion_id && (
+                      <button type="button" className="btn btn-secundario" onClick={() => abrirAutorizacion(factura)}>
+                        Autorizar
+                      </button>
+                    )}
                   </td>
                 </tr>
               )
@@ -178,6 +236,58 @@ function Facturas() {
             </button>
           </div>
         </form>
+      )}
+
+      {facturaParaAutorizar && (
+        <div className="anulacion-form">
+          <h2>Autorizar anulación de {facturaParaAutorizar.numero}</h2>
+          <p className="anulacion-solicitante">
+            Se necesita el usuario y el PIN de un supervisor de caja para aprobar o rechazar.
+          </p>
+
+          <label className="campo">
+            Usuario del supervisor
+            <input
+              type="text"
+              value={credenciales.supervisor_id}
+              onChange={(e) => actualizarCredencial('supervisor_id', e.target.value)}
+            />
+          </label>
+
+          <label className="campo">
+            PIN
+            <input
+              type="password"
+              inputMode="numeric"
+              value={credenciales.pin}
+              onChange={(e) => actualizarCredencial('pin', e.target.value)}
+            />
+          </label>
+
+          <label className="campo">
+            Observación (opcional)
+            <textarea
+              rows={2}
+              maxLength={300}
+              value={credenciales.observacion}
+              onChange={(e) => actualizarCredencial('observacion', e.target.value)}
+            />
+          </label>
+
+          {errorAutorizacion && <p className="error">Error: {errorAutorizacion}</p>}
+
+          <div className="anulacion-acciones">
+            <button type="button" className="btn btn-secundario" onClick={cancelarAutorizacion} disabled={autorizando}>
+              Cancelar
+            </button>
+            <button type="button" className="btn btn-secundario" onClick={() => resolverAnulacion('RECHAZAR')} disabled={autorizando}>
+              Rechazar
+            </button>
+            <button type="button" className="btn" onClick={() => resolverAnulacion('APROBAR')} disabled={autorizando}>
+              {autorizando ? 'Procesando...' : 'Aprobar'}
+            </button>
+          </div>
+        </div>
       )}
     </section>
   )
