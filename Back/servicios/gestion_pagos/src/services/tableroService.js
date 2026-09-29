@@ -1,5 +1,6 @@
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/tableroRepo");
+const pagosRepo = require("../data/pagosRepo");
 
 // TDSI-376: no hay HU que pida gestionar multiples sucursales aun, solo existe esta.
 const SUCURSAL = "Sucursal Central";
@@ -40,4 +41,31 @@ async function obtenerIngresosDelDia(fecha) {
   };
 }
 
-module.exports = { obtenerIngresosDelDia };
+/** TDSI-330: que caja, que cajero y que cliente generan mas (historico completo). */
+async function obtenerRankings() {
+  const [cajas, cajeros, clientes] = await Promise.all([
+    pagosRepo.rankingCajas(),
+    pagosRepo.rankingCajeros(), // sin limite: "todos los cajeros que hay"
+    pagosRepo.rankingClientes(10),
+  ]);
+  return { cajas, cajeros, clientes };
+}
+
+/** TDSI-331: serie de los ultimos N dias (incluye dias en 0), para el grafico de montanas. */
+async function obtenerSerieDiaria(dias = 14) {
+  const n = Math.min(Math.max(Number(dias) || 14, 1), 90);
+  const hoy = hoyLocal();
+  const base = new Date(`${hoy}T00:00:00`);
+
+  const fechas = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(base);
+    d.setDate(d.getDate() - i);
+    fechas.push(d.toLocaleDateString("en-CA"));
+  }
+
+  const totales = await Promise.all(fechas.map((f) => repo.totalPorFecha(f)));
+  return fechas.map((fecha, i) => ({ fecha, total: totales[i] }));
+}
+
+module.exports = { obtenerIngresosDelDia, obtenerRankings, obtenerSerieDiaria };

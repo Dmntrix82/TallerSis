@@ -81,3 +81,23 @@ export function anularVenta(id_transaccion, { cajero, supervisor_id, pin }) {
     GESTION_PAGOS_API_BASE_URL,
   )
 }
+
+// TDSI-329: lista de cajeros con al menos una venta, para la pantalla "Cajeros" del administrador.
+export function listarCajeros() {
+  return apiFetch('/api/pagos/cajeros', {}, GESTION_PAGOS_API_BASE_URL)
+}
+
+// TDSI-327: historial de compras de un cliente (NIT o CI), para la pantalla "Clientes" del administrador.
+export function historialCliente(tipo_documento, numero) {
+  const params = new URLSearchParams({ tipo_documento, numero })
+  return apiFetch(`/api/pagos/historial-cliente?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
+}
+
+// TDSI-328: total ganado por el negocio desde el inicio (todas las cajas), para el tablero.
+export function obtenerTotalesGenerales({ desde, hasta } = {}) {
+  const params = new URLSearchParams()
+  if (desde) params.set('desde', desde)
+  if (hasta) params.set('hasta', hasta)
+  const query = params.toString()
+  return apiFetch(`/api/pagos/totales-generales${query ? `?${query}` : ''}`, {}, GESTION_PAGOS_API_BASE_URL)
+}

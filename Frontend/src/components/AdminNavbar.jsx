@@ -15,13 +15,7 @@ function AdminNavbar() {
       <span className="navbar-brand">TallerSis · Administración</span>
       <NavLink to="/admin/cajeros">Cajeros</NavLink>
       <NavLink to="/admin/clientes">Clientes</NavLink>
-      <NavLink to="/admin/consulta-transaccion">Consultar transacción</NavLink>
-      <NavLink to="/admin/generar-token">Sistema Cliente</NavLink>
       <NavLink to="/admin/tablero">Tablero</NavLink>
-      <NavLink to="/admin/documentos-factura">Documentos</NavLink>
-      <NavLink to="/admin/egresos">Egresos</NavLink>
-      <NavLink to="/admin/ordenes-proveedores">Órdenes a Prov.</NavLink>
-      <NavLink to="/admin/anulaciones-online">Anulaciones</NavLink>
 
       <div className="navbar-sesion">
         <span className="navbar-cajero">{administrador?.nombre}</span>

@@ -5,16 +5,10 @@ import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import Cajeros from './pages/Cajeros.jsx'
 import Pagos from './pages/Pagos.jsx'
-import AnulacionesOnlinePage from './pages/AnulacionesOnline.jsx'
 import Clientes from './pages/Clientes.jsx'
 import VentasOnline from './pages/VentasOnline';
-import ConsultaTransaccion from './pages/ConsultaTransaccion.jsx'
-import GenerarToken from './pages/GenerarToken.jsx'
 import Facturas from './pages/Facturas.jsx'
 import TableroIngresos from './pages/TableroIngresos.jsx'
-import DocumentosFactura from './pages/DocumentosFactura.jsx'
-import EgresoProveedor from './pages/EgresoProveedor.jsx'
-import OrdenesProveedores from './pages/OrdenesProveedores.jsx'
 import CierreCaja from './pages/CierreCaja.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
@@ -51,14 +45,8 @@ function App() {
           {/* Panel de Administración */}
           <Route path="/admin/cajeros" element={<RutaProtegidaAdmin><Cajeros /></RutaProtegidaAdmin>} />
           <Route path="/admin/clientes" element={<RutaProtegidaAdmin><Clientes /></RutaProtegidaAdmin>} />
-          <Route path="/admin/consulta-transaccion" element={<RutaProtegidaAdmin><ConsultaTransaccion /></RutaProtegidaAdmin>} />
-          <Route path="/admin/generar-token" element={<RutaProtegidaAdmin><GenerarToken /></RutaProtegidaAdmin>} />
           <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
-          <Route path="/admin/documentos-factura" element={<RutaProtegidaAdmin><DocumentosFactura /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
-          <Route path="/admin/egresos" element={<RutaProtegidaAdmin><EgresoProveedor /></RutaProtegidaAdmin>} />
-          <Route path="/admin/ordenes-proveedores" element={<RutaProtegidaAdmin><OrdenesProveedores /></RutaProtegidaAdmin>} />
-          <Route path="/admin/anulaciones-online" element={<RutaProtegidaAdmin><AnulacionesOnlinePage /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

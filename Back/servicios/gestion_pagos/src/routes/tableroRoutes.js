@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { obtenerIngresosDelDia } = require("../services/tableroService");
+const { obtenerIngresosDelDia, obtenerRankings, obtenerSerieDiaria } = require("../services/tableroService");
 const { tableroEvents } = require("../utils/tableroEvents");
 
 const router = Router();
@@ -30,5 +30,15 @@ router.get("/ingresos-dia/stream", async (req, res) => {
     tableroEvents.off("actualizacion", enviar);
   });
 });
+
+// TDSI-330: rankings (que caja/cajero/cliente generan mas), historico completo.
+router.get("/rankings", wrap(async (req, res) => {
+  res.json({ ok: true, data: await obtenerRankings() });
+}));
+
+// TDSI-331: serie de los ultimos N dias (?dias=14), para el grafico de montanas.
+router.get("/serie-diaria", wrap(async (req, res) => {
+  res.json({ ok: true, data: await obtenerSerieDiaria(req.query.dias) });
+}));
 
 module.exports = router;

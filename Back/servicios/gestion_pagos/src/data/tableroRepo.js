@@ -38,18 +38,31 @@ async function totalIngresosVirtualesEnFecha(fecha) {
  */
 async function totalesPorCajaEnFecha(fecha) {
   const { rows } = await query(
-    `SELECT COALESCE(t.caja_id, pm.caja_id, 'SIN_CAJA') AS caja_id,
+    `SELECT COALESCE(t.caja_id, pm.caja_id) AS caja_id,
             COALESCE(SUM(t.monto), 0) AS total,
             COUNT(DISTINCT t.id_transaccion)::int AS cantidad
      FROM pagos.transacciones t
      LEFT JOIN pagos.pagos_mixtos pm ON pm.id = t.pago_mixto_id
      WHERE t.estado = 'Registrado'
        AND t.fecha >= $1::date AND t.fecha < $1::date + INTERVAL '1 day'
-     GROUP BY COALESCE(t.caja_id, pm.caja_id, 'SIN_CAJA')
+       AND COALESCE(t.caja_id, pm.caja_id) IS NOT NULL
+     GROUP BY COALESCE(t.caja_id, pm.caja_id)
      ORDER BY caja_id`,
     [fecha]
   );
   return rows.map((r) => ({ ...r, total: num(r.total) }));
 }
 
-module.exports = { totalIngresosFisicosEnFecha, totalIngresosVirtualesEnFecha, totalesPorCajaEnFecha };
+/** TDSI-331: total general (todos los metodos) de un dia puntual, para la serie diaria. */
+async function totalPorFecha(fecha) {
+  const { rows } = await query(
+    `SELECT COALESCE(SUM(monto), 0) AS total
+     FROM pagos.transacciones
+     WHERE estado = 'Registrado'
+       AND fecha >= $1::date AND fecha < $1::date + INTERVAL '1 day'`,
+    [fecha]
+  );
+  return num(rows[0].total);
+}
+
+module.exports = { totalIngresosFisicosEnFecha, totalIngresosVirtualesEnFecha, totalesPorCajaEnFecha, totalPorFecha };

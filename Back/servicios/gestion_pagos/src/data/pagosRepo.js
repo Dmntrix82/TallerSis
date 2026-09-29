@@ -179,6 +179,168 @@ async function reporteTurno(caja_id, desde, hasta) {
   };
 }
 
+/**
+ * TDSI-329: lista de cajeros que registraron al menos una venta, con sus
+ * totales, para la pantalla "Cajeros" del administrador. No existe un registro
+ * de cuentas de cajero como tal (las cuentas viven en Supabase Auth); esta es
+ * la fuente mas confiable de "quienes han trabajado" en el sistema.
+ */
+async function listarCajeros() {
+  const { rows } = await query(
+    `SELECT cajero,
+            COUNT(DISTINCT id_transaccion) FILTER (WHERE estado = 'Registrado') AS cantidad_ventas,
+            COALESCE(SUM(monto) FILTER (WHERE estado = 'Registrado'), 0) AS total_facturado,
+            MIN(fecha) AS primera_venta,
+            MAX(fecha) AS ultima_venta
+       FROM pagos.transacciones
+      WHERE cajero IS NOT NULL
+      GROUP BY cajero
+      ORDER BY cajero`
+  );
+  return rows.map((r) => ({
+    cajero: r.cajero,
+    cantidadVentas: Number(r.cantidad_ventas),
+    totalFacturado: num(r.total_facturado),
+    primeraVenta: r.primera_venta,
+    ultimaVenta: r.ultima_venta,
+  }));
+}
+
+/**
+ * TDSI-330: rankings para el tablero del administrador -- que caja, que cajero
+ * y que cliente generan mas (todo el historico, no solo un dia).
+ */
+async function rankingCajas() {
+  const { rows } = await query(
+    `SELECT caja_id, SUM(monto) AS total, COUNT(DISTINCT id_transaccion)::int AS cantidad
+       FROM pagos.transacciones
+      WHERE estado = 'Registrado' AND caja_id IS NOT NULL
+      GROUP BY caja_id
+      ORDER BY total DESC`
+  );
+  return rows.map((r) => ({ caja_id: r.caja_id, total: num(r.total), cantidadVentas: r.cantidad }));
+}
+
+// TDSI-330: sin limite por defecto -- se pide "todos los cajeros que hay",
+// no solo un top acotado (no existe un registro de cuentas aparte de ventas).
+async function rankingCajeros(limite = null) {
+  const { rows } = await query(
+    `SELECT cajero, SUM(monto) AS total, COUNT(DISTINCT id_transaccion)::int AS cantidad
+       FROM pagos.transacciones
+      WHERE estado = 'Registrado' AND cajero IS NOT NULL
+      GROUP BY cajero
+      ORDER BY total DESC
+      ${limite ? "LIMIT $1" : ""}`,
+    limite ? [limite] : []
+  );
+  return rows.map((r) => ({ cajero: r.cajero, total: num(r.total), cantidadVentas: r.cantidad }));
+}
+
+async function rankingClientes(limite = 5) {
+  const { rows } = await query(
+    `SELECT tipo_documento, nit AS numero, MAX(razon_social) AS razon_social,
+            COUNT(DISTINCT id_transaccion)::int AS cantidad, SUM(monto) AS total
+       FROM pagos.transacciones
+      WHERE estado = 'Registrado' AND nit IS NOT NULL
+      GROUP BY tipo_documento, nit
+      ORDER BY cantidad DESC, total DESC
+      LIMIT $1`,
+    [limite]
+  );
+  return rows.map((r) => ({
+    tipo_documento: r.tipo_documento,
+    numero: r.numero,
+    razon_social: r.razon_social,
+    cantidadCompras: r.cantidad,
+    totalGastado: num(r.total),
+  }));
+}
+
+/**
+ * TDSI-327: historial de compras de un cliente (NIT o CI), para que el
+ * administrador vea cuantas veces vino y que factura cada vez.
+ */
+async function historialPorDocumento(tipo_documento, numero) {
+  const { rows } = await query(
+    `SELECT id_transaccion,
+            MIN(fecha) AS fecha,
+            SUM(monto) AS total,
+            array_agg(metodo ORDER BY id) AS metodos,
+            MAX(razon_social) AS razon_social,
+            MAX(caja_id) AS caja_id,
+            MAX(cajero) AS cajero,
+            bool_and(estado = 'Anulado') AS anulado
+       FROM pagos.transacciones
+      WHERE tipo_documento = $1 AND nit = $2
+      GROUP BY id_transaccion
+      ORDER BY MIN(fecha) DESC`,
+    [tipo_documento, numero]
+  );
+  return rows.map((r) => ({
+    id_transaccion: r.id_transaccion,
+    fecha: r.fecha,
+    total: num(r.total),
+    metodos: r.metodos,
+    razon_social: r.razon_social,
+    caja_id: r.caja_id,
+    cajero: r.cajero,
+    estado: r.anulado ? 'Anulado' : 'Registrado',
+  }));
+}
+
+/**
+ * TDSI-328: totales de todas las ventas del sistema (todas las cajas), para el
+ * tablero del administrador -- cuanto se ha ganado en total desde el inicio.
+ */
+async function totalesGenerales(desde, hasta) {
+  const { rows: porMetodo } = await query(
+    `SELECT metodo, SUM(monto) AS total, COUNT(*)::int AS operaciones
+       FROM pagos.transacciones
+      WHERE estado = 'Registrado' AND fecha >= $1 AND fecha <= $2
+      GROUP BY metodo`,
+    [desde, hasta]
+  );
+
+  const { rows: ventas } = await query(
+    `SELECT id_transaccion, SUM(monto) AS total, bool_and(estado = 'Anulado') AS anulado
+       FROM pagos.transacciones
+      WHERE fecha >= $1 AND fecha <= $2
+      GROUP BY id_transaccion`,
+    [desde, hasta]
+  );
+
+  const totales = { Efectivo: 0, Tarjeta: 0, QR: 0 };
+  const operacionesPorMetodo = { Efectivo: 0, Tarjeta: 0, QR: 0 };
+  for (const fila of porMetodo) {
+    totales[fila.metodo] = num(fila.total);
+    operacionesPorMetodo[fila.metodo] = fila.operaciones;
+  }
+
+  let cantidadVentas = 0;
+  let cantidadAnuladas = 0;
+  let montoAnulado = 0;
+  for (const v of ventas) {
+    if (v.anulado) {
+      cantidadAnuladas += 1;
+      montoAnulado += num(v.total);
+    } else {
+      cantidadVentas += 1;
+    }
+  }
+
+  return {
+    totalEfectivo: totales.Efectivo,
+    totalTarjeta: totales.Tarjeta,
+    totalQR: totales.QR,
+    totalDigital: totales.Tarjeta + totales.QR,
+    totalGeneral: totales.Efectivo + totales.Tarjeta + totales.QR,
+    operacionesPorMetodo,
+    cantidadVentas,
+    cantidadAnuladas,
+    montoAnulado,
+  };
+}
+
 async function contarTransacciones() {
   const { rows } = await query(`SELECT COUNT(*)::int AS total FROM pagos.transacciones`);
   return rows[0].total;
@@ -280,6 +442,12 @@ module.exports = {
   listarPorCajero,
   anularTransaccion,
   reporteTurno,
+  listarCajeros,
+  rankingCajas,
+  rankingCajeros,
+  rankingClientes,
+  historialPorDocumento,
+  totalesGenerales,
   contarTransacciones,
   listarHistorial,
   existePagoMixto,

@@ -2,7 +2,7 @@ const { Router } = require("express");
 const { registrarPagoSimple, obtenerHistorial, buscarClientePorDocumento } = require("../services/pagoSimpleService");
 const { construirFacturaDigital, enviarFacturaDeTransaccion } = require("../services/facturaDigitalService");
 const { generarFacturaPdfBuffer } = require("../services/facturaPdfService");
-const { listarMisFacturas, anularVenta, reporteTurno } = require("../services/ventasCajeroService");
+const { listarMisFacturas, anularVenta, reporteTurno, historialCliente, totalesGenerales, listarCajeros } = require("../services/ventasCajeroService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -71,6 +71,24 @@ router.post("/:id_transaccion/anular", wrap(async (req, res) => {
 // TDSI-323: reporte de ventas de una caja (usado por gestion_caja para el cierre de turno).
 router.get("/reporte-turno", wrap(async (req, res) => {
   const r = await reporteTurno({ caja_id: req.query.caja_id, desde: req.query.desde, hasta: req.query.hasta });
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-329: lista de cajeros con al menos una venta, para la pantalla "Cajeros" del administrador.
+router.get("/cajeros", wrap(async (req, res) => {
+  const r = await listarCajeros();
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-327: historial de compras de un cliente (NIT o CI), para el panel de administrador.
+router.get("/historial-cliente", wrap(async (req, res) => {
+  const r = await historialCliente(req.query.tipo_documento, req.query.numero);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-328: total ganado por el negocio desde el inicio (todas las cajas), para el tablero.
+router.get("/totales-generales", wrap(async (req, res) => {
+  const r = await totalesGenerales({ desde: req.query.desde, hasta: req.query.hasta });
   res.json({ ok: true, data: r });
 }));
 

@@ -2,6 +2,7 @@ const { AppError } = require("../utils/AppError");
 const repo = require("../data/pagosRepo");
 const { validarSupervisor } = require("./supervisorProxy");
 const { emitirActualizacion } = require("../utils/tableroEvents");
+const { validarFormatoDocumento } = require("../utils/documento");
 
 // TDSI-306: mismo plazo de 2 horas que la anulacion de facturas en facturacion.
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000;
@@ -89,4 +90,54 @@ async function reporteTurno({ caja_id, desde, hasta }) {
   return repo.reporteTurno(caja_id, desdeFecha, hastaFecha);
 }
 
-module.exports = { listarMisFacturas, anularVenta, reporteTurno };
+/**
+ * TDSI-327: historial de compras de un cliente (NIT o CI), para el buscador de
+ * clientes del administrador -- cuantas veces vino y que ha facturado.
+ */
+async function historialCliente(tipo_documento, numero) {
+  const errorFormato = validarFormatoDocumento(tipo_documento, numero);
+  if (errorFormato) {
+    throw new AppError(errorFormato, 400);
+  }
+
+  const numeroLimpio = String(numero).trim();
+  const facturas = await repo.historialPorDocumento(tipo_documento, numeroLimpio);
+  if (!facturas.length) {
+    throw new AppError(`No se encontraron compras para ese ${tipo_documento}.`, 404, { tipo_documento, numero: numeroLimpio });
+  }
+
+  const vigentes = facturas.filter((f) => f.estado !== "Anulado");
+
+  return {
+    tipo_documento,
+    numero: numeroLimpio,
+    razon_social: facturas[0].razon_social,
+    cantidadCompras: vigentes.length,
+    totalGastado: vigentes.reduce((acc, f) => acc + f.total, 0),
+    cantidadAnuladas: facturas.length - vigentes.length,
+    facturas,
+  };
+}
+
+/**
+ * TDSI-328: total ganado por el negocio desde el inicio (todas las cajas), para
+ * el tablero del administrador. "desde"/"hasta" opcionales (por defecto, todo el historico).
+ */
+async function totalesGenerales({ desde, hasta } = {}) {
+  const desdeFecha = desde ? new Date(`${desde}T00:00:00`) : new Date(0);
+  const hastaFecha = hasta ? new Date(`${hasta}T23:59:59.999`) : new Date();
+  if (Number.isNaN(desdeFecha.getTime())) {
+    throw new AppError('El parametro "desde" no es una fecha valida.', 400);
+  }
+  if (Number.isNaN(hastaFecha.getTime())) {
+    throw new AppError('El parametro "hasta" no es una fecha valida.', 400);
+  }
+  return repo.totalesGenerales(desdeFecha, hastaFecha);
+}
+
+/** TDSI-329: lista de cajeros con al menos una venta, para el panel de administrador. */
+async function listarCajeros() {
+  return repo.listarCajeros();
+}
+
+module.exports = { listarMisFacturas, anularVenta, reporteTurno, historialCliente, totalesGenerales, listarCajeros };

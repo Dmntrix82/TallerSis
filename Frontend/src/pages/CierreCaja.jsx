@@ -5,8 +5,15 @@ import { obtenerTurnoActual } from '../api/turnos.js'
 import { useAuth } from '../context/AuthContext.jsx'
 
 function CierreCaja() {
-  const { cajero } = useAuth()
+  const { cajero, cerrarSesion } = useAuth()
   const navigate = useNavigate()
+
+  // Tras cerrar la caja, el turno queda cerrado: se vuelve a la pantalla de
+  // login para empezar de nuevo (hace falta un supervisor para reabrir la caja).
+  function volverAIniciarSesion() {
+    cerrarSesion()
+    navigate('/login')
+  }
 
   const [turnoActual, setTurnoActual] = useState(null) // { id, codigo } del turno abierto en la caja
   const [cargandoTurno, setCargandoTurno] = useState(true)
@@ -208,7 +215,7 @@ function CierreCaja() {
           <p style={{ color: '#064e3b', marginBottom: '1rem' }}>
             El turno #{turnoActual.codigo ?? turnoId} ha sido cerrado. El reporte en PDF se abrió en una pestaña nueva.
           </p>
-          <button type="button" className="btn" onClick={() => navigate('/')}>Volver al Inicio</button>
+          <button type="button" className="btn" onClick={volverAIniciarSesion}>Volver al Inicio</button>
         </div>
       )}
     </section>
