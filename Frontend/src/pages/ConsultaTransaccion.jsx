@@ -53,7 +53,7 @@ function ConsultaTransaccion() {
             type="text"
             value={accessToken}
             onChange={(e) => setAccessToken(e.target.value)}
-            placeholder="Generado en la pantalla de Credenciales"
+            placeholder="Generado en la pantalla de Sistema Cliente"
           />
         </label>
 

@@ -1,7 +1,9 @@
 const { aCentavos, aMonto, porcentaje } = require("../utils/money");
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/pagosRepo");
+const { guardarClienteEnFacturacion } = require("./clientesProxy");
 const { emitirActualizacion } = require("../utils/tableroEvents");
+const { TIPOS_DOCUMENTO_VALIDOS, validarFormatoDocumento } = require("../utils/documento");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
@@ -79,15 +81,37 @@ function calcularDivision({ total, metodos, efectivoRecibido = null }) {
   return { total: aMonto(totalC), tipoPago: "Mixto", cuadra: true, restante: 0, cambio, metodos: detalle };
 }
 
-/** TDSI-276 + TDSI-277: guarda en Postgres (cabecera + detalle + historial de caja). */
+/**
+ * TDSI-276 + TDSI-277: guarda en Postgres (cabecera + detalle + historial de caja).
+ * id_transaccion es opcional: si no viene (caso normal desde la pantalla de Pagos), lo
+ * genera registrarPagoMixtoCompleto con el mismo correlativo que el pago simple.
+ * tipo_documento/nit/razon_social/telefono siguen las mismas reglas que el pago simple.
+ */
 async function registrarPagoMixto(payload) {
-  const { id_transaccion, cajaId, turnoId } = payload;
-  if (!id_transaccion) throw new AppError("El campo 'id_transaccion' es obligatorio", 400);
+  const { id_transaccion, cajaId, turnoId, tipo_documento, nit, razon_social, telefono, email, cajero } = payload;
 
-  if (await repo.existePagoMixto(id_transaccion))
+  if (id_transaccion && await repo.existePagoMixto(id_transaccion))
     throw new AppError("Esta transaccion ya tiene un pago mixto registrado", 409, { id_transaccion });
 
+  const tipoDocumento = tipo_documento || null;
+  if (tipoDocumento && !TIPOS_DOCUMENTO_VALIDOS.includes(tipoDocumento)) {
+    throw new AppError(`El tipo de documento debe ser NIT, CI, o no indicarse.`, 400);
+  }
+  if (tipoDocumento) {
+    if (!nit || !razon_social) {
+      throw new AppError(`Si elige ${tipoDocumento}, el número de documento y la razón social son obligatorios.`, 400);
+    }
+    const errorFormato = validarFormatoDocumento(tipoDocumento, nit);
+    if (errorFormato) {
+      throw new AppError(errorFormato, 400, { [tipoDocumento.toLowerCase()]: nit });
+    }
+  }
+
   const calculo = calcularDivision(payload);
+
+  const clienteAutoguardado = tipoDocumento === "NIT"
+    ? await guardarClienteEnFacturacion({ nit, razon_social, email })
+    : { creado: false, cliente: null };
 
   const resultado = await repo.registrarPagoMixtoCompleto({
     id_transaccion,
@@ -95,10 +119,15 @@ async function registrarPagoMixto(payload) {
     turnoId,
     total: calculo.total,
     metodos: calculo.metodos,
+    nit: tipoDocumento ? nit : null,
+    razon_social: tipoDocumento ? razon_social : null,
+    tipo_documento: tipoDocumento,
+    telefono,
+    cajero,
   });
 
   emitirActualizacion();
-  return { ...resultado, cambio: calculo.cambio };
+  return { ...resultado, cambio: calculo.cambio, clienteGuardado: clienteAutoguardado.creado, cliente: clienteAutoguardado.cliente };
 }
 
 async function obtenerPorTransaccion(id_transaccion) {

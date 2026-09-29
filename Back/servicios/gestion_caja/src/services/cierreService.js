@@ -1,50 +1,43 @@
 const { AppError } = require("../utils/AppError");
 const { aCentavos, aMonto } = require("../utils/money");
 const turnosRepo = require("../data/turnosRepo");
-const movimientosRepo = require("../data/movimientosRepo");
+const { obtenerReporteVentas } = require("./pagosProxy");
+const { validarSupervisor } = require("./supervisorProxy");
 
-/** TDSI-319: calcula el total recaudado durante el turno, desglosado por método. */
+/**
+ * TDSI-319/323: calcula el total recaudado durante el turno, desglosado por método.
+ * Consulta a gestion_pagos (pagos.transacciones), que es la fuente real de las ventas;
+ * caja.movimientos nunca se llego a alimentar desde ningun microservicio, por eso ya
+ * no se usa aca. "hasta" es el cierre del turno si ya esta cerrado, o el momento actual
+ * si todavia esta abierto (para poder previsualizar el reporte antes de cerrar).
+ */
 async function calcularTotalRecaudado(turnoId) {
   const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
   if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
 
-  const movimientos = await movimientosRepo.listarPorTurno(turnoId);
+  const hasta = turno.cerrado_en || new Date();
+  const reporteVentas = await obtenerReporteVentas({ caja_id: turno.caja_id, desde: turno.abierto_en, hasta });
 
-  const porMetodo = {};
-  let ingresosC = 0;
-  let egresosC = 0;
-
-  for (const m of movimientos) {
-    if (m.tipo === "APERTURA") continue;
-    const c = aCentavos(m.monto);
-    if (!porMetodo[m.metodo]) {
-      porMetodo[m.metodo] = { ingresos: 0, egresos: 0, neto: 0, operaciones: 0 };
-    }
-    porMetodo[m.metodo].operaciones += 1;
-    if (m.tipo === "INGRESO") {
-      porMetodo[m.metodo].ingresos += c;
-      ingresosC += c;
-    } else {
-      porMetodo[m.metodo].egresos += c;
-      egresosC += c;
-    }
-  }
-
-  for (const metodo of Object.keys(porMetodo)) {
-    const v = porMetodo[metodo];
-    v.neto = aMonto(v.ingresos - v.egresos);
-    v.ingresos = aMonto(v.ingresos);
-    v.egresos = aMonto(v.egresos);
-  }
+  const porMetodo = {
+    Efectivo: { ingresos: reporteVentas.totalEfectivo, egresos: 0, neto: reporteVentas.totalEfectivo, operaciones: reporteVentas.operacionesPorMetodo.Efectivo },
+    Tarjeta: { ingresos: reporteVentas.totalTarjeta, egresos: 0, neto: reporteVentas.totalTarjeta, operaciones: reporteVentas.operacionesPorMetodo.Tarjeta },
+    QR: { ingresos: reporteVentas.totalQR, egresos: 0, neto: reporteVentas.totalQR, operaciones: reporteVentas.operacionesPorMetodo.QR },
+  };
 
   return {
     turnoId,
     caja_id: turno.caja_id,
-    totalIngresos: aMonto(ingresosC),
-    totalEgresos: aMonto(egresosC),
-    totalRecaudado: aMonto(ingresosC - egresosC),
-    operaciones: movimientos.length,
+    totalIngresos: reporteVentas.totalGeneral,
+    totalEgresos: 0,
+    totalRecaudado: reporteVentas.totalGeneral,
+    operaciones: reporteVentas.cantidadVentas,
     porMetodo,
+    resumenVentas: {
+      totalDigital: reporteVentas.totalDigital,
+      cantidadVentas: reporteVentas.cantidadVentas,
+      cantidadAnuladas: reporteVentas.cantidadAnuladas,
+      montoAnulado: reporteVentas.montoAnulado,
+    },
   };
 }
 
@@ -94,13 +87,16 @@ async function generarReporteCierre(turnoId, efectivoContado = null) {
     turnoId,
     codigo: turno.codigo,
     cajaId: turno.caja_id,
-    cajero: turno.cajero_nombre,
+    cajero: turno.cajero_nombre || turno.cajero_id,
     abiertoEn: turno.abierto_en,
+    cerradoEn: turno.cerrado_en,
+    cerradoPorNombre: turno.cerrado_por_nombre || turno.cerrado_por,
     totalesPorMetodo: recaudado.porMetodo,
     totalIngresos: recaudado.totalIngresos,
     totalEgresos: recaudado.totalEgresos,
     totalRecaudado: recaudado.totalRecaudado,
     operaciones: recaudado.operaciones,
+    resumenVentas: recaudado.resumenVentas,
     arqueoEfectivo: arqueo,
   };
 }
@@ -134,6 +130,16 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
   L.push(col("TOTAL EGRESOS", r.totalEgresos.toFixed(2)));
   L.push(col("TOTAL RECAUDADO", r.totalRecaudado.toFixed(2)));
 
+  if (r.resumenVentas) {
+    L.push(linea());
+    L.push(col("Total en digital (Tarjeta+QR)", r.resumenVentas.totalDigital.toFixed(2)));
+    L.push(col("Cantidad de ventas", r.resumenVentas.cantidadVentas));
+    L.push(col("Facturas anuladas", r.resumenVentas.cantidadAnuladas));
+    if (r.resumenVentas.cantidadAnuladas > 0) {
+      L.push(col("  Monto anulado", r.resumenVentas.montoAnulado.toFixed(2)));
+    }
+  }
+
   if (r.arqueoEfectivo) {
     L.push(linea());
     L.push("ARQUEO DE EFECTIVO");
@@ -149,22 +155,33 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
   return L.join("\n");
 }
 
-/** TDSI-322: cierra el turno (guarda el arqueo) y bloquea nuevas ventas en esa caja. */
-async function cerrarTurno(turnoId, efectivoContado) {
+/**
+ * TDSI-322/325/326: cierra el turno y bloquea nuevas ventas en esa caja. Igual que
+ * la apertura, el cajero no puede cerrar la caja solo: necesita que un supervisor
+ * ponga su usuario + PIN (validado via supervisorProxy.js). Ya no pide el monto
+ * contado en efectivo: el cierre se basa solo en lo que registro el sistema.
+ */
+async function cerrarTurno(turnoId, { supervisor_id, pin } = {}) {
   const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
   if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
   if (turno.estado === "CERRADO") throw new AppError("El turno ya fue cerrado", 409, { turnoId });
 
-  const arqueo = await compararEfectivo(turnoId, efectivoContado);
+  if (!supervisor_id || !pin) {
+    throw new AppError("Se necesita el usuario y el PIN de un supervisor de caja para cerrar la caja.", 400);
+  }
+
+  const supervisor = await validarSupervisor({ supervisor_id, pin });
 
   const turnoCerrado = await turnosRepo.marcarCerrado(turnoId, {
-    efectivoContado: arqueo.efectivoContado,
-    efectivoEsperado: arqueo.efectivoEsperado,
-    diferencia: arqueo.diferencia,
-    tipoDiferencia: arqueo.tipoDiferencia,
+    efectivoContado: null,
+    efectivoEsperado: null,
+    diferencia: null,
+    tipoDiferencia: null,
+    cerradoPor: supervisor.supervisor_id,
+    cerradoPorNombre: supervisor.nombre,
   });
 
-  const reporte = await generarReporteCierre(turnoId, efectivoContado);
+  const reporte = await generarReporteCierre(turnoId);
 
   return { turno: turnoCerrado, reporte };
 }

@@ -1,13 +1,36 @@
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 
+// "Cerrar sesión" y "Cerrar caja" son 2 acciones distintas: cerrar sesión solo
+// vuelve al login (el turno sigue activo, se puede volver a entrar); cerrar caja
+// termina el turno con un reporte de lo recaudado. Van juntas en un solo menú
+// desplegable para que no se confundan con un link de navegación más.
 function Navbar() {
   const { cajero, cerrarSesion } = useAuth()
   const navigate = useNavigate()
+  const [menuAbierto, setMenuAbierto] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    function alHacerClicFuera(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuAbierto(false)
+      }
+    }
+    document.addEventListener('mousedown', alHacerClicFuera)
+    return () => document.removeEventListener('mousedown', alHacerClicFuera)
+  }, [])
 
   function handleCerrarSesion() {
+    setMenuAbierto(false)
     cerrarSesion()
     navigate('/login')
+  }
+
+  function handleCerrarCaja() {
+    setMenuAbierto(false)
+    navigate('/cierre-caja')
   }
 
   return (
@@ -16,29 +39,30 @@ function Navbar() {
       {cajero && (
         <>
           <NavLink to="/" end>Inicio</NavLink>
-          <NavLink to="/cajeros">Cajeros</NavLink>
           <NavLink to="/pagos">Pagos</NavLink>
-          <NavLink to="/clientes">Clientes</NavLink>
-          <NavLink to="/autorizacion-anulacion">Autorizar anulación</NavLink>
-          <NavLink to="/apertura-turno">Apertura de turno</NavLink>
-          <NavLink to="/credenciales">Credenciales</NavLink>
-          <NavLink to="/consulta-transaccion">Consultar transacción</NavLink>
-          <NavLink to="/ordenes-pago">Órdenes de pago</NavLink>
-          <NavLink to="/facturacion">Facturación</NavLink>
           <NavLink to="/facturas">Facturas</NavLink>
-          <NavLink to="/resumen-ventas">Resumen de ventas</NavLink>
-          <NavLink to="/cierre-caja" style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>Cerrar Caja</NavLink>
         </>
       )}
 
       <div className="navbar-sesion">
         {cajero ? (
-          <>
-            <span className="navbar-cajero">{cajero.nombre}</span>
-            <button type="button" className="btn btn-logout" onClick={handleCerrarSesion}>
-              Cerrar sesión
+          <div className="navbar-menu" ref={menuRef}>
+            <button type="button" className="navbar-menu-boton" onClick={() => setMenuAbierto((v) => !v)}>
+              {cajero.nombre}
+              <span className="navbar-menu-flecha">▾</span>
             </button>
-          </>
+
+            {menuAbierto && (
+              <div className="navbar-menu-lista">
+                <button type="button" className="navbar-menu-opcion" onClick={handleCerrarCaja}>
+                  Cerrar caja
+                </button>
+                <button type="button" className="navbar-menu-opcion navbar-menu-opcion--peligro" onClick={handleCerrarSesion}>
+                  Cerrar sesión
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           <span className="navbar-cajero navbar-cajero--vacio">Sin sesión iniciada</span>
         )}

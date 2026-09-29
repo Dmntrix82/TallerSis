@@ -53,6 +53,69 @@
   background-color: rgba(255, 255, 255, 0.15);
 }
 
+/* Menú desplegable de "Cerrar caja" / "Cerrar sesión" en el navbar. */
+.navbar-menu {
+  position: relative;
+}
+
+.navbar-menu-boton {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.navbar-menu-boton:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.navbar-menu-flecha {
+  font-size: 0.7rem;
+}
+
+.navbar-menu-lista {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(11, 11, 11, 0.2);
+  overflow: hidden;
+  min-width: 180px;
+  z-index: 50;
+}
+
+.navbar-menu-opcion {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.65rem 1rem;
+  background-color: #fff;
+  color: #1f2933;
+  border: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.navbar-menu-opcion:hover {
+  background-color: var(--color-brand-mint);
+}
+
+.navbar-menu-opcion--peligro {
+  color: #b91c1c;
+  border-top: 1px solid #e4e7eb;
+}
+
+.navbar-menu-opcion--peligro:hover {
+  background-color: #fee2e2;
+}
+
 .container {
   max-width: 960px;
   margin: 0 auto;
@@ -91,6 +154,22 @@
 .btn-secundario:hover:not(:disabled) {
   background-color: var(--color-brand-mint);
   color: var(--color-brand-dark);
+}
+
+.btn-azul {
+  background-color: #2a6f97;
+}
+
+.btn-azul:hover:not(:disabled) {
+  background-color: #1f5573;
+}
+
+/* Acciones de la pantalla de pago exitoso: separadas y con colores distintos por accion. */
+.pago-exito-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
 }
 
 /* Formularios */
@@ -278,6 +357,18 @@
   margin-bottom: 0;
 }
 
+.filtro-fechas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.filtro-fechas .campo {
+  margin-bottom: 0;
+}
+
 .tablero-sucursal {
   color: #616e7c;
   font-size: 0.9rem;
@@ -439,6 +530,74 @@
 .factura-correo-acciones {
   display: flex;
   gap: 0.75rem;
+}
+
+/* Selector gráfico de método de pago (Efectivo/Tarjeta/QR) */
+.metodo-pago-opciones {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.metodo-pago-opcion {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.5rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 8px;
+  background-color: #fff;
+  color: #3e4c59;
+  cursor: pointer;
+}
+
+.metodo-pago-opcion:hover {
+  border-color: var(--color-brand-olive);
+}
+
+.metodo-pago-opcion.activa {
+  border-color: var(--color-brand-dark);
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+  font-weight: 600;
+}
+
+.metodo-pago-opcion svg {
+  color: inherit;
+}
+
+.ayuda-mixto {
+  font-size: 0.85rem;
+  color: var(--color-brand-dark);
+  background-color: var(--color-brand-mint);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: -0.5rem 0 1rem;
+}
+
+/* Layout dividido: al elegir 2 métodos de pago, el formulario de pago mixto
+   ocupa la otra mitad de la pantalla en vez de reemplazar la vista. */
+.pagos-layout {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.pagos-layout-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.pagos-layout--dividido .pagos-layout-col {
+  flex: 1 1 50%;
+}
+
+@media (max-width: 900px) {
+  .pagos-layout {
+    flex-direction: column;
+  }
 }
 
 /* Resumen de ventas del turno (TDSI-102) */
@@ -813,6 +972,38 @@
   font-size: 0.85rem;
 }
 
+/* Ventana emergente de estado de turno (activo/inactivo) al entrar a Inicio */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(11, 11, 11, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.modal-caja {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 1.75rem;
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(11, 11, 11, 0.25);
+}
+
+.modal-caja h2 {
+  margin-top: 0;
+}
+
+.modal-caja .btn {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
 .login-panel {
   flex: 1;
   display: flex;
@@ -916,15 +1107,21 @@
   font-size: 0.85rem;
 }
 
-.login-form .campo input {
+.login-form .campo input,
+.login-form .campo select {
   padding: 0.5rem 0.25rem;
   border: none;
   border-bottom: 1px solid #cbd2d9;
   border-radius: 0;
   background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
 }
 
-.login-form .campo input:focus {
+.login-form .campo input:focus,
+.login-form .campo select:focus {
+  outline: none;
   border-bottom-color: var(--color-brand-dark);
 }
 

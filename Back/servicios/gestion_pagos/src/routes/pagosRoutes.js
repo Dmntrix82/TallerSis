@@ -1,9 +1,22 @@
 const { Router } = require("express");
-const { registrarPagoSimple, obtenerHistorial } = require("../services/pagoSimpleService");
-const { enviarFacturaDeTransaccion } = require("../services/facturaDigitalService");
+const { registrarPagoSimple, obtenerHistorial, buscarClientePorDocumento } = require("../services/pagoSimpleService");
+const { construirFacturaDigital, enviarFacturaDeTransaccion } = require("../services/facturaDigitalService");
+const { generarFacturaPdfBuffer } = require("../services/facturaPdfService");
+const { listarMisFacturas, anularVenta, reporteTurno } = require("../services/ventasCajeroService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+
+// TDSI-303: PDF de la factura, en formato tirilla, listo para ver/imprimir desde el navegador.
+router.get("/:id_transaccion/factura.pdf", wrap(async (req, res) => {
+  const factura = await construirFacturaDigital(req.params.id_transaccion);
+  const pdfBuffer = await generarFacturaPdfBuffer(factura);
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="factura-${req.params.id_transaccion}.pdf"`,
+  });
+  res.send(pdfBuffer);
+}));
 
 // Extension de TDSI-107/108: el cajero pide enviar la factura digital al correo del
 // cliente justo despues de pagar. No genera PDF/XML; construye los datos de la
@@ -33,6 +46,32 @@ router.post("/registrar", wrap(async (req, res) => {
 router.get("/historial", wrap(async (req, res) => {
   const r = await obtenerHistorial();
   res.status(200).json(r);
+}));
+
+// TDSI-304: autocompletar razon social si ese NIT/CI ya se uso en un pago anterior.
+router.get("/cliente-por-documento", wrap(async (req, res) => {
+  const r = await buscarClientePorDocumento(req.query.tipo_documento, req.query.numero);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-306/307: pantalla "Facturas" del cajero -- solo sus propias ventas,
+// con filtro opcional de rango de fechas (?desde=YYYY-MM-DD&hasta=YYYY-MM-DD).
+router.get("/mis-facturas", wrap(async (req, res) => {
+  const r = await listarMisFacturas(req.query.cajero, { desde: req.query.desde, hasta: req.query.hasta });
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-306: anular una venta propia (Simple o Mixta) con PIN de un supervisor de caja,
+// dentro del plazo de 2 horas desde la emision.
+router.post("/:id_transaccion/anular", wrap(async (req, res) => {
+  const r = await anularVenta({ id_transaccion: req.params.id_transaccion, ...req.body });
+  res.json({ ok: true, mensaje: `La venta ${req.params.id_transaccion} fue anulada.`, data: r });
+}));
+
+// TDSI-323: reporte de ventas de una caja (usado por gestion_caja para el cierre de turno).
+router.get("/reporte-turno", wrap(async (req, res) => {
+  const r = await reporteTurno({ caja_id: req.query.caja_id, desde: req.query.desde, hasta: req.query.hasta });
+  res.json({ ok: true, data: r });
 }));
 
 module.exports = router;

@@ -221,3 +221,29 @@ ALTER TABLE pagos.ventas_online DROP CONSTRAINT IF EXISTS ventas_online_estado_c
 ALTER TABLE pagos.ventas_online
     ADD CONSTRAINT ventas_online_estado_check
     CHECK (estado::text = ANY (ARRAY['Pagado','Anulacion Pendiente','Anulado']::varchar[]));
+
+-- ==========================================================================
+-- Pantalla de Pagos: el ID de transaccion ya no lo escribe el cajero (lo
+-- genera el propio insert con el correlativo de la tabla, ver pagosRepo.js).
+-- Se agrega tipo_documento (NIT/CI/ninguno) para poder pedir Cedula de
+-- Identidad ademas de NIT, y telefono como dato opcional del cliente.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS tipo_documento VARCHAR(10) CHECK (tipo_documento IN ('NIT','CI')),
+    ADD COLUMN IF NOT EXISTS telefono       VARCHAR(30);
+
+-- ==========================================================================
+-- TDSI-303: factura impresa/PDF necesita mostrar quien emitio la venta
+-- (cajero), ademas de la caja (caja_id ya existia).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS cajero VARCHAR(255);
+
+-- ==========================================================================
+-- TDSI-306: la pantalla "Facturas" del cajero anula sus propias ventas (con
+-- PIN de un supervisor, dentro de un plazo de 2 horas). Se guarda quien
+-- autorizo la anulacion y cuando, para trazabilidad.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS anulado_en  TIMESTAMPTZ;

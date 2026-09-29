@@ -1,4 +1,5 @@
 import { useAuth } from '../context/AuthContext.jsx'
+import TurnoModal from '../components/TurnoModal.jsx'
 
 // TDSI-269: muestra el nombre del cajero autenticado en la pantalla principal.
 function Home() {
@@ -6,6 +7,7 @@ function Home() {
 
   return (
     <section>
+      <TurnoModal />
       <div className="terminal-header">
         <h1>Bienvenido, {cajero?.nombre}</h1>
         <p className="terminal-header-caja">

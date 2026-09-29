@@ -19,4 +19,9 @@ async function validarCajaDisponible(caja_id) {
   return caja;
 }
 
-module.exports = { validarCajaDisponible };
+/** Lista de cajas activas, para el selector de "Caja / terminal" del login. */
+async function listarCajasActivas() {
+  return cajasRepo.listarActivas();
+}
+
+module.exports = { validarCajaDisponible, listarCajasActivas };

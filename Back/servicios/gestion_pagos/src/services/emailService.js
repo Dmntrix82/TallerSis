@@ -51,7 +51,9 @@ function renderizarHtmlFactura(factura) {
   `;
 }
 
-async function enviarFacturaPorCorreo({ email, factura }) {
+// TDSI-303: ademas del HTML del cuerpo, se adjunta la factura en PDF (misma
+// estructura que se usa para imprimir en caja) cuando se provee pdfBuffer.
+async function enviarFacturaPorCorreo({ email, factura, pdfBuffer }) {
   const html = renderizarHtmlFactura(factura);
   const transportador = transportadorConfigurado();
 
@@ -66,6 +68,9 @@ async function enviarFacturaPorCorreo({ email, factura }) {
       to: email,
       subject: `Tu factura - ${factura.comprobante.id_transaccion}`,
       html,
+      attachments: pdfBuffer
+        ? [{ filename: `factura-${factura.comprobante.id_transaccion}.pdf`, content: pdfBuffer, contentType: "application/pdf" }]
+        : [],
     });
     return { estado: "ENVIADO", html };
   } catch (e) {

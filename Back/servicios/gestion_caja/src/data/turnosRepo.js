@@ -10,15 +10,15 @@ async function buscarCajaPorCodigo(codigo) {
   return rows[0] || null;
 }
 
-async function crearTurno({ caja_id, cajero_id, efectivo_inicial }) {
+async function crearTurno({ caja_id, cajero_id, efectivo_inicial, autorizado_por, autorizado_por_nombre }) {
   const { rows } = await query(
     `WITH nuevo AS (
        SELECT nextval(pg_get_serial_sequence('caja.turnos', 'id')) AS id
      ),
      turno_creado AS (
-       INSERT INTO caja.turnos (id, codigo, caja_id, cajero_id, efectivo_inicial)
-       SELECT id, 'TUR-' || lpad(id::text, 6, '0'), $1, $2, $3 FROM nuevo
-       RETURNING id, codigo, caja_id, cajero_id, efectivo_inicial, estado, abierto_en
+       INSERT INTO caja.turnos (id, codigo, caja_id, cajero_id, efectivo_inicial, autorizado_por, autorizado_por_nombre)
+       SELECT id, 'TUR-' || lpad(id::text, 6, '0'), $1, $2, $3, $4, $5 FROM nuevo
+       RETURNING id, codigo, caja_id, cajero_id, efectivo_inicial, estado, abierto_en, autorizado_por, autorizado_por_nombre
      ),
      movimiento_creado AS (
        -- TDSI-314: registrar el efectivo inicial en el historial de caja
@@ -42,6 +42,8 @@ async function crearTurno({ caja_id, cajero_id, efectivo_inicial }) {
        cajero_id,
        efectivo_inicial,
        estado,
+       autorizado_por,
+       autorizado_por_nombre,
        to_char(abierto_en AT TIME ZONE 'America/La_Paz',
                'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-04:00'      AS abierto_en,
        to_char(abierto_en AT TIME ZONE 'America/La_Paz',
@@ -49,16 +51,17 @@ async function crearTurno({ caja_id, cajero_id, efectivo_inicial }) {
        to_char(abierto_en AT TIME ZONE 'America/La_Paz',
                'HH24:MI:SS')                                  AS hora_apertura
      FROM turno_creado`,
-    [caja_id, cajero_id, efectivo_inicial]
+    [caja_id, cajero_id, efectivo_inicial, autorizado_por || null, autorizado_por_nombre || null]
   );
   return rows[0];
 }
 
 
-// TDSI-313: no permitir dos turnos abiertos en la misma caja
+// TDSI-313: no permitir dos turnos abiertos en la misma caja.
+// cajero_id se usa tambien para que solo esa cuenta pueda volver a entrar a esta caja.
 async function buscarTurnoAbiertoPorCaja(caja_id) {
   const { rows } = await query(
-    `SELECT id, codigo
+    `SELECT id, codigo, cajero_id
        FROM caja.turnos
       WHERE caja_id = $1
         AND estado = 'ABIERTO'
@@ -74,14 +77,15 @@ async function obtenerTurnoPorId(turnoId) {
   return rows[0] || null;
 }
 
-async function marcarCerrado(turnoId, { efectivoContado, efectivoEsperado, diferencia, tipoDiferencia }) {
+async function marcarCerrado(turnoId, { efectivoContado, efectivoEsperado, diferencia, tipoDiferencia, cerradoPor, cerradoPorNombre }) {
   const { rows } = await query(
     `UPDATE caja.turnos
         SET estado = 'CERRADO', cerrado_en = now(),
-            efectivo_contado = $2, efectivo_esperado = $3, diferencia = $4, tipo_diferencia = $5
+            efectivo_contado = $2, efectivo_esperado = $3, diferencia = $4, tipo_diferencia = $5,
+            cerrado_por = $6, cerrado_por_nombre = $7
       WHERE id = $1
       RETURNING *`,
-    [turnoId, efectivoContado, efectivoEsperado, diferencia, tipoDiferencia]
+    [turnoId, efectivoContado, efectivoEsperado, diferencia, tipoDiferencia, cerradoPor || null, cerradoPorNombre || null]
   );
   return rows[0];
 }

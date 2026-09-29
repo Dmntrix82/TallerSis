@@ -13,6 +13,10 @@ function AdminNavbar() {
   return (
     <nav className="navbar">
       <span className="navbar-brand">TallerSis · Administración</span>
+      <NavLink to="/admin/cajeros">Cajeros</NavLink>
+      <NavLink to="/admin/clientes">Clientes</NavLink>
+      <NavLink to="/admin/consulta-transaccion">Consultar transacción</NavLink>
+      <NavLink to="/admin/generar-token">Sistema Cliente</NavLink>
       <NavLink to="/admin/tablero">Tablero</NavLink>
       <NavLink to="/admin/documentos-factura">Documentos</NavLink>
       <NavLink to="/admin/egresos">Egresos</NavLink>

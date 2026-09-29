@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loginCajero } from '../api/auth.js'
 import { loginAdministrador } from '../api/authAdministrador.js'
+import { listarCajas } from '../api/caja.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useAdminAuth } from '../context/AdminAuthContext.jsx'
 
@@ -59,12 +60,20 @@ function SelectorModo({ modo, onCambiar }) {
 function Login() {
   const [modo, setModo] = useState('CAJERO') // 'CAJERO' | 'ADMINISTRADOR'
   const [datos, setDatos] = useState(ESTADO_INICIAL)
+  const [cajas, setCajas] = useState([])
   const [errorValidacion, setErrorValidacion] = useState(null)
   const [errorApi, setErrorApi] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const { iniciarSesion: iniciarSesionCajero } = useAuth()
   const { iniciarSesion: iniciarSesionAdmin } = useAdminAuth()
   const navigate = useNavigate()
+
+  // Lista desplegable de cajas activas, en vez de escribir el código a mano.
+  useEffect(() => {
+    listarCajas()
+      .then((respuesta) => setCajas(respuesta.data))
+      .catch(() => setCajas([]))
+  }, [])
 
   function cambiarModo(nuevoModo) {
     setModo(nuevoModo)
@@ -97,6 +106,8 @@ function Login() {
           caja: respuesta.data.caja.codigo,
           cajaNombre: respuesta.data.caja.nombre,
         })
+        // Al llegar a Inicio, el TurnoModal avisa si la caja esta activa o
+        // inactiva, y exige abrir el turno con un supervisor si hace falta.
         navigate('/')
       } else {
         const respuesta = await loginAdministrador(datos)
@@ -189,12 +200,16 @@ function Login() {
             {!esAdmin && (
               <label className="campo">
                 Caja / terminal
-                <input
-                  type="text"
-                  placeholder="Ej. CAJA-01"
-                  value={datos.caja_id}
-                  onChange={(e) => actualizarCampo('caja_id', e.target.value)}
-                />
+                <select value={datos.caja_id} onChange={(e) => actualizarCampo('caja_id', e.target.value)}>
+                  <option value="" disabled>
+                    Selecciona una caja...
+                  </option>
+                  {cajas.map((caja) => (
+                    <option key={caja.codigo} value={caja.codigo}>
+                      {caja.codigo} — {caja.nombre}
+                    </option>
+                  ))}
+                </select>
               </label>
             )}
 

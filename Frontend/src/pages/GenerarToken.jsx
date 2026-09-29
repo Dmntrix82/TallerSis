@@ -3,6 +3,7 @@ import { generarToken, verificarToken } from '../api/auth.js'
 
 const ESTADO_INICIAL = { clientId: '', clientSecret: '' }
 
+// Genera el token del Sistema Cliente (ERP externo) -- lo necesita "Consultar transacción".
 function GenerarToken() {
   const [credenciales, setCredenciales] = useState(ESTADO_INICIAL)
   const [generando, setGenerando] = useState(false)

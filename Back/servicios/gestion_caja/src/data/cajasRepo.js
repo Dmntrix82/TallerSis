@@ -8,4 +8,12 @@ async function buscarPorCodigo(codigo) {
   return resultado.rows[0] || null;
 }
 
-module.exports = { buscarPorCodigo };
+/** Lista de cajas activas, para el selector de "Caja / terminal" del login. */
+async function listarActivas() {
+  const resultado = await query(
+    "SELECT codigo, nombre FROM caja.cajas WHERE estado = 'ACTIVA' ORDER BY codigo"
+  );
+  return resultado.rows;
+}
+
+module.exports = { buscarPorCodigo, listarActivas };

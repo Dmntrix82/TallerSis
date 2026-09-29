@@ -170,3 +170,21 @@ CREATE TABLE IF NOT EXISTS caja.administradores (
 );
 
 ALTER TABLE caja.administradores ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- Apertura de turno con autorizacion de un supervisor de caja: el cajero no
+-- puede habilitar su terminal solo, necesita que un supervisor se acerque y
+-- ponga su usuario + PIN (validado contra facturacion.supervisores via HTTP,
+-- ver supervisorProxy.js). Se deja constancia de quien autorizo cada turno.
+-- ==========================================================================
+ALTER TABLE caja.turnos
+    ADD COLUMN IF NOT EXISTS autorizado_por        VARCHAR(60),
+    ADD COLUMN IF NOT EXISTS autorizado_por_nombre VARCHAR(150);
+
+-- ==========================================================================
+-- TDSI-325: cerrar caja tambien necesita que un supervisor ponga su usuario +
+-- PIN (mismo mecanismo que la apertura), no solo el efectivo contado.
+-- ==========================================================================
+ALTER TABLE caja.turnos
+    ADD COLUMN IF NOT EXISTS cerrado_por        VARCHAR(60),
+    ADD COLUMN IF NOT EXISTS cerrado_por_nombre VARCHAR(150);

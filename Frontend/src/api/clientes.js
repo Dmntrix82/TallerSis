@@ -13,14 +13,3 @@ export async function buscarClientePorNit(nit) {
   const respuesta = await apiFetch(`/api/clientes/${encodeURIComponent(nit)}`)
   return respuesta.data
 }
-
-export function guardarCliente({ nit, razon_social }) {
-  return apiFetch(
-    '/api/clientes',
-    {
-      method: 'POST',
-      body: JSON.stringify({ nit, razon_social }),
-    },
-    FACTURACION_API_BASE_URL,
-  )
-}
