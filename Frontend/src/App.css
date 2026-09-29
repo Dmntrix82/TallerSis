@@ -1276,6 +1276,34 @@
   border-bottom-color: var(--color-brand-dark);
 }
 
+.campo-password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.campo-password input {
+  width: 100%;
+  padding-right: 2rem;
+}
+
+.campo-password-boton {
+  position: absolute;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  color: #7b8794;
+  cursor: pointer;
+}
+
+.campo-password-boton:hover {
+  color: var(--color-brand-dark);
+}
+
 .login-btn {
   width: 100%;
 }

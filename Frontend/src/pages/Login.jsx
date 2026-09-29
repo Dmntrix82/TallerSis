@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loginCajero } from '../api/auth.js'
 import { loginAdministrador } from '../api/authAdministrador.js'
@@ -64,15 +64,34 @@ function Login() {
   const [errorValidacion, setErrorValidacion] = useState(null)
   const [errorApi, setErrorApi] = useState(null)
   const [enviando, setEnviando] = useState(false)
+  const [mostrarPassword, setMostrarPassword] = useState(false)
   const { iniciarSesion: iniciarSesionCajero } = useAuth()
   const { iniciarSesion: iniciarSesionAdmin } = useAdminAuth()
   const navigate = useNavigate()
+  const emailRef = useRef(null)
+  const passwordRef = useRef(null)
 
   // Lista desplegable de cajas activas, en vez de escribir el código a mano.
   useEffect(() => {
     listarCajas()
       .then((respuesta) => setCajas(respuesta.data))
       .catch(() => setCajas([]))
+  }, [])
+
+  // Seguridad: por más que autoComplete="off" esté puesto, Chrome y otros
+  // navegadores igual autocompletan usuario/contraseña guardados en el login,
+  // a veces recien despues de pintar la pantalla. Se limpian a la fuerza (estado
+  // + el valor real del input) al entrar y un instante despues, para que la cuenta
+  // de otra persona nunca quede visible al volver/recargar esta pantalla.
+  useEffect(() => {
+    function limpiar() {
+      setDatos((prev) => ({ ...prev, email: '', password: '' }))
+      if (emailRef.current) emailRef.current.value = ''
+      if (passwordRef.current) passwordRef.current.value = ''
+    }
+    limpiar()
+    const timeout = setTimeout(limpiar, 250)
+    return () => clearTimeout(timeout)
   }, [])
 
   function cambiarModo(nuevoModo) {
@@ -171,7 +190,7 @@ function Login() {
 
           <SelectorModo modo={modo} onCambiar={cambiarModo} />
 
-          <form className="login-form" onSubmit={handleSubmit}>
+          <form className="login-form" onSubmit={handleSubmit} autoComplete="off">
             <h2 className="login-titulo">{esAdmin ? 'Acceso de administrador' : 'Bienvenido de nuevo'}</h2>
             <p className="login-subtitulo">
               {esAdmin ? 'Ingresa tus credenciales para continuar.' : 'Ingresa tus credenciales de cajero para continuar.'}
@@ -180,8 +199,9 @@ function Login() {
             <label className="campo">
               Usuario (correo)
               <input
+                ref={emailRef}
                 type="email"
-                autoComplete="username"
+                autoComplete="off"
                 value={datos.email}
                 onChange={(e) => actualizarCampo('email', e.target.value)}
               />
@@ -189,12 +209,34 @@ function Login() {
 
             <label className="campo">
               Contraseña
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={datos.password}
-                onChange={(e) => actualizarCampo('password', e.target.value)}
-              />
+              <div className="campo-password">
+                <input
+                  ref={passwordRef}
+                  type={mostrarPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={datos.password}
+                  onChange={(e) => actualizarCampo('password', e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="campo-password-boton"
+                  onClick={() => setMostrarPassword((v) => !v)}
+                  aria-label={mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  tabIndex={-1}
+                >
+                  {mostrarPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a20.3 20.3 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 7 11 7a20.3 20.3 0 0 1-2.68 3.68M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </label>
 
             {!esAdmin && (
