@@ -22,6 +22,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=4005
+    env_file:
+      - ./servicios/gestion_pagos/.env
     networks:
       - app-network
 
@@ -34,5 +36,17 @@ services:
       - PORT=4002
     env_file:
       - ./servicios/facturacion/.env
+    networks:
+      - app-network
+
+  pagos_proveedores:
+    build: ./servicios/pagos_proveedores
+    ports:
+      - "4006:4006"
+    environment:
+      - NODE_ENV=development
+      - PORT=4006
+    env_file:
+      - ./servicios/pagos_proveedores/.env
     networks:
       - app-network

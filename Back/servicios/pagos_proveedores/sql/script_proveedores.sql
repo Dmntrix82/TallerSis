@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS proveedores;
 CREATE TABLE IF NOT EXISTS proveedores.ordenes_pago (
     id                      BIGSERIAL PRIMARY KEY,
     numero                  VARCHAR(20)  NOT NULL UNIQUE,
-    orden_compra_id         VARCHAR(60)  NOT NULL UNIQUE,        -- TDSI-391
+    orden_compra_id         VARCHAR(60)  NOT NULL UNIQUE,
     proveedor_nit           VARCHAR(30)  NOT NULL,
     proveedor_razon_social  VARCHAR(150) NOT NULL,
     proveedor_cuenta_bancaria VARCHAR(40) NOT NULL,
@@ -15,13 +15,13 @@ CREATE TABLE IF NOT EXISTS proveedores.ordenes_pago (
     fecha_vencimiento       DATE,
     concepto                VARCHAR(200),
     estado                  VARCHAR(20)  NOT NULL DEFAULT 'PENDIENTE'
-                             CHECK (estado IN ('PENDIENTE','LIQUIDADA')),  -- TDSI-393/408
+                             CHECK (estado IN ('PENDIENTE','LIQUIDADA')),
     creado_en               TIMESTAMPTZ  NOT NULL DEFAULT now(),
     liquidada_en            TIMESTAMPTZ,
-    liquidada_por           VARCHAR(60)                          -- TDSI-409
+    liquidada_por           VARCHAR(60)
 );
 CREATE INDEX IF NOT EXISTS idx_ordenes_estado    ON proveedores.ordenes_pago (estado);
-CREATE INDEX IF NOT EXISTS idx_ordenes_proveedor ON proveedores.ordenes_pago (proveedor_nit);   -- TDSI-397
+CREATE INDEX IF NOT EXISTS idx_ordenes_proveedor ON proveedores.ordenes_pago (proveedor_nit);
 CREATE INDEX IF NOT EXISTS idx_ordenes_fecha     ON proveedores.ordenes_pago (fecha_vencimiento);
 
 -- TDSI-394: notificacion al administrador cuando llega una orden pendiente
@@ -33,11 +33,10 @@ CREATE TABLE IF NOT EXISTS proveedores.notificaciones_admin (
     creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
--- TDSI-399/400/401/402: egreso de dinero por pago a proveedor (funciona como el
--- historial de movimientos financieros de este schema; TDSI-402)
+-- TDSI-399/400/401/402: egreso de dinero por pago a proveedor
 CREATE TABLE IF NOT EXISTS proveedores.egresos (
     id              BIGSERIAL PRIMARY KEY,
-    orden_pago_id   BIGINT NOT NULL REFERENCES proveedores.ordenes_pago(id),   -- TDSI-400
+    orden_pago_id   BIGINT NOT NULL REFERENCES proveedores.ordenes_pago(id),
     monto           NUMERIC(14,2) NOT NULL CHECK (monto > 0),
     metodo          VARCHAR(20)  NOT NULL DEFAULT 'TRANSFERENCIA',
     descripcion     VARCHAR(200),
@@ -51,7 +50,7 @@ CREATE TABLE IF NOT EXISTS proveedores.confirmaciones_compras (
     id                BIGSERIAL PRIMARY KEY,
     orden_pago_id     BIGINT NOT NULL REFERENCES proveedores.ordenes_pago(id) ON DELETE CASCADE,
     estado            VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE' CHECK (estado IN ('PENDIENTE','ENVIADO','ERROR')),
-    intentos          INT NOT NULL DEFAULT 0,                    -- TDSI-410
+    intentos          INT NOT NULL DEFAULT 0,
     ultimo_intento_en TIMESTAMPTZ,
     enviado_en        TIMESTAMPTZ
 );
@@ -77,14 +76,34 @@ CREATE TABLE IF NOT EXISTS proveedores.envios_contabilidad (
     enviado_en      TIMESTAMPTZ
 );
 
--- NOTA: los totales de lotes_cierre_diario se calculan agregando datos de OTROS
--- microservicios (pagos, caja, facturacion) via HTTP -- no se hace JOIN directo
--- entre schemas. TDSI-16/111/112 (tablero consolidado de ingresos) es de alcance
--- cruzado entre microservicios; no se modela tabla propia aqui.
-
 ALTER TABLE proveedores.ordenes_pago            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proveedores.notificaciones_admin    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proveedores.egresos                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proveedores.confirmaciones_compras  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proveedores.lotes_cierre_diario     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proveedores.envios_contabilidad     ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-20/119/407-410: confirmacion "Pago Realizado" a Compras
+-- Amplia la tabla existente sin modificar su estructura base.
+-- ==========================================================================
+
+ALTER TABLE proveedores.confirmaciones_compras
+    ADD COLUMN IF NOT EXISTS solicitado_por      VARCHAR(60),
+    ADD COLUMN IF NOT EXISTS payload             JSONB,
+    ADD COLUMN IF NOT EXISTS ultimo_status       INT,
+    ADD COLUMN IF NOT EXISTS ultimo_error        VARCHAR(400),
+    ADD COLUMN IF NOT EXISTS proximo_intento_en  TIMESTAMPTZ DEFAULT now(),
+    ADD COLUMN IF NOT EXISTS creado_en           TIMESTAMPTZ DEFAULT now();
+
+ALTER TABLE proveedores.ordenes_pago
+    ADD COLUMN IF NOT EXISTS confirmado_por  VARCHAR(60),
+    ADD COLUMN IF NOT EXISTS confirmado_en   TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_confirmacion_activa
+    ON proveedores.confirmaciones_compras (orden_pago_id)
+    WHERE estado IN ('PENDIENTE','ENVIADO');
+
+CREATE INDEX IF NOT EXISTS idx_confirmaciones_pendientes
+    ON proveedores.confirmaciones_compras (proximo_intento_en)
+    WHERE estado = 'PENDIENTE';
