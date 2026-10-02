@@ -204,6 +204,7 @@ function Facturas() {
               Usuario del supervisor
               <input
                 type="text"
+                autoComplete="off"
                 value={credenciales.supervisor_id}
                 onChange={(e) => actualizarCredencial('supervisor_id', e.target.value)}
                 autoFocus
@@ -215,6 +216,7 @@ function Facturas() {
               <input
                 type="password"
                 inputMode="numeric"
+                autoComplete="new-password"
                 value={credenciales.pin}
                 onChange={(e) => actualizarCredencial('pin', e.target.value)}
               />

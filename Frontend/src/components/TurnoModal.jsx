@@ -113,6 +113,7 @@ function TurnoModal() {
                 Usuario del supervisor
                 <input
                   type="text"
+                  autoComplete="off"
                   value={datos.supervisorId}
                   onChange={(e) => actualizarCampo('supervisorId', e.target.value)}
                 />
@@ -123,6 +124,7 @@ function TurnoModal() {
                 <input
                   type="password"
                   inputMode="numeric"
+                  autoComplete="new-password"
                   value={datos.pin}
                   onChange={(e) => actualizarCampo('pin', e.target.value)}
                 />

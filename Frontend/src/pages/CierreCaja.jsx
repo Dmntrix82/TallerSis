@@ -117,6 +117,7 @@ function CierreCaja() {
               Usuario del supervisor
               <input
                 type="text"
+                autoComplete="off"
                 value={supervisorId}
                 onChange={(e) => {
                   setSupervisorId(e.target.value)
@@ -131,6 +132,7 @@ function CierreCaja() {
               <input
                 type="password"
                 inputMode="numeric"
+                autoComplete="new-password"
                 value={pin}
                 onChange={(e) => {
                   setPin(e.target.value)
