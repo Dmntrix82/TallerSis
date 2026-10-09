@@ -5,7 +5,7 @@ const { query } = require("./config/db");
 const { errorHandler } = require("./middlewares/errorHandler");
 const egresosRoutes = require("./routes/egresosRoutes");
 const confirmacionesRoutes = require("./routes/confirmacionesRoutes");
-const lotesCierreRoutes = require("./routes/lotesCierreRoutes");
+const lotesCierreRoutes = require("./routes/loteCierreRoutes");
 
 const app = express();
 

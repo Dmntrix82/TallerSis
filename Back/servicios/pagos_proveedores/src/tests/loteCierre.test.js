@@ -1,18 +1,27 @@
-// TDSI-417: usa la base real en MODO_AISLADO (ingresos simulados) con una fecha
-// antigua reservada para pruebas, y la limpia al terminar.
+// TDSI-417/637: usa la base real en MODO_AISLADO (ingresos y Contabilidad simulados) con
+// fechas antiguas reservadas para pruebas, y las limpia al terminar.
 process.env.MODO_AISLADO = "true";
+process.env.CONTABILIDAD_SIMULADO_CERRADOS = "1999-12";
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { generarLote } = require("../services/loteCierreService");
+const cfg = require("../config/integraciones");
 const { pool } = require("../config/db");
 
 const FECHA = "2000-01-03";
-const borrarLote = () => pool.query("DELETE FROM proveedores.lotes_cierre_diario WHERE fecha = $1", [FECHA]);
+const FECHA_PERIODO_CERRADO = "1999-12-15";
+const borrarLotes = () =>
+  pool.query("DELETE FROM proveedores.lotes_cierre_diario WHERE fecha IN ($1, $2)", [FECHA, FECHA_PERIODO_CERRADO]);
+const contarLotes = async (fecha) =>
+  (await pool.query("SELECT count(*)::int AS n FROM proveedores.lotes_cierre_diario WHERE fecha = $1", [fecha])).rows[0].n;
 
-test.beforeEach(borrarLote);
+test.beforeEach(async () => {
+  cfg.CONTABILIDAD_SIMULAR_CAIDA = false;
+  await borrarLotes();
+});
 test.after(async () => {
-  await borrarLote();
+  await borrarLotes();
   await pool.end();
 });
 
@@ -42,8 +51,7 @@ test("TDSI-417: dos solicitudes al mismo tiempo generan un solo lote", async () 
   ]);
   assert.equal(r.filter((x) => x.status === "fulfilled").length, 1);
   assert.equal(r.find((x) => x.status === "rejected").reason.status, 409);
-  const { rows } = await pool.query("SELECT count(*)::int AS n FROM proveedores.lotes_cierre_diario WHERE fecha = $1", [FECHA]);
-  assert.equal(rows[0].n, 1);
+  assert.equal(await contarLotes(FECHA), 1);
 });
 
 test("TDSI-417: convierte la fila EN_CURSO del flujo de egresos (TDSI-401) en el lote", async () => {
@@ -61,4 +69,36 @@ test("TDSI-417: exige generado_por", async () => {
   for (const generado_por of [undefined, "", "   ", "x".repeat(61)]) {
     await assert.rejects(() => generarLote({ fecha: FECHA, generado_por }), (e) => e.status === 400);
   }
+});
+
+test("TDSI-637: guarda en el lote el periodo contable que confirmo Contabilidad", async () => {
+  const lote = await generarLote({ fecha: FECHA, generado_por: "admin.prueba" });
+  assert.equal(lote.detalle.periodoContable.periodo, "2000-01");
+  assert.equal(lote.detalle.periodoContable.abierto, true);
+});
+
+test("TDSI-637: bloquea la generacion si el periodo contable esta cerrado", async () => {
+  await assert.rejects(
+    () => generarLote({ fecha: FECHA_PERIODO_CERRADO, generado_por: "admin.prueba" }),
+    (e) => e.status === 422 && e.detalle.codigo === "PERIODO_CERRADO" && e.detalle.periodo === "1999-12"
+  );
+  assert.equal(await contarLotes(FECHA_PERIODO_CERRADO), 0);
+});
+
+test("TDSI-637: bloquea la generacion si Contabilidad no responde", async () => {
+  cfg.CONTABILIDAD_SIMULAR_CAIDA = true;
+  await assert.rejects(
+    () => generarLote({ fecha: FECHA, generado_por: "admin.prueba" }),
+    (e) => e.status === 503 && e.detalle.codigo === "CONTABILIDAD_NO_DISPONIBLE"
+  );
+  assert.equal(await contarLotes(FECHA), 0);
+});
+
+test("TDSI-637: si la fecha ya tiene lote se informa el 409 aunque Contabilidad no responda", async () => {
+  await generarLote({ fecha: FECHA, generado_por: "admin.prueba" });
+  cfg.CONTABILIDAD_SIMULAR_CAIDA = true;
+  await assert.rejects(
+    () => generarLote({ fecha: FECHA, generado_por: "otro" }),
+    (e) => e.status === 409 && e.detalle.codigo === "LOTE_EXISTENTE"
+  );
 });
