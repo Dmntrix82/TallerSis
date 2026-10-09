@@ -4,7 +4,7 @@
   "description": "Microservicio para cuentas por pagar a proveedores",
   "main": "src/index.js",
   "scripts": {
-    "test": "node --test src/tests/ordenPago.test.js src/tests/totalesCierre.test.js",
+    "test": "node --test src/tests/ordenPago.test.js src/tests/totalesCierre.test.js src/tests/loteCierre.test.js",
     "start": "node src/index.js",
     "mock-compras": "node scripts/mockCompras.js"
   },
