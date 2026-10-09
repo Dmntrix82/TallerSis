@@ -36,4 +36,12 @@ async function generarLote({ fecha, generado_por } = {}) {
   return lote;
 }
 
-module.exports = { generarLote };
+/** TDSI-418: consulta el lote ya generado de una fecha; 404 si esa fecha aun no tiene lote. */
+async function consultarLote(fecha) {
+  const fechaValida = validarFechaCierre(fecha);
+  const lote = await lotesCierreRepo.obtenerPorFecha(fechaValida);
+  if (!lote) throw new AppError(`No existe un lote de cierre para la fecha ${fechaValida}.`, 404, { fecha: fechaValida });
+  return lote;
+}
+
+module.exports = { generarLote, consultarLote };
