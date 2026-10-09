@@ -21,4 +21,22 @@ async function listarEgresos() {
   return resultado.rows;
 }
 
-module.exports = { insertarEgreso, listarEgresos };
+/**
+ * TDSI-415: egresos (pagos a proveedores) de un dia, agrupados por metodo.
+ * El dia se corta en hora de Bolivia, no en UTC, para que un pago de las 22:00
+ * no caiga en el lote del dia siguiente.
+ */
+async function egresosDelDiaPorMetodo(fecha) {
+  const resultado = await query(
+    `SELECT metodo, COALESCE(SUM(monto), 0) AS total, COUNT(*)::int AS cantidad
+     FROM proveedores.egresos
+     WHERE registrado_en >= ($1::date)::timestamp AT TIME ZONE 'America/La_Paz'
+       AND registrado_en <  ($1::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'
+     GROUP BY metodo
+     ORDER BY metodo`,
+    [fecha]
+  );
+  return resultado.rows.map((r) => ({ metodo: r.metodo, total: Number(r.total), cantidad: r.cantidad }));
+}
+
+module.exports = { insertarEgreso, listarEgresos, egresosDelDiaPorMetodo };
