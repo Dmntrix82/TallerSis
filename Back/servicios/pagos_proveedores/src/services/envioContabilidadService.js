@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const enviosRepo = require("../data/enviosContabilidadRepo");
 const { enviarReporte } = require("../clients/contabilidadProxy");
+const cfg = require("../config/integraciones");
 const { consultarLote } = require("./loteCierreService");
 const { armarReporte } = require("./reporteContabilidadService");
 
@@ -12,7 +13,8 @@ function validarSolicitadoPor(valor, porDefecto) {
 }
 
 /**
- * TDSI-420/421: hace un intento de envio y deja registrado el resultado.
+ * TDSI-420/421/422: hace un intento de envio y deja registrado el resultado
+ * (si falla y quedan intentos, queda PENDIENTE para que el worker lo reintente).
  * El Idempotency-Key es fijo por envio ("envio-<id>"), asi un reintento nunca
  * duplica el reporte en Contabilidad aunque el intento anterior si haya llegado.
  */
@@ -20,7 +22,7 @@ async function intentarEnvio(envio) {
   const payload = envio.payload || (await enviosRepo.obtenerPorId(envio.id, { conPayload: true })).payload;
   const r = await enviarReporte(payload, `envio-${envio.id}`);
   if (r.ok) return enviosRepo.marcarEnviado(envio, r);
-  return enviosRepo.registrarFallo(envio, r);
+  return enviosRepo.registrarFallo(envio, r, cfg.CONTABILIDAD_MAX_INTENTOS, cfg.CONTABILIDAD_BACKOFF_BASE_SEG);
 }
 
 /**

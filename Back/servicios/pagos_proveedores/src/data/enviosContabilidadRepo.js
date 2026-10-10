@@ -35,11 +35,14 @@ async function obtenerPorLote(loteId) {
 /**
  * TDSI-421: registra el envio del reporte de un lote (estado PENDIENTE, 0 intentos).
  * Un lote tiene un solo envio (uq_envio_por_lote): si ya existe devuelve { yaExiste }.
+ * TDSI-422: proximo_intento_en queda 2 minutos adelante como respaldo: si el primer
+ * intento nunca termina (el servicio se cae a mitad), el worker lo retoma.
  */
 async function crearEnvio({ loteId, payload, solicitadoPor }) {
   const { rows } = await query(
-    `INSERT INTO proveedores.envios_contabilidad (lote_id, estado, intentos, payload, solicitado_por)
-     VALUES ($1, 'PENDIENTE', 0, $2, $3)
+    `INSERT INTO proveedores.envios_contabilidad
+       (lote_id, estado, intentos, payload, solicitado_por, proximo_intento_en)
+     VALUES ($1, 'PENDIENTE', 0, $2, $3, now() + interval '2 minutes')
      ON CONFLICT (lote_id) DO NOTHING
      RETURNING id`,
     [loteId, JSON.stringify(payload), solicitadoPor]
@@ -68,16 +71,56 @@ async function marcarEnviado(envio, { status, referencia }) {
   return obtenerPorId(envio.id);
 }
 
-/** TDSI-421: el intento fallo -> se guarda el error y el envio queda en ERROR. */
-async function registrarFallo(envio, resultado) {
+/**
+ * TDSI-421/422: el intento fallo -> se guarda el error.
+ * Si Contabilidad no respondio (reintentable) y quedan intentos, el envio sigue PENDIENTE
+ * y se programa el proximo intento con espera creciente (base, base*2, base*4...).
+ * Si ya se usaron los maxIntentos, o Contabilidad rechazo el reporte (4xx), queda en ERROR.
+ */
+async function registrarFallo(envio, resultado, maxIntentos, backoffBaseSeg) {
   await query(
     `UPDATE proveedores.envios_contabilidad
-     SET estado = 'ERROR', intentos = intentos + 1, ultimo_intento_en = now(),
-         ultimo_status = $2, ultimo_error = $3, proximo_intento_en = NULL
+     SET intentos = intentos + 1,
+         ultimo_intento_en = now(),
+         ultimo_status = $2,
+         ultimo_error = $3,
+         estado = CASE WHEN NOT $4::boolean OR intentos + 1 >= $5::int THEN 'ERROR' ELSE 'PENDIENTE' END,
+         proximo_intento_en = CASE WHEN NOT $4::boolean OR intentos + 1 >= $5::int THEN NULL
+                                   ELSE now() + make_interval(secs => $6::int * power(2, intentos)) END
      WHERE id = $1`,
-    [envio.id, resultado.status ?? null, String(resultado.error || "Error desconocido").slice(0, 400)]
+    [
+      envio.id,
+      resultado.status ?? null,
+      String(resultado.error || "Error desconocido").slice(0, 400),
+      Boolean(resultado.reintentable),
+      maxIntentos,
+      backoffBaseSeg,
+    ]
   );
   return obtenerPorId(envio.id);
+}
+
+/**
+ * TDSI-422: toma los envios PENDIENTES cuyo proximo intento ya vencio y los "reserva"
+ * 2 minutos (FOR UPDATE SKIP LOCKED), asi dos workers nunca envian el mismo a la vez.
+ * loteId solo se usa en las pruebas, para no tocar envios de otros datos.
+ */
+async function tomarPendientes(limite = 10, { loteId = null } = {}) {
+  const { rows } = await query(
+    `UPDATE proveedores.envios_contabilidad
+     SET proximo_intento_en = now() + interval '2 minutes'
+     WHERE id IN (
+       SELECT id FROM proveedores.envios_contabilidad
+       WHERE estado = 'PENDIENTE' AND proximo_intento_en <= now()
+         AND ($2::bigint IS NULL OR lote_id = $2)
+       ORDER BY proximo_intento_en
+       LIMIT $1
+       FOR UPDATE SKIP LOCKED
+     )
+     RETURNING id, lote_id, payload, intentos`,
+    [limite, loteId]
+  );
+  return rows.map(aEnvio);
 }
 
 /** TDSI-421: envios registrados, del mas reciente al mas antiguo (para la seccion "Envios a Contabilidad"). */
@@ -94,4 +137,4 @@ async function listar({ estado = null, limite = 50 } = {}) {
   return rows.map(aEnvio);
 }
 
-module.exports = { obtenerPorId, obtenerPorLote, crearEnvio, marcarEnviado, registrarFallo, listar };
+module.exports = { obtenerPorId, obtenerPorLote, crearEnvio, marcarEnviado, registrarFallo, tomarPendientes, listar };

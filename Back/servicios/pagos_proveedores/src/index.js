@@ -40,4 +40,5 @@ const PORT = process.env.PORT || 4006;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[PagosProveedores] Servidor corriendo en puerto ${PORT}`);
   require("./jobs/reintentoConfirmaciones").iniciar();
+  require("./jobs/reintentoEnviosContabilidad").iniciar(); // TDSI-422
 });
