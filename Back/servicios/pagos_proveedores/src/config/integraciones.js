@@ -34,4 +34,7 @@ module.exports = {
   CONTABILIDAD_MAX_INTENTOS: entero("CONTABILIDAD_MAX_INTENTOS", 3, 1, 10),
   CONTABILIDAD_BACKOFF_BASE_SEG: entero("CONTABILIDAD_BACKOFF_BASE_SEG", 30, 1, 3600),
   CONTABILIDAD_INTERVALO_WORKER_SEG: entero("CONTABILIDAD_INTERVALO_WORKER_SEG", 15, 5, 3600),
+
+  // TDSI-122: al generar un lote, enviar su reporte a Contabilidad sin que nadie lo pida
+  CONTABILIDAD_ENVIO_AUTOMATICO: String(process.env.CONTABILIDAD_ENVIO_AUTOMATICO ?? "true").toLowerCase() === "true",
 };

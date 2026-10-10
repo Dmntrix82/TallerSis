@@ -123,6 +123,24 @@ async function tomarPendientes(limite = 10, { loteId = null } = {}) {
   return rows.map(aEnvio);
 }
 
+/**
+ * TDSI-122: "Reenviar" un envio en ERROR. Reutiliza la misma fila (y el mismo Idempotency-Key)
+ * y empieza un nuevo ciclo de intentos. Devuelve null si el envio no esta en ERROR.
+ */
+async function prepararReenvio(id, solicitadoPor) {
+  const { rows } = await query(
+    `UPDATE proveedores.envios_contabilidad
+     SET estado = 'PENDIENTE', intentos = 0,
+         solicitado_por = COALESCE($2, solicitado_por),
+         proximo_intento_en = now() + interval '2 minutes'
+     WHERE id = $1 AND estado = 'ERROR'
+     RETURNING id`,
+    [id, solicitadoPor]
+  );
+  if (!rows[0]) return null;
+  return obtenerPorId(id, { conPayload: true });
+}
+
 /** TDSI-421: envios registrados, del mas reciente al mas antiguo (para la seccion "Envios a Contabilidad"). */
 async function listar({ estado = null, limite = 50 } = {}) {
   const { rows } = await query(
@@ -137,4 +155,4 @@ async function listar({ estado = null, limite = 50 } = {}) {
   return rows.map(aEnvio);
 }
 
-module.exports = { obtenerPorId, obtenerPorLote, crearEnvio, marcarEnviado, registrarFallo, tomarPendientes, listar };
+module.exports = { obtenerPorId, obtenerPorLote, crearEnvio, marcarEnviado, registrarFallo, tomarPendientes, prepararReenvio, listar };

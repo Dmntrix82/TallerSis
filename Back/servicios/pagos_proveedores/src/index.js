@@ -6,6 +6,7 @@ const { errorHandler } = require("./middlewares/errorHandler");
 const egresosRoutes = require("./routes/egresosRoutes");
 const confirmacionesRoutes = require("./routes/confirmacionesRoutes");
 const lotesCierreRoutes = require("./routes/loteCierreRoutes");
+const enviosContabilidadRoutes = require("./routes/enviosContabilidadRoutes");
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/proveedores", require("./routes/ordenPagoRoutes"));
 app.use("/api/proveedores/notificaciones", require("./routes/notificacionRoutes"));
 app.use("/ordenes-pago", confirmacionesRoutes);
 app.use("/api/lotes-cierre", lotesCierreRoutes); // TDSI-21/418
+app.use("/api/envios-contabilidad", enviosContabilidadRoutes); // TDSI-22/122
 
 app.use(errorHandler);
 
