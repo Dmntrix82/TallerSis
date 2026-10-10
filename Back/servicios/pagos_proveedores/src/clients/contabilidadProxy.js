@@ -70,4 +70,52 @@ async function consultarPeriodoContable(fecha) {
   };
 }
 
-module.exports = { consultarPeriodoContable, periodoSimulado };
+// --------------------------------------------------------------------------
+// TDSI-420: envio del reporte del lote (TDSI-419) a Contabilidad.
+//   POST {CONTABILIDAD_URL}/reportes-cierre   (header Idempotency-Key)
+//   2xx { "referencia": "..." }  -> recibido
+// Devuelve { ok, status, referencia } o { ok: false, status, reintentable, error }.
+// "reintentable" indica si vale la pena volver a intentar (caida, timeout, 5xx, 408, 429);
+// un 4xx (por ejemplo 422) es un rechazo y reintentar no lo arregla.
+// --------------------------------------------------------------------------
+
+/** Receptor simulado para MODO_AISLADO: acepta el reporte, salvo CONTABILIDAD_SIMULAR_CAIDA=true. */
+function envioSimulado(idempotencyKey, opciones = cfg) {
+  if (opciones.CONTABILIDAD_SIMULAR_CAIDA) {
+    return { ok: false, status: null, reintentable: true, error: "Contabilidad simulada fuera de servicio" };
+  }
+  return { ok: true, status: 201, referencia: `SIM-${idempotencyKey}`, simulado: true };
+}
+
+async function enviarReporte(reporte, idempotencyKey) {
+  if (cfg.MODO_AISLADO) return envioSimulado(idempotencyKey);
+
+  const headers = { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey };
+  if (cfg.CONTABILIDAD_TOKEN) headers.Authorization = `Bearer ${cfg.CONTABILIDAD_TOKEN}`;
+
+  try {
+    const res = await fetch(`${cfg.CONTABILIDAD_URL}/reportes-cierre`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(reporte),
+      signal: AbortSignal.timeout(cfg.TIMEOUT_MS),
+    });
+
+    if (res.ok) {
+      const cuerpo = await res.json().catch(() => null);
+      const datos = cuerpo?.data && typeof cuerpo.data === "object" ? cuerpo.data : cuerpo;
+      return { ok: true, status: res.status, referencia: datos?.referencia ?? datos?.id ?? null };
+    }
+
+    const texto = (await res.text().catch(() => "")).slice(0, 300);
+    const reintentable = res.status >= 500 || res.status === 408 || res.status === 429;
+    return { ok: false, status: res.status, reintentable, error: `HTTP ${res.status}: ${texto}` };
+  } catch (e) {
+    const error = e.name === "TimeoutError"
+      ? `Contabilidad no respondio en ${cfg.TIMEOUT_MS} ms`
+      : `Contabilidad no esta disponible: ${e.message}`;
+    return { ok: false, status: null, reintentable: true, error };
+  }
+}
+
+module.exports = { consultarPeriodoContable, periodoSimulado, enviarReporte, envioSimulado };
