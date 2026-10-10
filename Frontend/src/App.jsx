@@ -10,6 +10,7 @@ import VentasOnline from './pages/VentasOnline';
 import Facturas from './pages/Facturas.jsx'
 import TableroIngresos from './pages/TableroIngresos.jsx'
 import CierreCaja from './pages/CierreCaja.jsx'
+import EstadoCajas from './pages/EstadoCajas.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import './App.css'
@@ -47,6 +48,7 @@ function App() {
           <Route path="/admin/clientes" element={<RutaProtegidaAdmin><Clientes /></RutaProtegidaAdmin>} />
           <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
+          <Route path="/admin/cajas" element={<RutaProtegidaAdmin><EstadoCajas /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

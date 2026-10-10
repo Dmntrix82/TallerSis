@@ -1340,3 +1340,95 @@
   margin: 0;
   color: #616e7c;
 }
+/* Estado de cajas (TDSI-126 / TDSI-495 a 498) */
+.cajas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.caja-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background-color: #fff;
+  border-top: 4px solid #9aa5b1;
+  border-radius: 8px;
+}
+
+.caja-card--abierta {
+  border-top-color: var(--color-brand-dark);
+}
+
+.caja-card--inactiva {
+  opacity: 0.7;
+}
+
+.caja-card-encabezado {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.caja-card-codigo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-brand-dark);
+}
+
+.caja-card-nombre {
+  color: #616e7c;
+  font-size: 0.9rem;
+}
+
+.caja-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.caja-card-detalle {
+  margin: 0;
+  color: #3e4c59;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.badge-caja--abierta {
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+}
+
+.badge-caja--cerrada {
+  background-color: #e4e7eb;
+  color: #3e4c59;
+}
+
+.badge-caja--activa {
+  background-color: var(--color-brand-green);
+  color: var(--color-brand-dark);
+}
+
+.badge-caja--inactiva {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.campo select {
+  padding: 0.5rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  background-color: #fff;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.cajas-mensaje {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+}
