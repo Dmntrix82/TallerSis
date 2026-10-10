@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const turnosRoutes = require("./routes/turnosRoutes");
 const authRoutes = require("./routes/authRoutes");
+const cajasRoutes = require("./routes/cajasRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
@@ -10,10 +11,11 @@ const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
 const app = express();
 const PORT = process.env.PORT || 4004;
 
+// ⬇️ MIDDLEWARE GLOBAL PRIMERO
 app.use(cors());
 app.use(express.json());
 
-// Ruta de prueba
+// ⬇️ RUTAS DESPUÉS
 app.get("/gestion-caja", (req, res) => {
   res.json({
     mensaje: "Microservicio de Gestion de Caja funcionando",
@@ -32,6 +34,7 @@ app.get("/health", async (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/caja", turnosRoutes);
+app.use("/api/caja", cajasRoutes);        // ← Al final, después de turnosRoutes
 
 app.use(errorHandler);
 
