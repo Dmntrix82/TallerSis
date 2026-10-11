@@ -35,12 +35,15 @@ function validarTexto(valor, campo, max) {
  * con su usuario + PIN (mismo registro de supervisores que usa facturacion
  * para las anulaciones, validado via supervisorProxy.js).
  */
-async function abrirTurno({ caja_id, cajero_id, efectivo_inicial, supervisor_id, pin } = {}) {
+async function abrirTurno({ caja_id, cajero_id, efectivo_inicial, supervisor_id, pin, autorizadoPor } = {}) {
   const cajaId = validarTexto(caja_id, "caja_id", 20);
   const cajeroId = validarTexto(cajero_id, "cajero_id", 60);
   const monto = validarEfectivoInicial(efectivo_inicial);
 
-  if (!supervisor_id || !pin) {
+  // TDSI-25: si viene del flujo de autorizaciones, el supervisor ya fue validado.
+  let supervisor = (autorizadoPor && autorizadoPor.supervisor_id) ? autorizadoPor : null;
+
+  if (!supervisor && (!supervisor_id || !pin)) {
     throw new AppError("Se necesita el usuario y el PIN de un supervisor para habilitar la caja.", 400);
   }
 
@@ -48,7 +51,6 @@ async function abrirTurno({ caja_id, cajero_id, efectivo_inicial, supervisor_id,
   if (!caja) throw new AppError("La caja no existe", 404, { caja_id: cajaId });
   if (caja.estado !== "ACTIVA") throw new AppError("La caja está inactiva", 409, { caja_id: cajaId });
 
-    // TDSI-313: no permitir dos turnos abiertos en la misma caja
   const turnoAbierto = await repo.buscarTurnoAbiertoPorCaja(cajaId);
   if (turnoAbierto)
     throw new AppError(
@@ -57,9 +59,10 @@ async function abrirTurno({ caja_id, cajero_id, efectivo_inicial, supervisor_id,
       { caja_id: cajaId, turno_abierto: turnoAbierto.codigo }
     );
 
-  // Se valida al final, justo antes de crear el turno: no tiene sentido gastar
-  // un intento de PIN si la caja ya estaba inactiva o con un turno abierto.
-  const supervisor = await validarSupervisor({ supervisor_id, pin });
+  // TDSI-25: si ya viene validado desde autorizacionService, no se vuelve a llamar.
+  if (!supervisor) {
+    supervisor = await validarSupervisor({ supervisor_id, pin });
+  }
 
   const turno = await repo.crearTurno({
     caja_id: cajaId,

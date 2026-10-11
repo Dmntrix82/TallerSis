@@ -188,3 +188,25 @@ ALTER TABLE caja.turnos
 ALTER TABLE caja.turnos
     ADD COLUMN IF NOT EXISTS cerrado_por        VARCHAR(60),
     ADD COLUMN IF NOT EXISTS cerrado_por_nombre VARCHAR(150);
+
+-- ==========================================================================
+-- TDSI-25: ampliar caja.autorizaciones para el flujo de solicitud de apertura
+-- --------------------------------------------------------------------------
+-- El cajero solicita abrir una caja (queda PENDIENTE), y el supervisor aprueba
+-- o rechaza con su usuario + PIN. Se agregan las columnas que el servicio
+-- necesita para guardar los datos de la solicitud y la decisión.
+-- ==========================================================================
+
+ALTER TABLE caja.autorizaciones
+  ADD COLUMN IF NOT EXISTS cajero_id             VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS cajero_nombre         VARCHAR(150),
+  ADD COLUMN IF NOT EXISTS efectivo_inicial      NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS motivo_rechazo        VARCHAR(300),
+  ADD COLUMN IF NOT EXISTS autorizado_por_nombre VARCHAR(150);
+
+CREATE INDEX IF NOT EXISTS idx_autorizaciones_pendientes
+  ON caja.autorizaciones (estado, tipo)
+  WHERE estado = 'PENDIENTE';
+
+CREATE INDEX IF NOT EXISTS idx_autorizaciones_caja
+  ON caja.autorizaciones (caja_id, estado);
