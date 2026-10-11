@@ -6,6 +6,7 @@ const authRoutes = require("./routes/authRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
+const autorizacionesRoutes = require("./routes/autorizacionesRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4004;
