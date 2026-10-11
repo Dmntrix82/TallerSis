@@ -22,6 +22,14 @@ function validarLimite(valor) {
   return n;
 }
 
+function validarFiltros({ fecha, caja_id, cajero_id }) {
+  return {
+    fecha: validarFechaDia(fecha),
+    cajaId: validarTextoOpcional(caja_id, "caja_id"),
+    cajeroId: validarTextoOpcional(cajero_id, "cajero_id"),
+  };
+}
+
 /**
  * TDSI-424: ultimas operaciones de cada cajero (del dia), con su estado.
  * Devuelve un elemento por cajero, con sus operaciones de la mas reciente a la mas antigua:
@@ -29,12 +37,7 @@ function validarLimite(valor) {
  * caja_id del cajero = la caja de su ultima operacion.
  */
 async function listarUltimasOperaciones({ fecha, caja_id, cajero_id, limite } = {}) {
-  const filtros = {
-    fecha: validarFechaDia(fecha),
-    cajaId: validarTextoOpcional(caja_id, "caja_id"),
-    cajeroId: validarTextoOpcional(cajero_id, "cajero_id"),
-    limite: validarLimite(limite),
-  };
+  const filtros = { ...validarFiltros({ fecha, caja_id, cajero_id }), limite: validarLimite(limite) };
 
   const filas = await repo.ultimasOperacionesPorCajero(filtros);
 
@@ -58,4 +61,25 @@ async function listarUltimasOperaciones({ fecha, caja_id, cajero_id, limite } = 
   return { fecha: filtros.fecha, filtros: { caja_id: filtros.cajaId, cajero_id: filtros.cajeroId, limite: filtros.limite }, cajeros: [...porCajero.values()] };
 }
 
-module.exports = { listarUltimasOperaciones, LIMITE_POR_DEFECTO, LIMITE_MAXIMO };
+/**
+ * TDSI-425: resumen en vivo por cajero (del dia): cantidad de operaciones, total vendido
+ * (solo lo APROBADO) y su ultima operacion. Tambien devuelve los totales de todos los cajeros.
+ */
+async function obtenerResumenPorCajero({ fecha, caja_id, cajero_id } = {}) {
+  const filtros = validarFiltros({ fecha, caja_id, cajero_id });
+  const cajeros = await repo.resumenPorCajero(filtros);
+
+  const totalCentavos = cajeros.reduce((acc, c) => acc + Math.round(c.total * 100), 0);
+  return {
+    fecha: filtros.fecha,
+    filtros: { caja_id: filtros.cajaId, cajero_id: filtros.cajeroId },
+    totales: {
+      cajeros: cajeros.length,
+      cantidad_operaciones: cajeros.reduce((acc, c) => acc + c.cantidad_operaciones, 0),
+      total: totalCentavos / 100,
+    },
+    cajeros,
+  };
+}
+
+module.exports = { listarUltimasOperaciones, obtenerResumenPorCajero, LIMITE_POR_DEFECTO, LIMITE_MAXIMO };
