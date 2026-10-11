@@ -414,6 +414,26 @@ async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, tot
   });
 }
 
+async function obtenerPagoMixtoPorTransaccion(id_transaccion) {
+  const { rows: pagoRows } = await query(
+    `SELECT * FROM pagos.pagos_mixtos WHERE id_transaccion = $1`,
+    [id_transaccion]
+  );
+  const pago = pagoRows[0];
+  if (!pago) return null;
+
+  const { rows: detalle } = await query(
+    `SELECT * FROM pagos.detalles_pago WHERE pago_id = $1 ORDER BY orden`,
+    [pago.id]
+  );
+
+  return {
+    ...pago,
+    total: num(pago.total),
+    detalle: detalle.map((d) => ({ ...d, monto: num(d.monto), porcentaje: num(d.porcentaje) })),
+  };
+}
+
 module.exports = {
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
