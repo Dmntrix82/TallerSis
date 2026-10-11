@@ -247,3 +247,32 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(255),
     ADD COLUMN IF NOT EXISTS anulado_en  TIMESTAMPTZ;
+
+
+-- ==========================================================================
+-- Migracion 002 - TDSI-23/423: monitoreo de operaciones de cajeros.
+-- Cada operacion guarda QUIEN la hizo (cajero_id) y EN QUE CAJA (caja_id),
+-- para poder agruparlas por cajero y filtrarlas por caja en el monitoreo.
+--   - cajero_id: identificador del cajero (hoy el sistema usa su email, igual
+--     que caja.turnos.cajero_id); "cajero" sigue siendo el nombre que se muestra.
+--   - caja_id ya existia en pagos simples (TDSI-376) y mixtos; se completa en
+--     los mixtos viejos que lo tenian solo en pagos.pagos_mixtos.
+-- Se puede correr varias veces.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS cajero_id VARCHAR(60),
+    ADD COLUMN IF NOT EXISTS caja_id   VARCHAR(60);
+
+-- Operaciones anteriores: el cajero ya estaba guardado en "cajero".
+UPDATE pagos.transacciones
+   SET cajero_id = cajero
+ WHERE cajero_id IS NULL AND cajero IS NOT NULL;
+
+UPDATE pagos.transacciones t
+   SET caja_id = pm.caja_id
+  FROM pagos.pagos_mixtos pm
+ WHERE t.pago_mixto_id = pm.id AND t.caja_id IS NULL AND pm.caja_id IS NOT NULL;
+
+-- El monitoreo pide "las ultimas operaciones" de un cajero o de una caja.
+CREATE INDEX IF NOT EXISTS idx_transacciones_cajero_fecha ON pagos.transacciones (cajero_id, fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_transacciones_caja_fecha   ON pagos.transacciones (caja_id, fecha DESC);

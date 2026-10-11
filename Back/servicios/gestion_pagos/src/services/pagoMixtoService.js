@@ -90,6 +90,9 @@ function calcularDivision({ total, metodos, efectivoRecibido = null }) {
 async function registrarPagoMixto(payload) {
   const { id_transaccion, cajaId, turnoId, tipo_documento, nit, razon_social, telefono, email, cajero } = payload;
 
+    // TDSI-423: quien hizo la operacion (si el front no manda cajeroId, se usa "cajero").
+  const cajeroId = payload.cajeroId || payload.cajero_id || cajero;
+
   if (id_transaccion && await repo.existePagoMixto(id_transaccion))
     throw new AppError("Esta transaccion ya tiene un pago mixto registrado", 409, { id_transaccion });
 
@@ -124,6 +127,7 @@ async function registrarPagoMixto(payload) {
     tipo_documento: tipoDocumento,
     telefono,
     cajero,
+    cajeroId,
   });
 
   emitirActualizacion();
