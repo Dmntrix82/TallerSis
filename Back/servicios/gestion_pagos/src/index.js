@@ -8,6 +8,7 @@ const authRoutes = require("./routes/authRoutes");
 const tableroRoutes = require("./routes/tableroRoutes");
 const facturaDocumentoRoutes = require("./routes/facturaDocumentoRoutes");
 const resumenVentasRoutes = require("./routes/resumenVentasRoutes");
+const monitoreoRoutes = require("./routes/monitoreoRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 
@@ -28,6 +29,7 @@ app.get("/health", async (req, res) => {
   }
 });
 
+app.use("/api/pagos/monitoreo", monitoreoRoutes); // TDSI-23/426 (antes de /api/pagos)
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/pagos", pagoMixtoRoutes);
 app.use("/api/pagos", ventaOnlineRoutes);

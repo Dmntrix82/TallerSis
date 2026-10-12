@@ -82,4 +82,32 @@ async function obtenerResumenPorCajero({ fecha, caja_id, cajero_id } = {}) {
   };
 }
 
-module.exports = { listarUltimasOperaciones, obtenerResumenPorCajero, LIMITE_POR_DEFECTO, LIMITE_MAXIMO };
+/**
+ * TDSI-426/123: todo lo que necesita el panel "Monitoreo de cajeros" en una sola respuesta:
+ * una tarjeta por cajero con su resumen (TDSI-425) y sus ultimas operaciones (TDSI-424).
+ * "actualizado_en" es la hora del servidor en que se armo la respuesta (el panel se refresca solo).
+ */
+async function obtenerMonitoreo({ fecha, caja_id, cajero_id, limite } = {}) {
+  const filtros = { fecha, caja_id, cajero_id };
+  const [resumen, ultimas] = await Promise.all([
+    obtenerResumenPorCajero(filtros),
+    listarUltimasOperaciones({ ...filtros, limite }),
+  ]);
+
+  const operacionesPorCajero = new Map(ultimas.cajeros.map((c) => [c.cajero_id, c.operaciones]));
+  return {
+    fecha: resumen.fecha,
+    filtros: ultimas.filtros,
+    actualizado_en: new Date().toISOString(),
+    totales: resumen.totales,
+    cajeros: resumen.cajeros.map((c) => ({ ...c, operaciones: operacionesPorCajero.get(c.cajero_id) || [] })),
+  };
+}
+
+module.exports = {
+  listarUltimasOperaciones,
+  obtenerResumenPorCajero,
+  obtenerMonitoreo,
+  LIMITE_POR_DEFECTO,
+  LIMITE_MAXIMO,
+};
