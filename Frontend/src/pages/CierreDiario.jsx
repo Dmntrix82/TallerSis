@@ -35,7 +35,7 @@ async function requestJson(url, options = {}) {
   try {
     data = await response.json()
   } catch {
-    // Algunas respuestas de error pueden no traer JSON.
+  
   }
 
   if (!response.ok) {
@@ -162,7 +162,6 @@ export default function CierreDiario() {
             {isLoading ? <><span className="cierre-diario-spinner" aria-hidden="true" /> Procesando...</> : 'Generar lote'}
           </button>
         </form>
-        <p className="cierre-diario-ayuda">Antes de generar el lote se valida que el periodo contable esté abierto.</p>
       </section>
 
       {isLoading && (

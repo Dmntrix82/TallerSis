@@ -1359,10 +1359,10 @@
 .cierre-diario-panel-titulo p { margin-bottom: 0; color: var(--cd-muted); font-size: .9rem; }
 .cierre-diario-etiqueta { padding: 7px 11px; border-radius: 7px; background: #ecfdf5; color: var(--cd-primario); font-size: .72rem; font-weight: 750; letter-spacing: .05em; }
 .cierre-diario-form { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; }
-.cierre-diario-fecha { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 210px; color: var(--cd-primario); font-size: .9rem; font-weight: 650; }
-.cierre-diario-fecha input { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; font: inherit; }
+.cierre-diario-fecha { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 210px; margin: 0; color: var(--cd-primario); font-size: .9rem; font-weight: 650; }
+.cierre-diario-fecha input { width: 100%; height: 44px; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; font: inherit; }
 .cierre-diario-fecha input:focus { outline: 2px solid var(--cd-acento); outline-offset: 2px; border-color: var(--cd-primario); }
-.cierre-diario .btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 11px 18px; border: 1px solid var(--cd-primario); border-radius: 8px; background: var(--cd-primario); color: #fff; font: inherit; font-weight: 650; cursor: pointer; transition: opacity .2s, transform .2s; }
+.cierre-diario .btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; height: 44px; padding: 0 20px; border: 1px solid var(--cd-primario); border-radius: 8px; background: var(--cd-primario); color: #fff; font: inherit; font-weight: 650; cursor: pointer; transition: opacity .2s, transform .2s; }
 .cierre-diario .btn:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
 .cierre-diario .btn:disabled { cursor: not-allowed; opacity: .55; }
 .cierre-diario .btn.btn-secundario { border-color: var(--cd-borde); background: #fff; color: var(--cd-primario); }
