@@ -1,4 +1,4 @@
-// TDSI-426: pruebas HTTP de GET /api/pagos/monitoreo (usa la BD real; limpia lo que crea).
+// TDSI-426/123: pruebas HTTP de GET /api/pagos/monitoreo y de su version en tiempo real (/stream)
 // Levanta solo las rutas de pagos en un puerto libre, sin arrancar src/index.js.
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -6,6 +6,7 @@ const express = require("express");
 const { pool } = require("../config/db");
 const { errorHandler } = require("../middlewares/errorHandler");
 const { registrarPagoSimple } = require("../services/pagoSimpleService");
+const { actualizarEstado } = require("../services/transaccionesEstadoService");
 
 const SUFIJO = Date.now();
 const CAJERO_A = `test.endpoint.a.${SUFIJO}@tallersis.bo`;
@@ -107,4 +108,82 @@ test("TDSI-426: filtros invalidos responden 400 con el mensaje", async () => {
 test("TDSI-426: no interfiere con las rutas existentes de /api/pagos", async () => {
   const r = await fetch(base.replace("/monitoreo", "/historial"));
   assert.equal(r.status, 200);
+});
+
+
+// ---------- TDSI-123: tiempo real (Server-Sent Events) ----------
+
+/** Abre el stream y devuelve una funcion que espera el siguiente evento "data:" (con timeout). */
+async function abrirStream(query) {
+  const controlador = new AbortController();
+  const r = await fetch(`${base}/stream${query}`, { signal: controlador.signal });
+  const lector = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  async function siguienteEvento(timeoutMs = 3000) {
+    const limite = Date.now() + timeoutMs;
+    for (;;) {
+      const fin = buffer.indexOf("\n\n");
+      if (fin !== -1) {
+        const bloque = buffer.slice(0, fin);
+        buffer = buffer.slice(fin + 2);
+        const linea = bloque.split("\n").find((l) => l.startsWith("data: "));
+        if (linea) return JSON.parse(linea.slice(6));
+        continue; // "retry:" o comentario ": ping"
+      }
+      const restante = limite - Date.now();
+      if (restante <= 0) throw new Error("no llego ningun evento a tiempo");
+      const { value, done } = await Promise.race([
+        lector.read(),
+        new Promise((_, no) => setTimeout(() => no(new Error("no llego ningun evento a tiempo")), restante)),
+      ]);
+      if (done) throw new Error("el stream se cerro");
+      buffer += decoder.decode(value, { stream: true });
+    }
+  }
+
+  return { respuesta: r, siguienteEvento, cerrar: () => controlador.abort() };
+}
+
+test("TDSI-123: el stream envia el monitoreo al conectarse y otra vez apenas entra una venta", async () => {
+  const s = await abrirStream(`?cajero_id=${encodeURIComponent(CAJERO_A)}`);
+  try {
+    assert.equal(s.respuesta.status, 200);
+    assert.match(s.respuesta.headers.get("content-type"), /text\/event-stream/);
+
+    const inicial = await s.siguienteEvento();
+    assert.equal(inicial.cajeros[0].cajero_id, CAJERO_A);
+    const antes = inicial.cajeros[0].cantidad_operaciones;
+
+    const { pago } = await registrarPagoSimple({ metodo: "Efectivo", monto: 3, caja_id: CAJA_1, cajero: CAJERO_A });
+    const enVivo = await s.siguienteEvento();
+    assert.equal(enVivo.cajeros[0].cantidad_operaciones, antes + 1);
+    assert.equal(enVivo.cajeros[0].ultima_operacion.id_transaccion, pago.id_transaccion);
+  } finally {
+    s.cerrar();
+  }
+});
+
+test("TDSI-123: un cambio de estado (PENDIENTE -> APROBADA) tambien se envia en vivo", async () => {
+  const { pago } = await registrarPagoSimple({ metodo: "QR", monto: 4, caja_id: CAJA_2, cajero: CAJERO_B });
+  await pool.query("UPDATE pagos.transacciones SET estado_pago = 'PENDIENTE' WHERE id_transaccion = $1", [pago.id_transaccion]);
+
+  const s = await abrirStream(`?cajero_id=${encodeURIComponent(CAJERO_B)}`);
+  try {
+    const inicial = await s.siguienteEvento();
+    assert.equal(inicial.cajeros[0].ultima_operacion.estado, "PENDIENTE");
+
+    await actualizarEstado(pago.id_transaccion, { estado: "APROBADA" });
+    const enVivo = await s.siguienteEvento();
+    assert.equal(enVivo.cajeros[0].ultima_operacion.estado, "APROBADA");
+  } finally {
+    s.cerrar();
+  }
+});
+
+test("TDSI-123: el stream con un filtro invalido responde 400 normal (no abre la conexion)", async () => {
+  const r = await fetch(`${base}/stream?limite=0`);
+  assert.equal(r.status, 400);
+  assert.equal((await r.json()).ok, false);
 });
