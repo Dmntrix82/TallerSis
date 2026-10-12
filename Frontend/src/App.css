@@ -1435,3 +1435,21 @@
   .cierre-diario-spinner, .cierre-diario-skeleton { animation: none; }
   .cierre-diario .btn { transition: none; }
 }
+
+/* TDSI-22: Envíos a Contabilidad */
+.cierre-diario .btn.btn-pequeno { height: 34px; padding: 0 14px; font-size: .85rem; }
+.cierre-envios-tabla-contenedor { overflow-x: auto; border: 1px solid var(--cd-borde); border-radius: 10px; }
+.cierre-envios-tabla { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.cierre-envios-tabla th { padding: 12px 16px; background: var(--cd-fondo); color: var(--cd-muted); font-size: .78rem; font-weight: 750; letter-spacing: .05em; text-align: left; text-transform: uppercase; }
+.cierre-envios-tabla td { padding: 12px 16px; border-top: 1px solid var(--cd-borde); vertical-align: middle; }
+.cierre-envios-acciones { text-align: right; white-space: nowrap; }
+.envio-estado { display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px; border-radius: 30px; font-size: .78rem; font-weight: 750; }
+.envio-estado > span { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.envio-estado-enviado { background: #dcfce7; color: #166534; }
+.envio-estado-pendiente { background: #fef9c3; color: #854d0e; }
+.envio-estado-error { background: #fee2e2; color: #991b1b; }
+.envio-detalle-error { display: block; margin-top: 6px; color: #991b1b; font-size: .78rem; }
+.cierre-envios-vacio { padding: 32px 16px; border: 1px dashed #cbd5e1; border-radius: 10px; background: var(--cd-fondo); text-align: center; }
+.cierre-envios-vacio strong { display: block; margin-bottom: 6px; color: var(--cd-primario); }
+.cierre-envios-vacio p { margin: 0; color: var(--cd-muted); font-size: .9rem; }
+.cierre-envios-skeleton { height: 48px; margin-bottom: 10px; }

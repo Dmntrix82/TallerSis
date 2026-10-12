@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import '../App.css'
 
 const BASE_URL = import.meta.env.VITE_PAGOS_PROVEEDORES_API_BASE_URL || 'http://localhost:4006'
 const API_URL = `${BASE_URL}/api/lotes-cierre`
+// TDSI-22: ajusta estas rutas si tu backend usa otras
+const ENVIOS_URL = `${API_URL}/envios` // GET -> lista de envíos
+const reenviarUrl = (id) => `${ENVIOS_URL}/${id}/reenviar` // POST -> reintenta el envío
 
 const fechaHoy = () => {
   const hoy = new Date()
@@ -24,6 +27,22 @@ const obtenerMensajeError = (error) => {
   if (status === 502) return 'Gestión de pagos no disponible'
   return error?.message || 'No se pudo completar la operación. Verifique su conexión e inténtelo nuevamente.'
 }
+
+// TDSI-22: normaliza el estado del envío a Enviado / Pendiente / Error
+const ESTADOS_ENVIO = {
+  ENVIADO: { etiqueta: 'Enviado', clase: 'envio-estado-enviado' },
+  PENDIENTE: { etiqueta: 'Pendiente', clase: 'envio-estado-pendiente' },
+  ERROR: { etiqueta: 'Error', clase: 'envio-estado-error' },
+}
+
+const normalizarEstadoEnvio = (valor) => {
+  const v = String(valor || '').toUpperCase()
+  if (['ENVIADO', 'ENVIADA', 'EXITO', 'OK'].includes(v)) return 'ENVIADO'
+  if (['ERROR', 'FALLIDO', 'FALLIDA'].includes(v)) return 'ERROR'
+  return 'PENDIENTE'
+}
+
+const idEnvio = (envio) => envio?.id ?? envio?.id_envio
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
@@ -58,6 +77,48 @@ export default function CierreDiario() {
   const [exito, setExito] = useState('')
   const [loteExistente, setLoteExistente] = useState(null)
   const [modalExistente, setModalExistente] = useState(false)
+
+  // TDSI-22: envíos a Contabilidad
+  const [envios, setEnvios] = useState([])
+  const [cargandoEnvios, setCargandoEnvios] = useState(false)
+  const [errorEnvios, setErrorEnvios] = useState('')
+  const [reenviandoId, setReenviandoId] = useState(null)
+  const [mensajeEnvio, setMensajeEnvio] = useState(null) // { tipo: 'exito' | 'error', texto }
+
+  const cargarEnvios = useCallback(async ({ silencioso = false } = {}) => {
+    if (!silencioso) setCargandoEnvios(true)
+    setErrorEnvios('')
+    try {
+      const res = await requestJson(ENVIOS_URL)
+      const datos = res?.data ?? res
+      const lista = Array.isArray(datos) ? datos : datos?.envios ?? []
+      setEnvios(lista)
+    } catch (err) {
+      setErrorEnvios(obtenerMensajeError(err))
+    } finally {
+      setCargandoEnvios(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    cargarEnvios()
+  }, [cargarEnvios])
+
+  const reenviarEnvio = async (envio) => {
+    const id = idEnvio(envio)
+    setReenviandoId(id)
+    setMensajeEnvio(null)
+    try {
+      await requestJson(reenviarUrl(id), { method: 'POST' })
+      setMensajeEnvio({ tipo: 'exito', texto: `El envío #${id} fue reenviado a Contabilidad.` })
+      // Refresca la lista para reflejar el nuevo estado
+      await cargarEnvios({ silencioso: true })
+    } catch (err) {
+      setMensajeEnvio({ tipo: 'error', texto: `No se pudo reenviar el envío #${id}: ${obtenerMensajeError(err)}` })
+    } finally {
+      setReenviandoId(null)
+    }
+  }
 
   const verLoteExistente = async (loteRecibido) => {
     if (loteRecibido && typeof loteRecibido === 'object' && (loteRecibido.id != null || loteRecibido.id_lote != null)) {
@@ -105,6 +166,8 @@ export default function CierreDiario() {
       const resultado = res?.data ?? res
       setLote(resultado)
       setExito('Lote de cierre diario generado correctamente.')
+      // TDSI-22: el lote nuevo puede generar un envío a Contabilidad
+      cargarEnvios({ silencioso: true })
     } catch (err) {
       // 409: La fecha ya tiene lote
       if (err.status === 409 || err.data?.existente || err.data?.yaExiste) {
@@ -248,6 +311,111 @@ export default function CierreDiario() {
           <p className="cierre-diario-nota"><span aria-hidden="true">i</span> Los importes se muestran en bolivianos (BOB).</p>
         </section>
       )}
+
+      {/* TDSI-22: Envíos a Contabilidad */}
+      <section className="cierre-diario-panel" aria-labelledby="envios-titulo">
+        <div className="cierre-diario-panel-titulo">
+          <div>
+            <h2 id="envios-titulo">Envíos a Contabilidad</h2>
+            <p>Reportes de ingresos, egresos e impuestos enviados para la creación de asientos contables.</p>
+          </div>
+          <button
+            className="btn btn-secundario btn-pequeno"
+            type="button"
+            onClick={() => cargarEnvios()}
+            disabled={cargandoEnvios || reenviandoId != null}
+          >
+            {cargandoEnvios ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+
+        {mensajeEnvio && (
+          <div
+            className={`cierre-diario-alerta ${mensajeEnvio.tipo === 'exito' ? 'cierre-diario-alerta-exito' : 'cierre-diario-alerta-error'}`}
+            role={mensajeEnvio.tipo === 'exito' ? 'status' : 'alert'}
+          >
+            <span aria-hidden="true">{mensajeEnvio.tipo === 'exito' ? '✓' : '!'}</span>
+            <strong>{mensajeEnvio.texto}</strong>
+          </div>
+        )}
+
+        {cargandoEnvios && envios.length === 0 && (
+          <div aria-live="polite" aria-label="Cargando envíos">
+            {[1, 2, 3].map((item) => <div className="cierre-diario-skeleton cierre-envios-skeleton" key={item} />)}
+          </div>
+        )}
+
+        {errorEnvios && (
+          <div className="cierre-diario-alerta cierre-diario-alerta-error" role="alert">
+            <span className="cierre-diario-alerta-icono" aria-hidden="true">!</span>
+            <div>
+              <strong>No se pudieron cargar los envíos</strong>
+              <p>{errorEnvios}</p>
+            </div>
+          </div>
+        )}
+
+        {!cargandoEnvios && !errorEnvios && envios.length === 0 && (
+          <div className="cierre-envios-vacio">
+            <strong>Sin envíos registrados</strong>
+            <p>Cuando se genere un lote de cierre, su envío a Contabilidad aparecerá aquí.</p>
+          </div>
+        )}
+
+        {envios.length > 0 && (
+          <div className="cierre-envios-tabla-contenedor">
+            <table className="cierre-envios-tabla">
+              <thead>
+                <tr>
+                  <th>Envío</th>
+                  <th>Lote</th>
+                  <th>Fecha</th>
+                  <th>Estado</th>
+                  <th aria-label="Acciones" />
+                </tr>
+              </thead>
+              <tbody>
+                {envios.map((envio, indice) => {
+                  const id = idEnvio(envio)
+                  const clave = normalizarEstadoEnvio(envio.estado)
+                  const { etiqueta, clase } = ESTADOS_ENVIO[clave]
+                  const idLote = envio.id_lote ?? envio.lote_id
+                  const fechaEnvio = envio.fecha ?? envio.fecha_lote ?? envio.fecha_envio
+                  const reenviando = reenviandoId === id
+
+                  return (
+                    <tr key={id ?? indice}>
+                      <td>{id != null ? `#${id}` : '—'}</td>
+                      <td>{idLote != null ? `#${idLote}` : '—'}</td>
+                      <td>{fechaEnvio ? String(fechaEnvio).slice(0, 10) : '—'}</td>
+                      <td>
+                        <span className={`envio-estado ${clase}`}>
+                          <span aria-hidden="true" />{etiqueta}
+                        </span>
+                        {clave === 'ERROR' && envio.mensaje_error && (
+                          <small className="envio-detalle-error">{envio.mensaje_error}</small>
+                        )}
+                      </td>
+                      <td className="cierre-envios-acciones">
+                        {clave === 'ERROR' && (
+                          <button
+                            className="btn btn-secundario btn-pequeno"
+                            type="button"
+                            onClick={() => reenviarEnvio(envio)}
+                            disabled={reenviandoId != null}
+                          >
+                            {reenviando ? 'Reenviando...' : 'Reenviar'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {modalExistente && (
         <div className="cierre-diario-modal-fondo" role="presentation">
