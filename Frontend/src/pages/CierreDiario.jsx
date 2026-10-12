@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import '../App.css'
 
-const API_URL = '/api/lotes-cierre'
+const BASE_URL = import.meta.env.VITE_PAGOS_PROVEEDORES_API_BASE_URL || 'http://localhost:4006'
+const API_URL = `${BASE_URL}/api/lotes-cierre`
 
 const fechaHoy = () => {
   const hoy = new Date()
@@ -20,6 +21,7 @@ const obtenerMensajeError = (error) => {
   const status = error?.status ?? error?.response?.status
   if (status === 422) return 'Periodo contable cerrado'
   if (status === 503) return 'Contabilidad no disponible'
+  if (status === 502) return 'Gestión de pagos no disponible'
   return error?.message || 'No se pudo completar la operación. Verifique su conexión e inténtelo nuevamente.'
 }
 
@@ -37,7 +39,9 @@ async function requestJson(url, options = {}) {
   }
 
   if (!response.ok) {
-    const error = new Error(data?.mensaje || data?.message || 'Ocurrió un error al comunicarse con el servidor.')
+    const error = new Error(
+      data?.mensaje || data?.message || data?.detalle?.mensaje || 'Ocurrió un error al comunicarse con el servidor.'
+    )
     error.status = response.status
     error.data = data
     throw error
@@ -56,7 +60,7 @@ export default function CierreDiario() {
   const [modalExistente, setModalExistente] = useState(false)
 
   const verLoteExistente = async (loteRecibido) => {
-    if (loteRecibido && typeof loteRecibido === 'object' && loteRecibido.id != null) {
+    if (loteRecibido && typeof loteRecibido === 'object' && (loteRecibido.id != null || loteRecibido.id_lote != null)) {
       setLote(loteRecibido)
       setModalExistente(false)
       setError('')
@@ -67,9 +71,10 @@ export default function CierreDiario() {
     setIsLoading(true)
     setError('')
     try {
-      const data = await requestJson(`${API_URL}?fecha=${encodeURIComponent(fecha)}`)
-      const encontrado = data?.lote ?? data
-      if (!encontrado || encontrado.id == null) {
+      // El backend consulta por GET /:fecha
+      const res = await requestJson(`${API_URL}/${fecha}`)
+      const encontrado = res?.data ?? res
+      if (!encontrado) {
         setError('El servidor indicó que existe un lote, pero no devolvió sus datos. Verifique el endpoint de consulta.')
         return
       }
@@ -91,23 +96,20 @@ export default function CierreDiario() {
     setLoteExistente(null)
 
     try {
-      const data = await requestJson(`${API_URL}/generar`, {
+      // El backend crea el lote con POST /
+      const res = await requestJson(API_URL, {
         method: 'POST',
-        body: JSON.stringify({ fecha }),
+        body: JSON.stringify({ fecha, generado_por: 'admin' }),
       })
 
-      const resultado = data?.lote ?? data
-      if (data?.existente || data?.yaExiste) {
-        setLoteExistente(data?.lote ?? data?.loteExistente ?? null)
-        setModalExistente(true)
-        return
-      }
-
+      const resultado = res?.data ?? res
       setLote(resultado)
       setExito('Lote de cierre diario generado correctamente.')
     } catch (err) {
+      // 409: La fecha ya tiene lote
       if (err.status === 409 || err.data?.existente || err.data?.yaExiste) {
-        setLoteExistente(err.data?.lote ?? err.data?.loteExistente ?? null)
+        const existente = err.data?.detalle?.lote ?? err.data?.data ?? null
+        setLoteExistente(existente)
         setModalExistente(true)
       } else {
         setError(obtenerMensajeError(err))
@@ -176,7 +178,15 @@ export default function CierreDiario() {
       {error && (
         <div className="cierre-diario-alerta cierre-diario-alerta-error" role="alert">
           <span className="cierre-diario-alerta-icono" aria-hidden="true">!</span>
-          <div><strong>{error}</strong>{error === 'Periodo contable cerrado' && <p>La generación fue bloqueada. Selecciona otra fecha con periodo contable abierto o contacta a Contabilidad.</p>}{error === 'Contabilidad no disponible' && <p>No se generó ningún lote. Inténtalo más tarde o contacta al equipo de soporte.</p>}</div>
+          <div>
+            <strong>{error}</strong>
+            {error === 'Periodo contable cerrado' && (
+              <p>La generación fue bloqueada. Selecciona otra fecha con periodo contable abierto o contacta a Contabilidad.</p>
+            )}
+            {error === 'Contabilidad no disponible' && (
+              <p>No se generó ningún lote. Inténtalo más tarde o contacta al equipo de soporte.</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -194,37 +204,45 @@ export default function CierreDiario() {
               <h2 id="resumen-lote-titulo">Resumen financiero</h2>
               <p>Detalle consolidado del lote de cierre diario.</p>
             </div>
-            <span className={`cierre-diario-estado ${estado === 'GENERADO' ? 'cierre-diario-estado-ok' : ''}`}><span />{estado}</span>
+            <span className={`cierre-diario-estado ${estado === 'GENERADO' ? 'cierre-diario-estado-ok' : ''}`}>
+              <span />{estado}
+            </span>
           </div>
 
           <div className="cierre-diario-metadatos">
             <div><span>Fecha del lote</span><strong>{lote.fecha || fecha}</strong></div>
-            <div><span>Identificador del lote</span><strong>{lote.id != null ? `#${lote.id}` : 'No informado'}</strong></div>
+            <div><span>Identificador del lote</span><strong>{lote.id != null || lote.id_lote != null ? `#${lote.id ?? lote.id_lote}` : 'No informado'}</strong></div>
           </div>
 
           <div className="cierre-diario-metricas">
             <article className="cierre-diario-metrica metrica-ingresos">
               <span className="cierre-diario-metrica-icono" aria-hidden="true">↗</span>
               <span className="cierre-diario-metrica-label">Total ingresos</span>
-              <strong>{dinero(lote.ingresos)}</strong>
+              <strong>{dinero(lote.ingresos ?? lote.total_ingresos)}</strong>
               <small>Entradas consolidadas</small>
             </article>
             <article className="cierre-diario-metrica metrica-egresos">
               <span className="cierre-diario-metrica-icono" aria-hidden="true">↘</span>
               <span className="cierre-diario-metrica-label">Total egresos</span>
-              <strong>{dinero(lote.egresos)}</strong>
+              <strong>{dinero(lote.egresos ?? lote.total_egresos)}</strong>
               <small>Salidas consolidadas</small>
             </article>
             <article className="cierre-diario-metrica metrica-impuestos">
               <span className="cierre-diario-metrica-icono" aria-hidden="true">%</span>
               <span className="cierre-diario-metrica-label">Total impuestos</span>
-              <strong>{dinero(lote.impuestos)}</strong>
+              <strong>{dinero(lote.impuestos ?? lote.total_impuestos)}</strong>
               <small>Impuestos del periodo</small>
             </article>
             <article className="cierre-diario-metrica metrica-neto">
               <span className="cierre-diario-metrica-icono" aria-hidden="true">＝</span>
               <span className="cierre-diario-metrica-label">Total neto</span>
-              <strong>{dinero(lote.neto ?? ((Number(lote.ingresos) || 0) - (Number(lote.egresos) || 0)))}</strong>
+              <strong>
+                {dinero(
+                  lote.neto ??
+                  lote.total_neto ??
+                  ((Number(lote.ingresos ?? lote.total_ingresos) || 0) - (Number(lote.egresos ?? lote.total_egresos) || 0))
+                )}
+              </strong>
               <small>Ingresos menos egresos</small>
             </article>
           </div>
