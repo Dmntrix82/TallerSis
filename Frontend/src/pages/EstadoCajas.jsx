@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { obtenerEstadoCajas } from '../api/caja.js'
 
 // TDSI-126: vista del administrador con el estado de cada caja (terminal).
 // TDSI-495: una tarjeta por caja.
@@ -6,21 +7,9 @@ import { useEffect, useState } from 'react'
 // TDSI-497: filtros por estado operativo y por actividad.
 // TDSI-498: mensajes de "sin cajas" y de error.
 //
-// Por ahora usa datos de prueba locales; la conexion con el backend se hara despues
-// reemplazando obtenerEstadoCajasPrueba por la llamada real.
-const CAJAS_PRUEBA = [
-  { codigo: 'CAJA-01', nombre: 'Caja principal', estado: 'ACTIVA', operativo: 'ABIERTA', cajero_nombre: 'María López', abierto_en: '2026-10-10T08:02:00' },
-  { codigo: 'CAJA-02', nombre: 'Caja rápida', estado: 'ACTIVA', operativo: 'CERRADA', cajero_nombre: null, abierto_en: null },
-  { codigo: 'CAJA-03', nombre: 'Caja de repuestos', estado: 'ACTIVA', operativo: 'ABIERTA', cajero_nombre: 'Juan Pérez', abierto_en: '2026-10-10T09:15:00' },
-  { codigo: 'CAJA-04', nombre: 'Caja del segundo piso', estado: 'INACTIVA', operativo: 'CERRADA', cajero_nombre: null, abierto_en: null },
-  { codigo: 'CAJA-05', nombre: 'Caja de servicio técnico', estado: 'ACTIVA', operativo: 'CERRADA', cajero_nombre: null, abierto_en: null },
-]
-
-function obtenerEstadoCajasPrueba() {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve({ data: CAJAS_PRUEBA }), 400)
-  })
-}
+// Datos: GET /api/caja/estado (gestion_caja). Cada caja trae { codigo, nombre, estado, activa },
+// donde estado es ABIERTA | CERRADA | INACTIVA. Se piden todas una sola vez y los filtros
+// se aplican aqui, porque una caja inactiva tambien cuenta como cerrada para el filtro.
 
 const OPCIONES_ESTADO = [
   { valor: '', etiqueta: 'Todas' },
@@ -45,16 +34,21 @@ function EstadoCajas() {
   useEffect(() => {
     setCargando(true)
     setError(null)
-    obtenerEstadoCajasPrueba()
+    obtenerEstadoCajas()
       .then((r) => setCajas(r.data))
       .catch((err) => setError(err.message))
       .finally(() => setCargando(false))
   }, [recargar])
 
   const hayFiltros = filtroEstado || filtroActividad
-  const cajasFiltradas = cajas.filter(
-    (c) => (!filtroEstado || c.operativo === filtroEstado) && (!filtroActividad || c.estado === filtroActividad)
-  )
+  const cajasFiltradas = cajas.filter((c) => {
+    const abierta = c.estado === 'ABIERTA'
+    if (filtroEstado === 'ABIERTA' && !abierta) return false
+    if (filtroEstado === 'CERRADA' && abierta) return false
+    if (filtroActividad === 'ACTIVA' && !c.activa) return false
+    if (filtroActividad === 'INACTIVA' && c.activa) return false
+    return true
+  })
 
   return (
     <section>
@@ -116,8 +110,8 @@ function EstadoCajas() {
       {!cargando && !error && cajasFiltradas.length > 0 && (
         <div className="cajas-grid">
           {cajasFiltradas.map((c) => {
-            const abierta = c.operativo === 'ABIERTA'
-            const activa = c.estado === 'ACTIVA'
+            const abierta = c.estado === 'ABIERTA'
+            const activa = c.activa
             return (
               <article
                 key={c.codigo}
@@ -138,15 +132,11 @@ function EstadoCajas() {
                 </div>
 
                 <p className="caja-card-detalle">
-                  {abierta ? (
-                    <>
-                      Cajero: <strong>{c.cajero_nombre}</strong>
-                      <br />
-                      Abierta desde las {new Date(c.abierto_en).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </>
-                  ) : (
-                    'Sin turno vigente'
-                  )}
+                  {!activa
+                    ? 'Caja deshabilitada, no se pueden abrir turnos'
+                    : abierta
+                      ? 'Con turno vigente'
+                      : 'Sin turno vigente'}
                 </p>
               </article>
             )

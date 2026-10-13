@@ -34,3 +34,9 @@ export function urlReporteCierrePdf(turnoId) {
   const base = import.meta.env.VITE_API_BASE_URL ?? ''
   return `${base}/api/caja/turnos/${turnoId}/cierre/pdf`
 }
+
+// TDSI-126/465: estado de todas las cajas. Cada caja trae { codigo, nombre, estado, activa },
+// con estado = ABIERTA | CERRADA | INACTIVA (INACTIVA gana sobre las otras dos).
+export function obtenerEstadoCajas() {
+  return apiFetch('/api/caja/estado')
+}
