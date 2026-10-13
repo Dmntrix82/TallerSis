@@ -10,7 +10,11 @@ import VentasOnline from './pages/VentasOnline';
 import Facturas from './pages/Facturas.jsx'
 import TableroIngresos from './pages/TableroIngresos.jsx'
 import CierreCaja from './pages/CierreCaja.jsx'
+<<<<<<< HEAD
 import EstadoCajas from './pages/EstadoCajas.jsx'
+=======
+import SolicitudesApertura from './pages/SolicitudesApertura.jsx'
+>>>>>>> 05fc82b (TDSI-25 frontend p1)
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import './App.css'
@@ -48,7 +52,11 @@ function App() {
           <Route path="/admin/clientes" element={<RutaProtegidaAdmin><Clientes /></RutaProtegidaAdmin>} />
           <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
+<<<<<<< HEAD
           <Route path="/admin/cajas" element={<RutaProtegidaAdmin><EstadoCajas /></RutaProtegidaAdmin>} />
+=======
+          <Route path="/admin/solicitudes-apertura" element={<RutaProtegidaAdmin><SolicitudesApertura /></RutaProtegidaAdmin>} />
+>>>>>>> 05fc82b (TDSI-25 frontend p1)
         </Routes>
       </main>
     </>
