@@ -3,9 +3,9 @@ import '../App.css'
 
 const BASE_URL = import.meta.env.VITE_PAGOS_PROVEEDORES_API_BASE_URL || 'http://localhost:4006'
 const API_URL = `${BASE_URL}/api/lotes-cierre`
-// TDSI-22: ajusta estas rutas si tu backend usa otras
-const ENVIOS_URL = `${API_URL}/envios` // GET -> lista de envíos
-const reenviarUrl = (id) => `${ENVIOS_URL}/${id}/reenviar` // POST -> reintenta el envío
+// TDSI-22 / TDSI-122: endpoints para el microservicio de envíos a Contabilidad
+const ENVIOS_URL = `${BASE_URL}/api/envios-contabilidad`
+const reenviarUrl = (id) => `${ENVIOS_URL}/${id}/reenviar`
 
 const fechaHoy = () => {
   const hoy = new Date()
@@ -54,7 +54,7 @@ async function requestJson(url, options = {}) {
   try {
     data = await response.json()
   } catch {
-  
+    // Algunas respuestas de error pueden no traer JSON.
   }
 
   if (!response.ok) {
@@ -109,7 +109,10 @@ export default function CierreDiario() {
     setReenviandoId(id)
     setMensajeEnvio(null)
     try {
-      await requestJson(reenviarUrl(id), { method: 'POST' })
+      await requestJson(reenviarUrl(id), {
+        method: 'POST',
+        body: JSON.stringify({ solicitado_por: 'admin' }),
+      })
       setMensajeEnvio({ tipo: 'exito', texto: `El envío #${id} fue reenviado a Contabilidad.` })
       // Refresca la lista para reflejar el nuevo estado
       await cargarEnvios({ silencioso: true })
@@ -166,7 +169,7 @@ export default function CierreDiario() {
       const resultado = res?.data ?? res
       setLote(resultado)
       setExito('Lote de cierre diario generado correctamente.')
-      // TDSI-22: el lote nuevo puede generar un envío a Contabilidad
+      // TDSI-22: el lote nuevo genera un envío a Contabilidad, refrescamos la tabla
       cargarEnvios({ silencioso: true })
     } catch (err) {
       // 409: La fecha ya tiene lote
