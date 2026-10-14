@@ -13,6 +13,19 @@ async function buscar(id) {
   return rows[0] || null;
 }
 
+/** TDSI-539: solicitudes en espera de que un supervisor las autorice o rechace. */
+async function listarPendientes() {
+  const { rows } = await query(
+    `SELECT fa.id, fa.factura_id, f.numero AS factura_numero, f.cliente_nombre, f.cliente_nit,
+            f.total, fa.motivo, fa.solicitado_por, fa.solicitado_en, f.fecha AS factura_fecha
+       FROM facturacion.factura_anulaciones fa
+       JOIN facturacion.facturas f ON f.id = fa.factura_id
+      WHERE fa.estado = 'Solicitada'
+      ORDER BY fa.solicitado_en ASC`
+  );
+  return rows;
+}
+
 async function buscarFacturaPorNumero(numero) {
   const { rows } = await query(
     `SELECT id, numero, estado, bloqueada, fecha FROM facturacion.facturas WHERE numero = $1`,
@@ -90,4 +103,4 @@ async function resolver(id, { aprobar, supervisor, observacion }, validar) {
   });
 }
 
-module.exports = { buscar, buscarFacturaPorNumero, crear, resolver };
+module.exports = { buscar, buscarFacturaPorNumero, crear, resolver, listarPendientes };
