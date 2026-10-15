@@ -1716,3 +1716,21 @@
   background-color: #fffbeb;
   color: #92400e;
 }
+
+/* Solicitudes de cierre de caja (TDSI-130 / TDSI-503 a 506) */
+.diferencia {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.diferencia--cuadra {
+  color: var(--color-brand-dark);
+}
+
+.diferencia--sobrante {
+  color: #92400e;
+}
+
+.diferencia--faltante {
+  color: #b91c1c;
+}

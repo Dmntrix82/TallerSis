@@ -13,6 +13,7 @@ import CierreCaja from './pages/CierreCaja.jsx'
 import EstadoCajas from './pages/EstadoCajas.jsx'
 import ReportesCaja from './pages/ReportesCaja.jsx'
 import SolicitudesApertura from './pages/SolicitudesApertura.jsx'
+import SolicitudesCierre from './pages/SolicitudesCierre.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
@@ -57,6 +58,7 @@ function App() {
           <Route path="/admin/cajas" element={<RutaProtegidaAdmin><EstadoCajas /></RutaProtegidaAdmin>} />
           <Route path="/admin/reportes" element={<RutaProtegidaAdmin><ReportesCaja /></RutaProtegidaAdmin>} />
           <Route path="/admin/solicitudes-apertura" element={<RutaProtegidaAdmin><SolicitudesApertura /></RutaProtegidaAdmin>} />
+          <Route path="/admin/solicitudes-cierre" element={<RutaProtegidaAdmin><SolicitudesCierre /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>
