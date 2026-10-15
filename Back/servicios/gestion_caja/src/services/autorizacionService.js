@@ -3,6 +3,38 @@ const repo = require("../data/autorizacionesRepo");
 const turnosRepo = require("../data/turnosRepo");
 const { validarSupervisor } = require("./supervisorProxy");
 const { abrirTurno } = require("./turnosService");
+const { cerrarTurno } = require("./cierreService");
+
+/** TDSI-471: el cajero solicita cerrar el turno. */
+async function solicitarCierre({ turno_id, cajero_id, cajero_nombre, efectivo_contado }) {
+  if (!turno_id || !cajero_id) throw new AppError("Faltan 'turno_id' o 'cajero_id'", 400);
+  if (efectivo_contado === undefined || efectivo_contado === null) {
+    throw new AppError("Falta 'efectivo_contado'", 400);
+  }
+  const monto = Number(efectivo_contado);
+  if (Number.isNaN(monto) || monto < 0) {
+    throw new AppError("El efectivo contado debe ser un número >= 0", 400);
+  }
+
+  const turno = await turnosRepo.obtenerTurnoPorId(turno_id);
+  if (!turno) throw new AppError("Turno no encontrado", 404, { turno_id });
+  if (turno.estado === "CERRADO") {
+    throw new AppError("El turno ya está cerrado", 409, { turno_id });
+  }
+
+  const pendiente = await repo.buscarPendientePorTurno(turno_id);
+  if (pendiente) {
+    throw new AppError("Ya hay una solicitud de cierre pendiente para ese turno", 409, { solicitud_id: pendiente.id });
+  }
+
+  return repo.crearSolicitudCierre({
+    caja_id: turno.caja_id,
+    turno_id,
+    cajero_id,
+    cajero_nombre,
+    efectivo_contado: monto,
+  });
+}
 
 /** TDSI-467/127: el cajero solicita abrir una caja. */
 async function solicitarApertura({ caja_id, cajero_id, cajero_nombre, efectivo_inicial }) {
@@ -45,18 +77,25 @@ async function aprobarSolicitud(id, { supervisor_id, pin }) {
 
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
-  // TDSI-469: al aprobar, se abre el turno con los datos de la solicitud.
-  const turno = await abrirTurno({
-    caja_id: solicitud.caja_id,
-    cajero_id: solicitud.cajero_id,
-    efectivo_inicial: solicitud.efectivo_inicial,
-    autorizadoPor: supervisor,  // ← flag para saltar la validación duplicada
-  });
+  // TDSI-469: APERTURA → abrir turno
+  // TDSI-473: CIERRE → cerrar turno
+  let turno;
+  if (solicitud.tipo === "CIERRE") {
+    const resultado = await cerrarTurno(solicitud.turno_id, { supervisor_id, pin });
+    turno = resultado.turno;
+  } else {
+    turno = await abrirTurno({
+      caja_id: solicitud.caja_id,
+      cajero_id: solicitud.cajero_id,
+      efectivo_inicial: solicitud.efectivo_inicial,
+      autorizadoPor: supervisor,
+    });
+  }
 
   const autorizacion = await repo.marcarAprobada(id, {
     autorizado_por: supervisor.supervisor_id,
     autorizado_por_nombre: supervisor.nombre,
-    turno_id: turno.id,
+    turno_id: turno.id || solicitud.turno_id,
   });
 
   return { autorizacion, turno };
@@ -84,4 +123,4 @@ async function rechazarSolicitud(id, { supervisor_id, pin, motivo_rechazo }) {
   });
 }
 
-module.exports = { solicitarApertura, listarPendientes, aprobarSolicitud, rechazarSolicitud };
+module.exports = { solicitarApertura, solicitarCierre, listarPendientes, aprobarSolicitud, rechazarSolicitud };
