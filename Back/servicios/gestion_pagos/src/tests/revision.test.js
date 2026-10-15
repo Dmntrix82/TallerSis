@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { pool } = require("../config/db");
 const { registrarPagoSimple } = require("../services/pagoSimpleService");
 const { registrarPagoMixto } = require("../services/pagoMixtoService");
-const { listarTransaccionesPorCajero } = require("../services/revisionService");
+const { listarTransaccionesPorCajero, obtenerResumenCajero } = require("../services/revisionService");
 const { hoyLocal } = require("../utils/fechaLocal");
 
 const SUFIJO = Date.now();
@@ -110,4 +110,64 @@ test("TDSI-427: valida cajero, fechas, metodo y paginacion", async () => {
   for (const c of casos) {
     await assert.rejects(() => listarTransaccionesPorCajero(c), (e) => e.status === 400, JSON.stringify(c));
   }
+});
+
+
+// Ventas de CAJERO hoy: Efectivo 10, QR 20, Tarjeta 30, Mixta (Efectivo 15 + QR 35). Ayer: QR 99.
+
+test("TDSI-428: resumen del cajero: cantidad y total por metodo (la mixta cuenta en sus dos metodos)", async () => {
+  const r = await obtenerResumenCajero({ cajero_id: CAJERO });
+  assert.equal(r.cajero, CAJERO);
+  assert.deepEqual(r.filtros, { desde: HOY, hasta: HOY });
+  assert.equal(r.cantidad_transacciones, 4);
+  assert.equal(r.cantidad_aprobadas, 4);
+  assert.equal(r.total, 110);
+  assert.deepEqual(r.por_metodo, [
+    { metodo: "Efectivo", cantidad: 2, total: 25 },
+    { metodo: "Tarjeta", cantidad: 1, total: 30 },
+    { metodo: "QR", cantidad: 2, total: 55 },
+  ]);
+  const sumaMetodos = r.por_metodo.reduce((acc, m) => acc + m.total, 0);
+  assert.equal(sumaMetodos, r.total, "la suma por metodo cuadra con el total");
+});
+
+test("TDSI-428: el resumen respeta el rango de fechas", async () => {
+  const ayer = await obtenerResumenCajero({ cajero_id: CAJERO, fecha: AYER });
+  assert.equal(ayer.cantidad_transacciones, 1);
+  assert.equal(ayer.total, 99);
+  assert.deepEqual(ayer.por_metodo.find((m) => m.metodo === "QR"), { metodo: "QR", cantidad: 1, total: 99 });
+  assert.deepEqual(ayer.por_metodo.find((m) => m.metodo === "Efectivo"), { metodo: "Efectivo", cantidad: 0, total: 0 });
+
+  const dosDias = await obtenerResumenCajero({ cajero_id: CAJERO, desde: AYER, hasta: HOY });
+  assert.equal(dosDias.cantidad_transacciones, 5);
+  assert.equal(dosDias.total, 209);
+});
+
+test("TDSI-428: lo anulado o rechazado no suma al total ni a los metodos", async () => {
+  const { pago: anulada } = await registrarPagoSimple({ metodo: "Tarjeta", monto: 40, caja_id: CAJA, cajero: CAJERO });
+  const { pago: rechazada } = await registrarPagoSimple({ metodo: "QR", monto: 60, caja_id: CAJA, cajero: CAJERO });
+  await pool.query("UPDATE pagos.transacciones SET estado = 'Anulado' WHERE id_transaccion = $1", [anulada.id_transaccion]);
+  await pool.query("UPDATE pagos.transacciones SET estado_pago = 'RECHAZADA' WHERE id_transaccion = $1", [rechazada.id_transaccion]);
+  try {
+    const r = await obtenerResumenCajero({ cajero_id: CAJERO });
+    assert.equal(r.cantidad_transacciones, 6);
+    assert.equal(r.cantidad_aprobadas, 4);
+    assert.equal(r.cantidad_anuladas, 1);
+    assert.equal(r.cantidad_rechazadas, 1);
+    assert.equal(r.total, 110, "igual que antes");
+    assert.equal(r.total_anulado, 40);
+    assert.deepEqual(r.por_metodo.find((m) => m.metodo === "Tarjeta"), { metodo: "Tarjeta", cantidad: 1, total: 30 });
+  } finally {
+    await pool.query("DELETE FROM pagos.transacciones WHERE id_transaccion = ANY($1)", [[anulada.id_transaccion, rechazada.id_transaccion]]);
+  }
+});
+
+test("TDSI-428: cajero sin ventas -> resumen en 0 con los 3 metodos; valida filtros", async () => {
+  const r = await obtenerResumenCajero({ cajero_id: "nadie@tallersis.bo" });
+  assert.equal(r.cantidad_transacciones, 0);
+  assert.equal(r.total, 0);
+  assert.equal(r.ultima_operacion, null);
+  assert.deepEqual(r.por_metodo.map((m) => [m.metodo, m.cantidad, m.total]), [["Efectivo", 0, 0], ["Tarjeta", 0, 0], ["QR", 0, 0]]);
+  await assert.rejects(() => obtenerResumenCajero({}), (e) => e.status === 400);
+  await assert.rejects(() => obtenerResumenCajero({ cajero_id: CAJERO, fecha: "ayer" }), (e) => e.status === 400);
 });

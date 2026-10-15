@@ -97,10 +97,40 @@ async function listarTransaccionesPorCajero({ cajero_id, fecha, desde, hasta, me
   };
 }
 
+/**
+ * TDSI-428: resumen del cajero en el rango (fecha o desde/hasta, por defecto hoy):
+ * cantidad de transacciones por estado, total cobrado (solo APROBADAS) y
+ * cantidad y total por metodo. Siempre trae los 3 metodos, aunque esten en 0.
+ */
+async function obtenerResumenCajero({ cajero_id, fecha, desde, hasta } = {}) {
+  const cajeroId = validarCajeroId(cajero_id);
+  const rango = validarRango({ fecha, desde, hasta });
+
+  const r = await repo.resumenCajero({ cajeroId, ...rango });
+  const porMetodo = METODOS.map((metodo) => r.por_metodo.find((m) => m.metodo === metodo) || { metodo, cantidad: 0, total: 0 });
+
+  return {
+    cajero_id: cajeroId,
+    cajero: r.cajero,
+    filtros: rango,
+    cantidad_transacciones: r.cantidad_transacciones,
+    cantidad_aprobadas: r.cantidad_aprobadas,
+    cantidad_anuladas: r.cantidad_anuladas,
+    cantidad_rechazadas: r.cantidad_rechazadas,
+    cantidad_pendientes: r.cantidad_pendientes,
+    total: r.total,
+    total_anulado: r.total_anulado,
+    primera_operacion: r.primera_operacion,
+    ultima_operacion: r.ultima_operacion,
+    por_metodo: porMetodo,
+  };
+}
+
 module.exports = {
   METODOS,
   validarCajeroId,
   validarRango,
   validarMetodo,
   listarTransaccionesPorCajero,
+  obtenerResumenCajero,
 };
