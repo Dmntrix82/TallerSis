@@ -276,3 +276,29 @@ UPDATE pagos.transacciones t
 -- El monitoreo pide "las ultimas operaciones" de un cajero o de una caja.
 CREATE INDEX IF NOT EXISTS idx_transacciones_cajero_fecha ON pagos.transacciones (cajero_id, fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_transacciones_caja_fecha   ON pagos.transacciones (caja_id, fecha DESC);
+
+
+-- ==========================================================================
+-- Migracion 003 - TDSI-27/429: revision de transacciones por el Supervisor de Caja.
+-- El supervisor marca cada venta como REVISADA (todo bien) u OBSERVADA (algo
+-- que aclarar, la nota es obligatoria). Va en una tabla aparte, una fila por
+-- venta (id_transaccion): un pago Mixto tiene varias filas en
+-- pagos.transacciones pero se revisa una sola vez. Si el supervisor cambia de
+-- opinion se actualiza la misma fila (queda quien y cuando la marco por ultima vez).
+-- Sin fila = la venta todavia no fue revisada (PENDIENTE).
+-- Se puede correr varias veces.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.revisiones_transaccion (
+    id              BIGSERIAL    PRIMARY KEY,
+    id_transaccion  VARCHAR(60)  NOT NULL UNIQUE,
+    estado          VARCHAR(20)  NOT NULL CHECK (estado IN ('REVISADA','OBSERVADA')),
+    nota            VARCHAR(300),
+    revisado_por    VARCHAR(60)  NOT NULL,
+    revisado_en     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT revision_observada_con_nota
+        CHECK (estado <> 'OBSERVADA' OR (nota IS NOT NULL AND length(trim(nota)) > 0))
+);
+CREATE INDEX IF NOT EXISTS idx_revisiones_estado ON pagos.revisiones_transaccion (estado);
+
+ALTER TABLE pagos.revisiones_transaccion ENABLE ROW LEVEL SECURITY;

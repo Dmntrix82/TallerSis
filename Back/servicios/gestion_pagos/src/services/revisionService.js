@@ -6,6 +6,9 @@ const METODOS = ["Efectivo", "Tarjeta", "QR"];
 const POR_PAGINA_DEFECTO = 20;
 const POR_PAGINA_MAXIMO = 100;
 const RANGO_MAXIMO_DIAS = 92;
+const ESTADOS_REVISION = ["REVISADA", "OBSERVADA"];
+const FILTROS_REVISION = ["PENDIENTE", ...ESTADOS_REVISION];
+const NOTA_MAXIMA = 300;
 
 function validarCajeroId(valor) {
   const texto = typeof valor === "string" ? valor.trim() : "";
@@ -41,6 +44,16 @@ function validarMetodo(valor) {
   return metodo;
 }
 
+/** TDSI-429: filtro opcional por estado de revision (PENDIENTE = todavia sin revisar). */
+function validarFiltroRevision(valor) {
+  if (valor === undefined || valor === null || valor === "") return null;
+  const estado = String(valor).trim().toUpperCase();
+  if (!FILTROS_REVISION.includes(estado)) {
+    throw new AppError(`El estado de revision debe ser uno de: ${FILTROS_REVISION.join(", ")}.`, 400, { estado_revision: valor });
+  }
+  return estado;
+}
+
 function validarEnteroPositivo(valor, campo, defecto, maximo = Number.MAX_SAFE_INTEGER) {
   if (valor === undefined || valor === null || valor === "") return defecto;
   const n = Number(valor);
@@ -55,10 +68,11 @@ function validarEnteroPositivo(valor, campo, defecto, maximo = Number.MAX_SAFE_I
  * Filtros: cajero_id (obligatorio), fecha o desde/hasta, metodo (opcional).
  * Paginacion: pagina (desde 1) y por_pagina (por defecto 20, maximo 100).
  */
-async function listarTransaccionesPorCajero({ cajero_id, fecha, desde, hasta, metodo, pagina, por_pagina } = {}) {
+async function listarTransaccionesPorCajero({ cajero_id, fecha, desde, hasta, metodo, estado_revision, pagina, por_pagina } = {}) {
   const cajeroId = validarCajeroId(cajero_id);
   const rango = validarRango({ fecha, desde, hasta });
   const metodoFiltro = validarMetodo(metodo);
+  const revisionFiltro = validarFiltroRevision(estado_revision);
   const paginaN = validarEnteroPositivo(pagina, "pagina", 1);
   const porPaginaN = validarEnteroPositivo(por_pagina, "por_pagina", POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO);
 
@@ -66,13 +80,14 @@ async function listarTransaccionesPorCajero({ cajero_id, fecha, desde, hasta, me
     cajeroId,
     ...rango,
     metodo: metodoFiltro,
+    estadoRevision: revisionFiltro,
     limite: porPaginaN,
     offset: (paginaN - 1) * porPaginaN,
   });
 
   return {
     cajero_id: cajeroId,
-    filtros: { ...rango, metodo: metodoFiltro },
+    filtros: { ...rango, metodo: metodoFiltro, estado_revision: revisionFiltro },
     paginacion: {
       pagina: paginaN,
       por_pagina: porPaginaN,
@@ -93,6 +108,12 @@ async function listarTransaccionesPorCajero({ cajero_id, fecha, desde, hasta, me
       tipo_documento: f.tipo_documento,
       nit: f.nit,
       razon_social: f.razon_social,
+      revision: {
+        estado: f.revision_estado,
+        nota: f.revision_nota,
+        revisado_por: f.revision_revisado_por,
+        revisado_en: f.revision_revisado_en,
+      },
     })),
   };
 }
@@ -122,15 +143,55 @@ async function obtenerResumenCajero({ cajero_id, fecha, desde, hasta } = {}) {
     total_anulado: r.total_anulado,
     primera_operacion: r.primera_operacion,
     ultima_operacion: r.ultima_operacion,
+    revision: r.revision,
     por_metodo: porMetodo,
   };
 }
 
+/**
+ * TDSI-429: el Supervisor de Caja marca una venta como REVISADA u OBSERVADA.
+ *   - OBSERVADA exige una nota (que se observo); en REVISADA la nota es opcional.
+ *   - revisado_por: quien hizo la revision (obligatorio, para trazabilidad).
+ *   - Se puede volver a marcar: queda la ultima revision.
+ * 404 si la venta no existe.
+ */
+async function marcarRevision({ id_transaccion, estado, nota, revisado_por } = {}) {
+  const id = String(id_transaccion ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{1,60}$/.test(id)) {
+    throw new AppError("El id de la transaccion no tiene un formato valido.", 400, { id_transaccion });
+  }
+  const estadoNuevo = typeof estado === "string" ? estado.trim().toUpperCase() : "";
+  if (!ESTADOS_REVISION.includes(estadoNuevo)) {
+    throw new AppError(`El estado debe ser ${ESTADOS_REVISION.join(" u ")}.`, 400, { estado });
+  }
+  if (nota !== undefined && nota !== null && typeof nota !== "string") {
+    throw new AppError("La nota debe ser texto.", 400);
+  }
+  const notaLimpia = typeof nota === "string" && nota.trim() ? nota.trim() : null;
+  if (notaLimpia && notaLimpia.length > NOTA_MAXIMA) {
+    throw new AppError(`La nota admite hasta ${NOTA_MAXIMA} caracteres.`, 400);
+  }
+  if (estadoNuevo === "OBSERVADA" && !notaLimpia) {
+    throw new AppError("Para marcar una transaccion como OBSERVADA debe escribir una nota.", 400);
+  }
+  const revisadoPor = typeof revisado_por === "string" ? revisado_por.trim() : "";
+  if (!revisadoPor) throw new AppError("El campo 'revisado_por' es obligatorio.", 400);
+  if (revisadoPor.length > 60) throw new AppError("El campo 'revisado_por' admite hasta 60 caracteres.", 400);
+
+  const venta = await repo.buscarVenta(id);
+  if (!venta) throw new AppError(`La transaccion "${id}" no existe.`, 404, { id_transaccion: id });
+
+  const revision = await repo.guardarRevision({ idTransaccion: id, estado: estadoNuevo, nota: notaLimpia, revisadoPor });
+  return { ...revision, cajero_id: venta.cajero_id, total: venta.total };
+}
+
 module.exports = {
   METODOS,
+  ESTADOS_REVISION,
   validarCajeroId,
   validarRango,
   validarMetodo,
   listarTransaccionesPorCajero,
   obtenerResumenCajero,
+  marcarRevision,
 };

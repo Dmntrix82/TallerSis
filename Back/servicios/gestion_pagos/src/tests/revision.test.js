@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { pool } = require("../config/db");
 const { registrarPagoSimple } = require("../services/pagoSimpleService");
 const { registrarPagoMixto } = require("../services/pagoMixtoService");
-const { listarTransaccionesPorCajero, obtenerResumenCajero } = require("../services/revisionService");
+const { listarTransaccionesPorCajero, obtenerResumenCajero, marcarRevision } = require("../services/revisionService");
 const { hoyLocal } = require("../utils/fechaLocal");
 
 const SUFIJO = Date.now();
@@ -38,6 +38,10 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  await pool.query(
+    "DELETE FROM pagos.revisiones_transaccion WHERE id_transaccion IN (SELECT id_transaccion FROM pagos.transacciones WHERE cajero_id = ANY($1))",
+    [[CAJERO, OTRO_CAJERO]]
+  );
   await pool.query("DELETE FROM pagos.transacciones WHERE cajero_id = ANY($1)", [[CAJERO, OTRO_CAJERO]]);
   await pool.query("DELETE FROM pagos.pagos_mixtos WHERE caja_id = $1", [CAJA]);
   await pool.end();
@@ -170,4 +174,86 @@ test("TDSI-428: cajero sin ventas -> resumen en 0 con los 3 metodos; valida filt
   assert.deepEqual(r.por_metodo.map((m) => [m.metodo, m.cantidad, m.total]), [["Efectivo", 0, 0], ["Tarjeta", 0, 0], ["QR", 0, 0]]);
   await assert.rejects(() => obtenerResumenCajero({}), (e) => e.status === 400);
   await assert.rejects(() => obtenerResumenCajero({ cajero_id: CAJERO, fecha: "ayer" }), (e) => e.status === 400);
+});
+
+
+const SUPERVISOR = "supervisor.prueba";
+
+test("TDSI-429: marca una venta como REVISADA y se ve en la lista", async () => {
+  const r = await marcarRevision({ id_transaccion: ventas.efectivo1.id_transaccion, estado: "revisada", revisado_por: SUPERVISOR });
+  assert.equal(r.estado, "REVISADA");
+  assert.equal(r.nota, null);
+  assert.equal(r.revisado_por, SUPERVISOR);
+  assert.ok(r.revisado_en instanceof Date);
+  assert.equal(r.cajero_id, CAJERO);
+
+  const lista = await listarTransaccionesPorCajero({ cajero_id: CAJERO });
+  const t = lista.transacciones.find((x) => x.id_transaccion === ventas.efectivo1.id_transaccion);
+  assert.equal(t.revision.estado, "REVISADA");
+  assert.equal(t.revision.revisado_por, SUPERVISOR);
+  const sinRevisar = lista.transacciones.find((x) => x.id_transaccion === ventas.qr1.id_transaccion);
+  assert.deepEqual(sinRevisar.revision, { estado: "PENDIENTE", nota: null, revisado_por: null, revisado_en: null });
+});
+
+test("TDSI-429: OBSERVADA exige nota; la mixta se revisa una sola vez", async () => {
+  await assert.rejects(
+    () => marcarRevision({ id_transaccion: ventas.mixta.id_transaccion, estado: "OBSERVADA", nota: "   ", revisado_por: SUPERVISOR }),
+    (e) => e.status === 400 && /nota/.test(e.message)
+  );
+  const r = await marcarRevision({
+    id_transaccion: ventas.mixta.id_transaccion, estado: "OBSERVADA", nota: "  El QR no figura en el extracto  ", revisado_por: SUPERVISOR,
+  });
+  assert.equal(r.estado, "OBSERVADA");
+  assert.equal(r.nota, "El QR no figura en el extracto");
+  assert.equal(r.total, 50);
+  const { rows } = await pool.query("SELECT count(*)::int AS n FROM pagos.revisiones_transaccion WHERE id_transaccion = $1", [ventas.mixta.id_transaccion]);
+  assert.equal(rows[0].n, 1);
+});
+
+test("TDSI-429: volver a marcar reemplaza la revision anterior (misma fila)", async () => {
+  const antes = await marcarRevision({ id_transaccion: ventas.tarjeta1.id_transaccion, estado: "OBSERVADA", nota: "Falta voucher", revisado_por: SUPERVISOR });
+  const despues = await marcarRevision({ id_transaccion: ventas.tarjeta1.id_transaccion, estado: "REVISADA", nota: "Voucher encontrado", revisado_por: "otro.supervisor" });
+  assert.equal(despues.estado, "REVISADA");
+  assert.equal(despues.nota, "Voucher encontrado");
+  assert.equal(despues.revisado_por, "otro.supervisor");
+  assert.equal(despues.creado_en.getTime(), antes.creado_en.getTime(), "es la misma revision, actualizada");
+  assert.ok(despues.revisado_en >= antes.revisado_en);
+});
+
+test("TDSI-429: filtra la lista por estado de revision y el resumen cuenta las revisiones", async () => {
+  // Hoy: efectivo1 REVISADA, tarjeta1 REVISADA, mixta OBSERVADA, qr1 sin revisar
+  const pendientes = await listarTransaccionesPorCajero({ cajero_id: CAJERO, estado_revision: "pendiente" });
+  assert.deepEqual(pendientes.transacciones.map((t) => t.id_transaccion), [ventas.qr1.id_transaccion]);
+  assert.equal(pendientes.filtros.estado_revision, "PENDIENTE");
+
+  const observadas = await listarTransaccionesPorCajero({ cajero_id: CAJERO, estado_revision: "OBSERVADA" });
+  assert.deepEqual(observadas.transacciones.map((t) => t.id_transaccion), [ventas.mixta.id_transaccion]);
+  assert.equal(observadas.paginacion.total_registros, 1);
+
+  const resumen = await obtenerResumenCajero({ cajero_id: CAJERO });
+  assert.deepEqual(resumen.revision, { revisadas: 2, observadas: 1, sin_revisar: 1 });
+
+  await assert.rejects(() => listarTransaccionesPorCajero({ cajero_id: CAJERO, estado_revision: "APROBADA" }), (e) => e.status === 400);
+});
+
+test("TDSI-429: valida los datos y responde 404 si la venta no existe", async () => {
+  const id = ventas.qr1.id_transaccion;
+  const casos = [
+    { id_transaccion: "VTA 1", estado: "REVISADA", revisado_por: SUPERVISOR },
+    { id_transaccion: id, estado: "APROBADA", revisado_por: SUPERVISOR },
+    { id_transaccion: id, estado: "REVISADA" },
+    { id_transaccion: id, estado: "REVISADA", revisado_por: "x".repeat(61) },
+    { id_transaccion: id, estado: "REVISADA", revisado_por: SUPERVISOR, nota: "x".repeat(301) },
+    { id_transaccion: id, estado: "REVISADA", revisado_por: SUPERVISOR, nota: 123 },
+  ];
+  for (const c of casos) {
+    await assert.rejects(() => marcarRevision(c), (e) => e.status === 400, JSON.stringify(c).slice(0, 80));
+  }
+  await assert.rejects(
+    () => marcarRevision({ id_transaccion: "NO-EXISTE-999", estado: "REVISADA", revisado_por: SUPERVISOR }),
+    (e) => e.status === 404
+  );
+  // ninguna de las fallidas dejo una revision guardada
+  const { rows } = await pool.query("SELECT count(*)::int AS n FROM pagos.revisiones_transaccion WHERE id_transaccion = $1", [id]);
+  assert.equal(rows[0].n, 0);
 });
