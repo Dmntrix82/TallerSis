@@ -13,6 +13,15 @@ router.post("/solicitar-apertura", wrap(async (req, res) =>
   })
 ));
 
+// TDSI-471: el cajero solicita cierre
+router.post("/solicitar-cierre", wrap(async (req, res) =>
+  res.status(201).json({
+    ok: true,
+    mensaje: "Solicitud de cierre registrada",
+    data: await service.solicitarCierre(req.body),
+  })
+));
+
 // TDSI-582: bandeja del supervisor
 router.get("/pendientes", wrap(async (req, res) => {
   const data = await service.listarPendientes();
@@ -23,7 +32,7 @@ router.get("/pendientes", wrap(async (req, res) => {
 router.post("/:id/aprobar", wrap(async (req, res) =>
   res.json({
     ok: true,
-    mensaje: "Solicitud aprobada y turno abierto",
+    mensaje: "Solicitud aprobada",
     data: await service.aprobarSolicitud(req.params.id, req.body),
   })
 ));

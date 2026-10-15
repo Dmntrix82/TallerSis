@@ -9,6 +9,7 @@ function normalizar(r) {
     ...r,
     id: num(r.id),                         
     efectivo_inicial: num(r.efectivo_inicial),
+    efectivo_contado: num(r.efectivo_contado),
     turno_id: num(r.turno_id),
   };
 }
@@ -40,7 +41,7 @@ async function buscarPendientePorCaja(caja_id) {
 async function listarPendientes() {
   const { rows } = await query(
     `SELECT * FROM caja.autorizaciones
-      WHERE tipo = 'APERTURA' AND estado = 'PENDIENTE'
+      WHERE estado = 'PENDIENTE'
       ORDER BY solicitado_en ASC`
   );
   return rows.map(normalizar);
@@ -85,10 +86,34 @@ async function marcarRechazada(id, { autorizado_por, autorizado_por_nombre, moti
   );
   return normalizar(rows[0]);
 }
+/** TDSI-471: crea una solicitud de cierre en estado PENDIENTE. */
+async function crearSolicitudCierre({ caja_id, turno_id, cajero_id, cajero_nombre, efectivo_contado }) {
+  const { rows } = await query(
+    `INSERT INTO caja.autorizaciones
+       (tipo, caja_id, turno_id, cajero_id, cajero_nombre, efectivo_contado, solicitado_por, estado)
+     VALUES ('CIERRE', $1, $2, $3, $4, $5, $3, 'PENDIENTE')
+     RETURNING *`,
+    [caja_id, turno_id, cajero_id, cajero_nombre || null, efectivo_contado]
+  );
+  return normalizar(rows[0]);
+}
+
+/** Busca una solicitud PENDIENTE de CIERRE para el mismo turno (evita duplicados). */
+async function buscarPendientePorTurno(turno_id) {
+  const { rows } = await query(
+    `SELECT * FROM caja.autorizaciones
+      WHERE turno_id = $1 AND tipo = 'CIERRE' AND estado = 'PENDIENTE'
+      LIMIT 1`,
+    [turno_id]
+  );
+  return normalizar(rows[0]);
+}
 
 module.exports = {
   crearSolicitud,
+  crearSolicitudCierre,
   buscarPendientePorCaja,
+  buscarPendientePorTurno, 
   listarPendientes,
   obtenerPorId,
   marcarAprobada,
