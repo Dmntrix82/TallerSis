@@ -149,6 +149,16 @@ async function obtenerResumenCajero({ cajero_id, fecha, desde, hasta } = {}) {
 }
 
 /**
+ * TDSI-131: cajeros con ventas en el rango (fecha o desde/hasta, por defecto hoy),
+ * con cuantas transacciones tienen, el total cobrado y cuantas faltan revisar.
+ */
+async function listarCajerosParaRevision({ fecha, desde, hasta } = {}) {
+  const rango = validarRango({ fecha, desde, hasta });
+  const cajeros = await repo.listarCajerosConVentas(rango);
+  return { filtros: rango, total: cajeros.length, cajeros };
+}
+
+/**
  * TDSI-429: el Supervisor de Caja marca una venta como REVISADA u OBSERVADA.
  *   - OBSERVADA exige una nota (que se observo); en REVISADA la nota es opcional.
  *   - revisado_por: quien hizo la revision (obligatorio, para trazabilidad).
@@ -193,5 +203,6 @@ module.exports = {
   validarMetodo,
   listarTransaccionesPorCajero,
   obtenerResumenCajero,
+  listarCajerosParaRevision,
   marcarRevision,
 };

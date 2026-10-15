@@ -136,6 +136,41 @@ async function resumenCajero({ cajeroId, desde, hasta }) {
 }
 
 /** TDSI-429: cajero y estado de una venta (null si el id_transaccion no existe). */
+/**
+ * TDSI-131: cajeros que tuvieron ventas en el rango, para que el supervisor elija a quien revisar.
+ * Por cajero: cantidad de ventas, total cobrado (solo APROBADAS) y cuantas faltan revisar u observadas.
+ */
+async function listarCajerosConVentas({ desde, hasta }) {
+  const { rows } = await query(
+    `WITH ventas AS (
+       SELECT cajero_id, id_transaccion,
+              MAX(cajero)  AS cajero,
+              SUM(monto)   AS total,
+              CASE WHEN bool_and(estado = 'Anulado')       THEN 'ANULADA'
+                   WHEN bool_or(estado_pago = 'RECHAZADA') THEN 'RECHAZADA'
+                   WHEN bool_or(estado_pago = 'PENDIENTE') THEN 'PENDIENTE'
+                   ELSE 'APROBADA' END AS estado
+         FROM pagos.transacciones
+        WHERE cajero_id IS NOT NULL
+          AND fecha >= ($1::date)::timestamp AT TIME ZONE 'America/La_Paz'
+          AND fecha <  ($2::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'
+        GROUP BY cajero_id, id_transaccion
+     )
+     SELECT v.cajero_id,
+            MAX(v.cajero)                                                   AS cajero,
+            COUNT(*)::int                                                   AS cantidad_transacciones,
+            COALESCE(SUM(v.total) FILTER (WHERE v.estado = 'APROBADA'), 0)  AS total,
+            COUNT(*) FILTER (WHERE r.id IS NULL)::int                       AS sin_revisar,
+            COUNT(r.id) FILTER (WHERE r.estado = 'OBSERVADA')::int          AS observadas
+       FROM ventas v
+       LEFT JOIN pagos.revisiones_transaccion r ON r.id_transaccion = v.id_transaccion
+      GROUP BY v.cajero_id
+      ORDER BY v.cajero_id`,
+    [desde, hasta]
+  );
+  return rows.map((r) => ({ ...r, total: num(r.total) }));
+}
+
 async function buscarVenta(idTransaccion) {
   const { rows } = await query(
     `SELECT id_transaccion, MAX(cajero_id) AS cajero_id, SUM(monto) AS total, MIN(fecha) AS fecha
@@ -166,4 +201,4 @@ async function guardarRevision({ idTransaccion, estado, nota, revisadoPor }) {
   return rows[0];
 }
 
-module.exports = { CTE_VENTAS, listarTransaccionesCajero, resumenCajero, buscarVenta, guardarRevision };
+module.exports = { CTE_VENTAS, listarTransaccionesCajero, resumenCajero, listarCajerosConVentas, buscarVenta, guardarRevision };
