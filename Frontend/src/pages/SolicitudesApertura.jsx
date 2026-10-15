@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AutorizacionAperturaModal from '../components/AutorizacionAperturaModal.jsx'
+import { listarSolicitudesPendientes, aprobarSolicitud, rechazarSolicitud } from '../api/autorizaciones.js'
 
 const ETIQUETA_ESTADO = {
   PENDIENTE: 'Pendiente',
@@ -12,20 +13,28 @@ const ETIQUETA_ESTADO = {
 // TDSI-501: estado de cada solicitud (Pendiente / Aprobada / Rechazada).
 // TDSI-502: mensajes de confirmacion y de error.
 //
-// La conexion con el backend (../api/autorizaciones.js) se hace en otro commit:
-// - cargar la bandeja: listarSolicitudesPendientes() -> setSolicitudes(r.data)
-// - confirmarDecision: aprobarSolicitud / rechazarSolicitud con las credenciales del formulario.
 // El backend solo devuelve las PENDIENTES; las que se resuelven aqui se quedan en la
 // lista con su nuevo estado hasta que se actualice la bandeja.
 function SolicitudesApertura() {
   const [solicitudes, setSolicitudes] = useState([])
-  const [cargando] = useState(false)
-  const [error] = useState(null)
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState(null)
   const [mensaje, setMensaje] = useState(null)
   const [decision, setDecision] = useState(null) // { solicitud, accion: 'APROBAR' | 'RECHAZAR' }
+  const [recargar, setRecargar] = useState(0)
+
+  useEffect(() => {
+    setCargando(true)
+    setError(null)
+    listarSolicitudesPendientes()
+      .then((r) => setSolicitudes(r.data))
+      .catch((err) => setError(err.mensaje || err.message))
+      .finally(() => setCargando(false))
+  }, [recargar])
 
   function actualizarBandeja() {
     setMensaje(null)
+    setRecargar((n) => n + 1)
   }
 
   function abrirDecision(solicitud, accion) {
@@ -33,10 +42,16 @@ function SolicitudesApertura() {
     setDecision({ solicitud, accion })
   }
 
-  // Lo llama el formulario con { supervisor_id, pin[, motivo_rechazo] }; si lanza error,
-  // el formulario lo muestra y no se cierra. `respuesta` es la data que devuelve el backend:
-  // al aprobar { autorizacion, turno }, al rechazar la autorizacion actualizada.
-  function aplicarDecision(solicitud, accion, respuesta) {
+  // Lo llama el formulario con { supervisor_id, pin[, motivo_rechazo] }; si lanza error
+  // (PIN incorrecto, solicitud ya resuelta...), el formulario lo muestra y no se cierra.
+  // Al aprobar el backend responde { autorizacion, turno }; al rechazar, la autorizacion.
+  async function confirmarDecision(credenciales) {
+    const { solicitud, accion } = decision
+    const { data: respuesta } =
+      accion === 'APROBAR'
+        ? await aprobarSolicitud(solicitud.id, credenciales)
+        : await rechazarSolicitud(solicitud.id, credenciales)
+
     const actualizada = accion === 'APROBAR' ? respuesta.autorizacion : respuesta
     setMensaje(
       accion === 'APROBAR'
@@ -45,10 +60,6 @@ function SolicitudesApertura() {
     )
     setSolicitudes((prev) => prev.map((s) => (s.id === solicitud.id ? { ...s, ...actualizada } : s)))
     setDecision(null)
-  }
-
-  async function confirmarDecision() {
-    throw new Error('La bandeja todavía no está conectada al servidor.')
   }
 
   const pendientes = solicitudes.filter((s) => s.estado === 'PENDIENTE').length
