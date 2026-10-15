@@ -34,3 +34,12 @@ export function urlReporteCierrePdf(turnoId) {
   const base = import.meta.env.VITE_API_BASE_URL ?? ''
   return `${base}/api/caja/turnos/${turnoId}/cierre/pdf`
 }
+
+// TDSI-320 / TDSI-503: compara el efectivo contado con el esperado del turno (no cierra nada).
+// Responde data: { efectivoEsperado, efectivoContado, diferencia, tipoDiferencia: CUADRA | SOBRANTE | FALTANTE }.
+export function compararEfectivo(turnoId, efectivoContado) {
+  return apiFetch(`/api/caja/turnos/${turnoId}/comparar-efectivo`, {
+    method: 'POST',
+    body: JSON.stringify({ efectivoContado }),
+  })
+}
