@@ -7,6 +7,7 @@ const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
 const autorizacionesRoutes = require("./routes/autorizacionesRoutes");
+const recaudadoRoutes = require("./routes/recaudadoRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4004;
@@ -33,7 +34,8 @@ app.get("/health", async (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/caja", turnosRoutes);
-
+app.use("/api/autorizaciones", autorizacionesRoutes);
+app.use("/api/caja/recaudado", recaudadoRoutes);
 app.use(errorHandler);
 
 // TDSI-268: cada minuto revisa y cierra las sesiones inactivas
