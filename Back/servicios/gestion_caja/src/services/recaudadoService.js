@@ -28,7 +28,11 @@ async function calcularRecaudadoPorCaja({ caja_id, desde, hasta }) {
   const hoy = new Date();
   const desdeFinal = d || new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
   const hastaFinal = h || new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
-
+  
+// TDSI-480: caja.movimientos solo tiene APERTURA (la tabla está abandonada
+// para movimientos reales desde TDSI-314). Tanto el cierre (TDSI-320) como
+// este servicio usan egresos = 0. Cuando exista una fuente de egresos por
+// caja, ambos deben actualizarse juntos para que el neto cuadre.
   if (caja_id) {
     const caja = await cajasRepo.buscarPorCodigo(caja_id);
     if (!caja) throw new AppError(`La caja "${caja_id}" no existe`, 404, { caja_id });
