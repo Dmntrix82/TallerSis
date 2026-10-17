@@ -7,6 +7,9 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * Una fila por operacion (venta): un pago Mixto se junta en una sola, con el detalle por metodo.
  * Cada operacion trae su revision (PENDIENTE si el supervisor todavia no la reviso).
  * Parametros: $1 desde (YYYY-MM-DD), $2 hasta (YYYY-MM-DD, inclusive), $3 cajero_id (opcional).
+ * TDSI-433, filtros opcionales: $4 caja_id, $5 metodo (operaciones que usaron ese metodo; una mixta
+ * Efectivo+QR aparece al filtrar por cualquiera de los dos, con su total completo),
+ * $6 estado de revision (PENDIENTE = todavia sin revisar, REVISADA u OBSERVADA).
  */
 const CTE_HISTORIAL = `
   ventas AS (
@@ -28,7 +31,9 @@ const CTE_HISTORIAL = `
        AND fecha >= ($1::date)::timestamp AT TIME ZONE 'America/La_Paz'
        AND fecha <  ($2::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'
        AND ($3::text IS NULL OR cajero_id = $3)
+       AND ($4::text IS NULL OR caja_id = $4)
      GROUP BY id_transaccion
+    HAVING ($5::text IS NULL OR bool_or(metodo = $5))
   ),
   historial AS (
     SELECT v.*,
@@ -40,9 +45,11 @@ const CTE_HISTORIAL = `
            r.revisado_en   AS revision_revisado_en
       FROM ventas v
       LEFT JOIN pagos.revisiones_transaccion r ON r.id_transaccion = v.id_transaccion
+     WHERE ($6::text IS NULL OR COALESCE(r.estado, 'PENDIENTE') = $6)
   )`;
 
-const parametros = ({ desde, hasta, cajeroId = null }) => [desde, hasta, cajeroId];
+const parametros = ({ desde, hasta, cajeroId = null, cajaId = null, metodo = null, estadoRevision = null }) =>
+  [desde, hasta, cajeroId, cajaId, metodo, estadoRevision];
 
 /**
  * TDSI-431: operaciones de los cajeros (o de uno solo), de la mas reciente a la mas antigua, paginadas.

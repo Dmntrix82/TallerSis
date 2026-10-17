@@ -1,5 +1,12 @@
 const repo = require("../data/historialCajerosRepo");
-const { validarCajeroId, validarRango, validarEnteroPositivo } = require("./revisionService");
+const { AppError } = require("../utils/AppError");
+const {
+  validarCajeroId,
+  validarRango,
+  validarEnteroPositivo,
+  validarMetodo,
+  validarFiltroRevision,
+} = require("./revisionService");
 const { validarFechaDia } = require("../utils/fechaLocal");
 
 const DIAS_POR_DEFECTO = 7;
@@ -22,6 +29,16 @@ function validarRangoHistorial({ fecha, desde, hasta }) {
 
 /** cajero_id es opcional en el historial: sin el, salen todos los cajeros. */
 const validarCajeroOpcional = (valor) => (valor === undefined || valor === null || valor === "" ? null : validarCajeroId(valor));
+
+/** TDSI-433: caja opcional (sin ella, todas las cajas). */
+function validarCajaOpcional(valor) {
+  if (valor === undefined || valor === null || valor === "") return null;
+  const texto = String(valor).trim();
+  if (!texto || texto.length > 60) {
+    throw new AppError("El campo 'caja_id' debe tener entre 1 y 60 caracteres.", 400, { caja_id: valor });
+  }
+  return texto;
+}
 
 const totalesCajero = (r) => ({
   cajero_id: r.cajero_id,
@@ -66,21 +83,26 @@ function armarResumen({ general, porDia, porCajero, porCajeroDia }) {
  * Filtros: fecha o desde/hasta (por defecto los ultimos 7 dias), cajero_id (opcional).
  * Paginacion: pagina (desde 1) y por_pagina (por defecto 20, maximo 100).
  * TDSI-432: ademas trae el resumen por cajero y por dia de todo lo filtrado.
+ * TDSI-433: filtros opcionales por caja_id, metodo (Efectivo | Tarjeta | QR) y
+ * estado_revision (PENDIENTE | REVISADA | OBSERVADA); aplican a la lista y al resumen.
  */
-async function consultarHistorial({ cajero_id, fecha, desde, hasta, pagina, por_pagina } = {}) {
+async function consultarHistorial({ cajero_id, caja_id, metodo, estado_revision, fecha, desde, hasta, pagina, por_pagina } = {}) {
   const rango = validarRangoHistorial({ fecha, desde, hasta });
   const cajeroId = validarCajeroOpcional(cajero_id);
+  const cajaId = validarCajaOpcional(caja_id);
+  const metodoFiltro = validarMetodo(metodo);
+  const revisionFiltro = validarFiltroRevision(estado_revision);
   const paginaN = validarEnteroPositivo(pagina, "pagina", 1);
   const porPaginaN = validarEnteroPositivo(por_pagina, "por_pagina", POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO);
 
-  const filtros = { ...rango, cajeroId };
+  const filtros = { ...rango, cajeroId, cajaId, metodo: metodoFiltro, estadoRevision: revisionFiltro };
   const [{ total, filas }, resumen] = await Promise.all([
     repo.listarHistorial({ ...filtros, limite: porPaginaN, offset: (paginaN - 1) * porPaginaN }),
     repo.resumenHistorial(filtros),
   ]);
 
   return {
-    filtros: { ...rango, cajero_id: cajeroId },
+    filtros: { ...rango, cajero_id: cajeroId, caja_id: cajaId, metodo: metodoFiltro, estado_revision: revisionFiltro },
     paginacion: {
       pagina: paginaN,
       por_pagina: porPaginaN,

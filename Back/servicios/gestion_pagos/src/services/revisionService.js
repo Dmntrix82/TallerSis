@@ -201,6 +201,7 @@ module.exports = {
   validarCajeroId,
   validarRango,
   validarMetodo,
+  validarFiltroRevision,
   validarEnteroPositivo,
   listarTransaccionesPorCajero,
   obtenerResumenCajero,

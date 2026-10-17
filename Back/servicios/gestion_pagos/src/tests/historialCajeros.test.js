@@ -7,6 +7,7 @@ const { pool } = require("../config/db");
 const { registrarPagoSimple } = require("../services/pagoSimpleService");
 const { registrarPagoMixto } = require("../services/pagoMixtoService");
 const { consultarHistorial, validarRangoHistorial } = require("../services/historialCajerosService");
+const { marcarRevision } = require("../services/revisionService");
 const { hoyLocal } = require("../utils/fechaLocal");
 
 const SUFIJO = Date.now();
@@ -64,7 +65,7 @@ const ids = (r) => r.operaciones.map((o) => o.id_transaccion);
 
 test("TDSI-431: lista las operaciones de todos los cajeros del rango, de la mas reciente a la mas antigua", async () => {
   const r = await consultarHistorial(RANGO);
-  assert.deepEqual(r.filtros, { desde: D1, hasta: D3, cajero_id: null });
+  assert.deepEqual(r.filtros, { desde: D1, hasta: D3, cajero_id: null, caja_id: null, metodo: null, estado_revision: null });
   assert.equal(r.paginacion.total_registros, 7);
   assert.deepEqual(ids(r), [ops.b2, ops.a5, ops.a4, ops.a3, ops.b1, ops.a2, ops.a1].map((o) => o.id_transaccion));
 
@@ -123,12 +124,14 @@ test("TDSI-431: rechaza filtros invalidos con 400", async () => {
     { ...RANGO, pagina: 0 },
     { ...RANGO, por_pagina: 101 },
     { ...RANGO, por_pagina: "abc" },
+    { ...RANGO, caja_id: "C".repeat(61) },
+    { ...RANGO, metodo: "Cheque" },
+    { ...RANGO, estado_revision: "APROBADA" },
   ];
   for (const filtros of casos) {
     await assert.rejects(consultarHistorial(filtros), (e) => e.status === 400, JSON.stringify(filtros));
   }
 });
-
 
 const cajeroDia = (cajero_id, cantidad_operaciones, total, cantidad_anuladas = 0, total_anulado = 0) => ({
   cajero_id, cajero: cajero_id, cantidad_operaciones, cantidad_anuladas, total, total_anulado,
@@ -184,4 +187,47 @@ test("TDSI-432: el resumen respeta el filtro de cajero y de fechas", async () =>
   assert.deepEqual(vacio.resumen, {
     cantidad_operaciones: 0, cantidad_anuladas: 0, total: 0, total_anulado: 0, por_cajero: [], por_dia: [],
   });
+});
+
+test("TDSI-433: filtra por caja (lista y resumen)", async () => {
+  const caja2 = await consultarHistorial({ ...RANGO, caja_id: CAJA_2 });
+  assert.equal(caja2.filtros.caja_id, CAJA_2);
+  assert.deepEqual(ids(caja2), [ops.b2, ops.a3, ops.b1].map((o) => o.id_transaccion));
+  assert.equal(caja2.resumen.total, 95);
+  assert.deepEqual(caja2.resumen.por_cajero.map((c) => [c.cajero_id, c.cantidad_operaciones, c.total]),
+    [[CAJERO_A, 1, 30], [CAJERO_B, 2, 65]]);
+});
+
+test("TDSI-433: filtra por metodo (una mixta sale en cada metodo que uso)", async () => {
+  const efectivo = await consultarHistorial({ ...RANGO, metodo: "efectivo" });
+  assert.equal(efectivo.filtros.metodo, "Efectivo");
+  assert.deepEqual(ids(efectivo), [ops.b2, ops.a5, ops.a4, ops.a1].map((o) => o.id_transaccion));
+  assert.equal(efectivo.resumen.total, 55); // 25 + 20 (mixta completa) + 10; la anulada no suma
+  assert.equal(efectivo.resumen.total_anulado, 50);
+
+  const qr = await consultarHistorial({ ...RANGO, metodo: "QR" });
+  assert.deepEqual(ids(qr), [ops.a4, ops.b1, ops.a2].map((o) => o.id_transaccion));
+});
+
+test("TDSI-433: filtra por estado de revision y combina filtros", async () => {
+  await marcarRevision({ id_transaccion: ops.a1.id_transaccion, estado: "REVISADA", revisado_por: "supervisor.test" });
+  await marcarRevision({ id_transaccion: ops.b1.id_transaccion, estado: "OBSERVADA", nota: "Falta comprobante QR", revisado_por: "supervisor.test" });
+
+  const revisadas = await consultarHistorial({ ...RANGO, estado_revision: "revisada" });
+  assert.equal(revisadas.filtros.estado_revision, "REVISADA");
+  assert.deepEqual(ids(revisadas), [ops.a1.id_transaccion]);
+  assert.equal(revisadas.operaciones[0].revision.revisado_por, "supervisor.test");
+
+  const observadas = await consultarHistorial({ ...RANGO, estado_revision: "OBSERVADA" });
+  assert.deepEqual(ids(observadas), [ops.b1.id_transaccion]);
+  assert.equal(observadas.operaciones[0].revision.nota, "Falta comprobante QR");
+  assert.equal(observadas.resumen.total, 40);
+
+  const pendientes = await consultarHistorial({ ...RANGO, estado_revision: "PENDIENTE" });
+  assert.equal(pendientes.paginacion.total_registros, 5);
+  assert.equal(pendientes.resumen.cantidad_operaciones, 5);
+
+  const combinado = await consultarHistorial({ ...RANGO, cajero_id: CAJERO_A, caja_id: CAJA_1, metodo: "QR", estado_revision: "PENDIENTE" });
+  assert.deepEqual(ids(combinado), [ops.a4, ops.a2].map((o) => o.id_transaccion));
+  assert.deepEqual(combinado.resumen.por_dia.map((d) => [d.fecha, d.total]), [[D3, 20], [D1, 20]]);
 });
