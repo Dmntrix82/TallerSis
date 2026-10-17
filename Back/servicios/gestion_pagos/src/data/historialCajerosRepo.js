@@ -70,4 +70,38 @@ async function listarHistorial({ limite, offset, ...filtros }) {
   };
 }
 
+/**
+ * TDSI-432: resumen del historial (de todas las operaciones que cumplen los filtros, no solo la pagina):
+ * por cajero y dia, por dia, por cajero y el total general, en una sola consulta (GROUPING SETS).
+ * cantidad_operaciones cuenta todas; total suma solo las APROBADAS y total_anulado las ANULADAS.
+ */
+async function resumenHistorial(filtros) {
+  const { rows } = await query(
+    `WITH ${CTE_HISTORIAL}
+     SELECT fecha_local,
+            cajero_id,
+            MAX(cajero)                                                   AS cajero,
+            GROUPING(fecha_local, cajero_id)                              AS nivel,
+            COUNT(*)::int                                                 AS cantidad_operaciones,
+            COUNT(*) FILTER (WHERE estado = 'ANULADA')::int               AS cantidad_anuladas,
+            COALESCE(SUM(total) FILTER (WHERE estado = 'APROBADA'), 0)    AS total,
+            COALESCE(SUM(total) FILTER (WHERE estado = 'ANULADA'), 0)     AS total_anulado,
+            COUNT(DISTINCT fecha_local)::int                              AS dias_con_operaciones,
+            MIN(fecha)                                                    AS primera_operacion,
+            MAX(fecha)                                                    AS ultima_operacion
+       FROM historial
+      GROUP BY GROUPING SETS ((fecha_local, cajero_id), (fecha_local), (cajero_id), ())
+      ORDER BY fecha_local DESC NULLS LAST, cajero_id NULLS LAST`,
+    parametros(filtros)
+  );
+  // nivel (bits de GROUPING): 0 = cajero y dia, 1 = dia, 2 = cajero, 3 = total general
+  const filas = rows.map((r) => ({ ...r, total: num(r.total), total_anulado: num(r.total_anulado) }));
+  return {
+    general: filas.find((r) => r.nivel === 3),
+    porDia: filas.filter((r) => r.nivel === 1),
+    porCajero: filas.filter((r) => r.nivel === 2),
+    porCajeroDia: filas.filter((r) => r.nivel === 0),
+  };
+}
+
 module.exports = { CTE_HISTORIAL, listarHistorial };

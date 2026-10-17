@@ -128,3 +128,60 @@ test("TDSI-431: rechaza filtros invalidos con 400", async () => {
     await assert.rejects(consultarHistorial(filtros), (e) => e.status === 400, JSON.stringify(filtros));
   }
 });
+
+
+const cajeroDia = (cajero_id, cantidad_operaciones, total, cantidad_anuladas = 0, total_anulado = 0) => ({
+  cajero_id, cajero: cajero_id, cantidad_operaciones, cantidad_anuladas, total, total_anulado,
+});
+
+test("TDSI-432: resumen general, por cajero y por dia de todo el rango", async () => {
+  const { resumen } = await consultarHistorial(RANGO);
+  assert.equal(resumen.cantidad_operaciones, 7);
+  assert.equal(resumen.cantidad_anuladas, 1);
+  assert.equal(resumen.total, 145); // solo APROBADAS: 10+20+30+20+40+25
+  assert.equal(resumen.total_anulado, 50);
+
+  assert.deepEqual(resumen.por_cajero, [
+    {
+      ...cajeroDia(CAJERO_A, 5, 80, 1, 50),
+      dias_con_operaciones: 3,
+      primera_operacion: new Date("2021-03-01T13:00:00Z"), // 09:00 en Bolivia
+      ultima_operacion: new Date("2021-03-03T16:00:00Z"),
+    },
+    {
+      ...cajeroDia(CAJERO_B, 2, 65),
+      dias_con_operaciones: 2,
+      primera_operacion: new Date("2021-03-02T13:30:00Z"),
+      ultima_operacion: new Date("2021-03-03T22:00:00Z"),
+    },
+  ]);
+
+  assert.deepEqual(resumen.por_dia, [
+    { fecha: D3, cantidad_operaciones: 3, cantidad_anuladas: 1, total: 45, total_anulado: 50,
+      cajeros: [cajeroDia(CAJERO_A, 2, 20, 1, 50), cajeroDia(CAJERO_B, 1, 25)] },
+    { fecha: D2, cantidad_operaciones: 2, cantidad_anuladas: 0, total: 70, total_anulado: 0,
+      cajeros: [cajeroDia(CAJERO_A, 1, 30), cajeroDia(CAJERO_B, 1, 40)] },
+    { fecha: D1, cantidad_operaciones: 2, cantidad_anuladas: 0, total: 30, total_anulado: 0,
+      cajeros: [cajeroDia(CAJERO_A, 2, 30)] },
+  ]);
+});
+
+test("TDSI-432: el resumen es de todo lo filtrado, no solo de la pagina", async () => {
+  const completo = await consultarHistorial(RANGO);
+  const pagina3 = await consultarHistorial({ ...RANGO, por_pagina: 3, pagina: 3 });
+  assert.equal(pagina3.operaciones.length, 1);
+  assert.deepEqual(pagina3.resumen, completo.resumen);
+});
+
+test("TDSI-432: el resumen respeta el filtro de cajero y de fechas", async () => {
+  const soloB = await consultarHistorial({ ...RANGO, cajero_id: CAJERO_B });
+  assert.equal(soloB.resumen.cantidad_operaciones, 2);
+  assert.equal(soloB.resumen.total, 65);
+  assert.deepEqual(soloB.resumen.por_cajero.map((c) => c.cajero_id), [CAJERO_B]);
+  assert.deepEqual(soloB.resumen.por_dia.map((d) => [d.fecha, d.total]), [[D3, 25], [D2, 40]]);
+
+  const vacio = await consultarHistorial({ desde: "2021-01-01", hasta: "2021-01-02" });
+  assert.deepEqual(vacio.resumen, {
+    cantidad_operaciones: 0, cantidad_anuladas: 0, total: 0, total_anulado: 0, por_cajero: [], por_dia: [],
+  });
+});

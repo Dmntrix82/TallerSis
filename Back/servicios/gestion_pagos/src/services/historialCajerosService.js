@@ -23,10 +23,49 @@ function validarRangoHistorial({ fecha, desde, hasta }) {
 /** cajero_id es opcional en el historial: sin el, salen todos los cajeros. */
 const validarCajeroOpcional = (valor) => (valor === undefined || valor === null || valor === "" ? null : validarCajeroId(valor));
 
+const totalesCajero = (r) => ({
+  cajero_id: r.cajero_id,
+  cajero: r.cajero,
+  cantidad_operaciones: r.cantidad_operaciones,
+  cantidad_anuladas: r.cantidad_anuladas,
+  total: r.total,
+  total_anulado: r.total_anulado,
+});
+
+/**
+ * TDSI-432: resumen de todo el historial filtrado (no solo de la pagina que se muestra):
+ *   - general: cantidad de operaciones, cuantas anuladas, total cobrado (APROBADAS) y total anulado
+ *   - por_cajero: lo mismo por cajero, con cuantos dias trabajo y su primera y ultima operacion
+ *   - por_dia: lo mismo por dia (del mas reciente al mas antiguo) y, dentro, el detalle por cajero
+ */
+function armarResumen({ general, porDia, porCajero, porCajeroDia }) {
+  return {
+    cantidad_operaciones: general.cantidad_operaciones,
+    cantidad_anuladas: general.cantidad_anuladas,
+    total: general.total,
+    total_anulado: general.total_anulado,
+    por_cajero: porCajero.map((c) => ({
+      ...totalesCajero(c),
+      dias_con_operaciones: c.dias_con_operaciones,
+      primera_operacion: c.primera_operacion,
+      ultima_operacion: c.ultima_operacion,
+    })),
+    por_dia: porDia.map((d) => ({
+      fecha: d.fecha_local,
+      cantidad_operaciones: d.cantidad_operaciones,
+      cantidad_anuladas: d.cantidad_anuladas,
+      total: d.total,
+      total_anulado: d.total_anulado,
+      cajeros: porCajeroDia.filter((cd) => cd.fecha_local === d.fecha_local).map(totalesCajero),
+    })),
+  };
+}
+
 /**
  * TDSI-431: historial de operaciones de los cajeros para el Supervisor de Caja.
  * Filtros: fecha o desde/hasta (por defecto los ultimos 7 dias), cajero_id (opcional).
  * Paginacion: pagina (desde 1) y por_pagina (por defecto 20, maximo 100).
+ * TDSI-432: ademas trae el resumen por cajero y por dia de todo lo filtrado.
  */
 async function consultarHistorial({ cajero_id, fecha, desde, hasta, pagina, por_pagina } = {}) {
   const rango = validarRangoHistorial({ fecha, desde, hasta });
@@ -34,12 +73,11 @@ async function consultarHistorial({ cajero_id, fecha, desde, hasta, pagina, por_
   const paginaN = validarEnteroPositivo(pagina, "pagina", 1);
   const porPaginaN = validarEnteroPositivo(por_pagina, "por_pagina", POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO);
 
-  const { total, filas } = await repo.listarHistorial({
-    ...rango,
-    cajeroId,
-    limite: porPaginaN,
-    offset: (paginaN - 1) * porPaginaN,
-  });
+  const filtros = { ...rango, cajeroId };
+  const [{ total, filas }, resumen] = await Promise.all([
+    repo.listarHistorial({ ...filtros, limite: porPaginaN, offset: (paginaN - 1) * porPaginaN }),
+    repo.resumenHistorial(filtros),
+  ]);
 
   return {
     filtros: { ...rango, cajero_id: cajeroId },
@@ -49,6 +87,7 @@ async function consultarHistorial({ cajero_id, fecha, desde, hasta, pagina, por_
       total_registros: total,
       total_paginas: Math.ceil(total / porPaginaN),
     },
+    resumen: armarResumen(resumen),
     operaciones: filas.map((f) => ({
       id_transaccion: f.id_transaccion,
       fecha: f.fecha,
