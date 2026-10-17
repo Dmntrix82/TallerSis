@@ -104,4 +104,4 @@ async function resumenHistorial(filtros) {
   };
 }
 
-module.exports = { CTE_HISTORIAL, listarHistorial };
+module.exports = { CTE_HISTORIAL, listarHistorial, resumenHistorial };
