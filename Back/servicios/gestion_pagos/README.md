@@ -284,6 +284,69 @@ GET /api/pagos/historial-cajeros?desde=2026-10-11&hasta=2026-10-17&cajero_id=hug
 
 ---
 
+## 4.7. Monitoreo por método de pago (TDSI-34)
+
+```http
+GET /api/pagos/metodos
+```
+
+Para el **Supervisor de Caja**: cuánto se cobró con cada método de pago (Efectivo, Tarjeta y QR), con la cantidad de ventas, el monto y el porcentaje del total. Los **pagos mixtos se desglosan**: cada parte suma en su método (un mixto Efectivo 30 + QR 70 suma 30 en Efectivo y 70 en QR), unidos a su cabecera por `pago_mixto_id`.
+
+### Parámetros (query string, todos opcionales)
+
+| Parámetro         | Valores                                  | Por defecto  |
+| ----------------- | ---------------------------------------- | ------------ |
+| `fecha`           | `YYYY-MM-DD` (un solo día)               | —            |
+| `desde` / `hasta` | `YYYY-MM-DD` (inclusive, máximo 92 días) | hoy          |
+| `caja_id`         | identificador de la caja                 | todas        |
+| `cajero_id`       | email del cajero                         | todos        |
+
+Las fechas son días en **hora de Bolivia** (`America/La_Paz`). La caja de un pago mixto se toma de su fila o, si no la tiene (mixtos antiguos), de su cabecera.
+
+### Ejemplo
+
+```http
+GET /api/pagos/metodos?desde=2026-10-15&hasta=2026-10-17&caja_id=DEMO-MET-CAJA-1
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "filtros": { "desde": "2026-10-15", "hasta": "2026-10-17", "caja_id": "DEMO-MET-CAJA-1", "cajero_id": null },
+    "cantidad_operaciones": 4,
+    "monto_total": 499.9,
+    "metodos": [
+      { "metodo": "Efectivo", "cantidad": 3, "monto": 200, "porcentaje": 40.01,
+        "simples": { "cantidad": 1, "monto": 120 }, "mixtos": { "cantidad": 2, "monto": 80 } },
+      { "metodo": "Tarjeta", "cantidad": 2, "monto": 249.9, "porcentaje": 49.99,
+        "simples": { "cantidad": 1, "monto": 99.9 }, "mixtos": { "cantidad": 1, "monto": 150 } },
+      { "metodo": "QR", "cantidad": 1, "monto": 50, "porcentaje": 10,
+        "simples": { "cantidad": 0, "monto": 0 }, "mixtos": { "cantidad": 1, "monto": 50 } }
+    ],
+    "pagos_mixtos": {
+      "cantidad": 2, "monto": 280,
+      "combinaciones": [
+        { "metodos": ["Efectivo", "Tarjeta"], "cantidad": 1, "monto": 180 },
+        { "metodos": ["Efectivo", "QR"], "cantidad": 1, "monto": 100 }
+      ]
+    }
+  }
+}
+```
+
+- Solo cuentan las ventas **cobradas** (`estado = 'Registrado'` y `estado_pago = 'APROBADA'`): una venta anulada, rechazada o pendiente no suma en ningún método.
+- `metodos` siempre trae los 3 métodos, en ese orden, aunque estén en 0. `porcentaje` es sobre el monto total (2 decimales).
+- `cantidad_operaciones` cuenta cada venta una vez; en `metodos[].cantidad` una venta mixta cuenta en **cada** método que usó.
+- `combinaciones` agrupa los pagos mixtos por los métodos que combinaron, de la más usada a la menos usada.
+- Si algún filtro es inválido responde **400** `{ "ok": false, "mensaje": "...", "detalle": {...} }`.
+
+### Datos de demostración
+
+`sql/seed_metodos.sql` crea 11 ventas de los últimos 3 días (cajeros `karen.demo` y `luis.demo`, cajas `DEMO-MET-CAJA-1` y `DEMO-MET-CAJA-2`): 6 pagos simples y 5 mixtos, uno de ellos anulado y uno con la caja solo en la cabecera. Totales esperados por caja en su encabezado. Se puede volver a correr sin duplicar. `npm test` la carga y la quita al terminar: para una demo, vuelvan a correrla después de los tests.
+
+---
+
 # 5. Módulo de Clientes Frecuentes
 
 El módulo de clientes frecuentes permite identificar y reutilizar los datos de clientes mediante su **NIT**, facilitando el proceso de facturación y evitando que el cajero tenga que ingresar nuevamente la información de un cliente recurrente.
@@ -512,6 +575,9 @@ Cuando el módulo sea migrado a PostgreSQL, se podrán utilizar índices especia
 | Transacción duplicada          | `/api/pagos/mixto`          | `POST` | **409 Conflict**      |
 | Historial de cajeros           | `/api/pagos/historial-cajeros` | `GET` | **200 OK**         |
 | Filtro inválido en el historial | `/api/pagos/historial-cajeros?metodo=Cheque` | `GET` | **400 Bad Request** |
+| Monitoreo por método de pago   | `/api/pagos/metodos` | `GET` | **200 OK** |
+| Rango de fechas inválido (métodos) | `/api/pagos/metodos?desde=2026-10-18&hasta=2026-10-01` | `GET` | **400 Bad Request** |
+
 ## 6.2. Pruebas de clientes frecuentes
 
 | Escenario                           | Endpoint                | Resultado esperado    |
@@ -591,3 +657,4 @@ http://localhost:4005
 | `GET`  | `/api/clientes?q=texto`            | Busca sugerencias para autocompletado  |
 | `POST` | `/api/clientes`                    | Registra o actualiza un cliente        |
 | `GET`  | `/api/pagos/historial-cajeros`     | Historial de operaciones de cajeros con resumen por cajero y por día |
+| `GET`  | `/api/pagos/metodos`               | Monitoreo por método de pago (cantidad, monto, porcentaje y mixtos desglosados) |
