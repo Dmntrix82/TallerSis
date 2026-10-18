@@ -68,6 +68,94 @@ async function anularVenta({ id_transaccion, cajero, supervisor_id, pin }) {
   return { id_transaccion, autorizado_por: supervisor, filas: anuladas };
 }
 
+const DECISIONES_ANULACION = ["APROBAR", "RECHAZAR"];
+
+/**
+ * TDSI-28/133: para cuando NO hay un supervisor presente en la caja. En vez de
+ * pedir el PIN al toque (anularVenta), deja la venta bloqueada en espera y el
+ * supervisor la resuelve despues desde "Anulaciones pendientes".
+ */
+async function solicitarAnulacionPendiente({ id_transaccion, cajero, motivo }) {
+  if (typeof motivo !== "string" || !motivo.trim()) {
+    throw new AppError("Indique el motivo de la anulación.", 400);
+  }
+  if (motivo.trim().length > 300) {
+    throw new AppError("El motivo debe tener máximo 300 caracteres.", 400);
+  }
+
+  const filas = await repo.buscarTransaccionesPorIdTransaccion(id_transaccion);
+  if (!filas.length) {
+    throw new AppError(`No existe una venta registrada con el número "${id_transaccion}", o ya fue anulada.`, 404);
+  }
+  if (cajero && filas[0].cajero !== cajero) {
+    throw new AppError("Solo el cajero que emitió esta venta puede solicitar su anulación.", 403);
+  }
+  if (!dentroDelPlazo(filas[0].fecha)) {
+    throw new AppError(
+      `La venta "${id_transaccion}" ya superó el plazo de 2 horas para poder anularse.`,
+      409,
+      { fecha_emision: filas[0].fecha }
+    );
+  }
+
+  const solicitud = await repo.crearSolicitudAnulacion(
+    { id_transaccion, motivo: motivo.trim(), solicitado_por: cajero },
+    (filasActuales) => {
+      if (!filasActuales.length) throw new AppError("La venta no existe.", 404);
+      if (filasActuales[0].estado !== "Registrado") {
+        throw new AppError(`Esta venta ya está "${filasActuales[0].estado}", no se puede solicitar de nuevo.`, 409);
+      }
+    }
+  );
+  emitirActualizacion();
+  return solicitud;
+}
+
+/** TDSI-539: bandeja de ventas en espera de que un supervisor las resuelva. */
+async function listarAnulacionesPendientes() {
+  return repo.listarSolicitudesAnulacionPendientes();
+}
+
+/**
+ * TDSI-540/541: el supervisor aprueba o rechaza, reutilizando la misma validación
+ * de PIN que la autorización inmediata (TDSI-17/306).
+ */
+async function autorizarAnulacionPendiente(id, { supervisor_id, pin, decision, observacion } = {}) {
+  const solicitudId = String(id ?? "").trim();
+  if (!/^\d{1,18}$/.test(solicitudId) || Number(solicitudId) === 0) {
+    throw new AppError("El id de la solicitud debe ser un número entero positivo.", 400);
+  }
+
+  const dec = typeof decision === "string" ? decision.trim().toUpperCase() : "";
+  if (!DECISIONES_ANULACION.includes(dec)) {
+    throw new AppError("La decisión debe ser APROBAR o RECHAZAR.", 400);
+  }
+
+  const solicitud = await repo.buscarSolicitudAnulacion(solicitudId);
+  if (!solicitud) throw new AppError("Solicitud de anulación no encontrada.", 404);
+  if (solicitud.estado !== "Solicitada") {
+    throw new AppError(`La solicitud ya fue resuelta (${solicitud.estado}).`, 409);
+  }
+
+  // El PIN se valida FUERA de la transaccion (consulta a facturacion por HTTP),
+  // igual que en anularVenta: si el supervisor no existe o el PIN es incorrecto,
+  // no se toca nada todavia.
+  const supervisor = await validarSupervisor({ supervisor_id, pin });
+
+  const resultado = await repo.resolverSolicitudAnulacion(
+    solicitudId,
+    { aprobar: dec === "APROBAR", supervisor, observacion },
+    (actual) => {
+      if (!actual) throw new AppError("Solicitud de anulación no encontrada.", 404);
+      if (actual.estado !== "Solicitada") {
+        throw new AppError(`La solicitud ya fue resuelta (${actual.estado}).`, 409);
+      }
+    }
+  );
+  emitirActualizacion();
+  return resultado;
+}
+
 /**
  * TDSI-323: reporte de ventas de una caja para el cierre de turno. "desde" es
  * obligatorio (la apertura del turno); "hasta" es opcional (por defecto, ahora).
@@ -140,4 +228,14 @@ async function listarCajeros() {
   return repo.listarCajeros();
 }
 
-module.exports = { listarMisFacturas, anularVenta, reporteTurno, historialCliente, totalesGenerales, listarCajeros };
+module.exports = {
+  listarMisFacturas,
+  anularVenta,
+  solicitarAnulacionPendiente,
+  listarAnulacionesPendientes,
+  autorizarAnulacionPendiente,
+  reporteTurno,
+  historialCliente,
+  totalesGenerales,
+  listarCajeros,
+};
