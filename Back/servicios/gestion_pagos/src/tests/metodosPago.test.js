@@ -5,6 +5,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { pool } = require("../config/db");
 const { registrarPagoSimple } = require("../services/pagoSimpleService");
+const { registrarPagoMixto } = require("../services/pagoMixtoService");
 const { monitorearMetodos } = require("../services/metodosPagoService");
 const { hoyLocal } = require("../utils/fechaLocal");
 
@@ -15,6 +16,7 @@ const CAJA_1 = `TEST-MET1-${SUFIJO}`;
 const CAJA_2 = `TEST-MET2-${SUFIJO}`;
 const D1 = "2021-05-10";
 const D2 = "2021-05-11";
+const D3 = "2021-05-12";
 
 /** Mueve una venta a un dia y hora fijos (hora de Bolivia). */
 const moverA = (idTransaccion, dia, hora) =>
@@ -44,6 +46,22 @@ test.before(async () => {
   await pool.query("UPDATE pagos.transacciones SET estado_pago = 'PENDIENTE' WHERE id_transaccion = $1", [ops.pendiente.id_transaccion]);
   // Dia 2: solo QR 33.33
   await simple("q2", "QR", 33.33, CAJERO_A, CAJA_1, D2, "09:30");
+
+  // Dia 3 (TDSI-436): simples Efectivo 80, Tarjeta 100, QR 20 + mixtos Efectivo 25 + QR 15 y Tarjeta 60 + QR 40
+  const mixto = async (clave, metodos, cajero, caja, dia, hora) => {
+    const total = metodos.reduce((a, m) => a + m.monto, 0);
+    ops[clave] = (await registrarPagoMixto({ cajaId: caja, cajero, total, metodos })).pago;
+    await moverA(ops[clave].id_transaccion, dia, hora);
+  };
+  await simple("e3", "Efectivo", 80, CAJERO_A, CAJA_1, D3, "09:00");
+  await simple("t3", "Tarjeta", 100, CAJERO_B, CAJA_2, D3, "09:30");
+  await simple("q3", "QR", 20, CAJERO_A, CAJA_1, D3, "10:00");
+  await mixto("m1", [{ metodo: "Efectivo", monto: 25 }, { metodo: "QR", monto: 15 }], CAJERO_A, CAJA_1, D3, "11:00");
+  await mixto("m2", [{ metodo: "Tarjeta", monto: 60 }, { metodo: "QR", monto: 40 }], CAJERO_B, CAJA_2, D3, "12:00");
+  // un mixto anulado (cabecera y filas) no suma en ningun metodo
+  await mixto("m3", [{ metodo: "Efectivo", monto: 10 }, { metodo: "Tarjeta", monto: 10 }], CAJERO_B, CAJA_2, D3, "13:00");
+  await pool.query("UPDATE pagos.transacciones SET estado = 'Anulado' WHERE id_transaccion = $1", [ops.m3.id_transaccion]);
+  await pool.query("UPDATE pagos.pagos_mixtos SET estado = 'Anulado' WHERE id_transaccion = $1", [ops.m3.id_transaccion]);
 });
 
 test.after(async () => {
@@ -58,7 +76,7 @@ test("TDSI-435: agrupa las ventas del dia por metodo con cantidad, monto y porce
   assert.deepEqual(r.filtros, { desde: D1, hasta: D1 });
   assert.equal(r.cantidad_operaciones, 4);
   assert.equal(r.monto_total, 200);
-  assert.deepEqual(r.metodos, [
+  assert.deepEqual(r.metodos.map(({ metodo, cantidad, monto, porcentaje }) => ({ metodo, cantidad, monto, porcentaje })), [
     { metodo: "Efectivo", cantidad: 2, monto: 80, porcentaje: 40 },
     { metodo: "Tarjeta", cantidad: 1, monto: 100, porcentaje: 50 },
     { metodo: "QR", cantidad: 1, monto: 20, porcentaje: 10 },
@@ -68,7 +86,7 @@ test("TDSI-435: agrupa las ventas del dia por metodo con cantidad, monto y porce
 test("TDSI-435: siempre trae los 3 metodos (en 0 si no hubo ventas) y respeta decimales", async () => {
   const r = await monitorearMetodos({ fecha: D2 });
   assert.equal(r.monto_total, 33.33);
-  assert.deepEqual(r.metodos, [
+  assert.deepEqual(r.metodos.map(({ metodo, cantidad, monto, porcentaje }) => ({ metodo, cantidad, monto, porcentaje })), [
     { metodo: "Efectivo", cantidad: 0, monto: 0, porcentaje: 0 },
     { metodo: "Tarjeta", cantidad: 0, monto: 0, porcentaje: 0 },
     { metodo: "QR", cantidad: 1, monto: 33.33, porcentaje: 100 },
@@ -85,4 +103,33 @@ test("TDSI-435: sin fecha es el dia de hoy y una fecha invalida da 400", async (
   assert.deepEqual(r.filtros, { desde: hoyLocal(), hasta: hoyLocal() });
   await assert.rejects(monitorearMetodos({ fecha: "2021-02-30" }), (e) => e.status === 400);
   await assert.rejects(monitorearMetodos({ fecha: "10/05/2021" }), (e) => e.status === 400);
+});
+
+const desglose = (simples, mixtos) => ({ simples: { cantidad: simples[0], monto: simples[1] }, mixtos: { cantidad: mixtos[0], monto: mixtos[1] } });
+
+test("TDSI-436: los pagos mixtos suman cada parte en su metodo, desglosado simples / mixtos", async () => {
+  const r = await monitorearMetodos({ fecha: D3 });
+  assert.equal(r.cantidad_operaciones, 5); // 3 simples + 2 mixtos (cada venta cuenta una vez)
+  assert.equal(r.monto_total, 340);
+  assert.deepEqual(r.metodos, [
+    { metodo: "Efectivo", cantidad: 2, monto: 105, porcentaje: 30.88, ...desglose([1, 80], [1, 25]) },
+    { metodo: "Tarjeta", cantidad: 2, monto: 160, porcentaje: 47.06, ...desglose([1, 100], [1, 60]) },
+    { metodo: "QR", cantidad: 3, monto: 75, porcentaje: 22.06, ...desglose([1, 20], [2, 55]) },
+  ]);
+});
+
+test("TDSI-436: resumen de pagos mixtos con sus combinaciones de metodos", async () => {
+  const r = await monitorearMetodos({ fecha: D3 });
+  assert.deepEqual(r.pagos_mixtos, {
+    cantidad: 2,
+    monto: 140,
+    combinaciones: [
+      { metodos: ["Tarjeta", "QR"], cantidad: 1, monto: 100 },
+      { metodos: ["Efectivo", "QR"], cantidad: 1, monto: 40 },
+    ],
+  });
+
+  const soloSimples = await monitorearMetodos({ fecha: D1 });
+  assert.deepEqual(soloSimples.pagos_mixtos, { cantidad: 0, monto: 0, combinaciones: [] });
+  assert.deepEqual(soloSimples.metodos[0], { metodo: "Efectivo", cantidad: 2, monto: 80, porcentaje: 40, ...desglose([2, 80], [0, 0]) });
 });
