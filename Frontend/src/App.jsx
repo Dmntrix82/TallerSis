@@ -14,6 +14,7 @@ import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import RevisionTransacciones from './pages/RevisionTransacciones'
 import HistorialOperaciones from './pages/HistorialOperaciones'
+import MetodosPago from './pages/MetodosPago.jsx'
 import './App.css'
 
 function RutaProtegida({ children }) {
@@ -51,6 +52,7 @@ function App() {
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/revision-transacciones" element={<RutaProtegidaAdmin><RevisionTransacciones /></RutaProtegidaAdmin>} />
           <Route path="/admin/historial-operaciones" element={<RutaProtegidaAdmin><HistorialOperaciones /></RutaProtegidaAdmin>} />
+          <Route path="/admin/metodos-pago" element={<RutaProtegidaAdmin><MetodosPago /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>
