@@ -133,4 +133,4 @@ async function consultarHistorial({ cajero_id, caja_id, metodo, estado_revision,
   };
 }
 
-module.exports = { DIAS_POR_DEFECTO, validarRangoHistorial, consultarHistorial };
+module.exports = { DIAS_POR_DEFECTO, validarRangoHistorial, validarCajaOpcional, validarCajeroOpcional, consultarHistorial };

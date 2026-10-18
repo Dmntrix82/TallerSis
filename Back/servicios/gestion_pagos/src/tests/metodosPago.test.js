@@ -17,6 +17,8 @@ const CAJA_2 = `TEST-MET2-${SUFIJO}`;
 const D1 = "2021-05-10";
 const D2 = "2021-05-11";
 const D3 = "2021-05-12";
+const D4 = "2021-05-13";
+const SIN_FILTROS = { caja_id: null, cajero_id: null };
 
 /** Mueve una venta a un dia y hora fijos (hora de Bolivia). */
 const moverA = (idTransaccion, dia, hora) =>
@@ -62,6 +64,10 @@ test.before(async () => {
   await mixto("m3", [{ metodo: "Efectivo", monto: 10 }, { metodo: "Tarjeta", monto: 10 }], CAJERO_B, CAJA_2, D3, "13:00");
   await pool.query("UPDATE pagos.transacciones SET estado = 'Anulado' WHERE id_transaccion = $1", [ops.m3.id_transaccion]);
   await pool.query("UPDATE pagos.pagos_mixtos SET estado = 'Anulado' WHERE id_transaccion = $1", [ops.m3.id_transaccion]);
+
+  // Dia 4 (TDSI-437): un mixto antiguo con la caja solo en la cabecera (sus filas sin caja_id)
+  await mixto("m4", [{ metodo: "Efectivo", monto: 12 }, { metodo: "Tarjeta", monto: 8 }], CAJERO_A, CAJA_2, D4, "16:00");
+  await pool.query("UPDATE pagos.transacciones SET caja_id = NULL WHERE id_transaccion = $1", [ops.m4.id_transaccion]);
 });
 
 test.after(async () => {
@@ -73,7 +79,7 @@ test.after(async () => {
 
 test("TDSI-435: agrupa las ventas del dia por metodo con cantidad, monto y porcentaje", async () => {
   const r = await monitorearMetodos({ fecha: D1 });
-  assert.deepEqual(r.filtros, { desde: D1, hasta: D1 });
+  assert.deepEqual(r.filtros, { desde: D1, hasta: D1, ...SIN_FILTROS });
   assert.equal(r.cantidad_operaciones, 4);
   assert.equal(r.monto_total, 200);
   assert.deepEqual(r.metodos.map(({ metodo, cantidad, monto, porcentaje }) => ({ metodo, cantidad, monto, porcentaje })), [
@@ -100,7 +106,7 @@ test("TDSI-435: siempre trae los 3 metodos (en 0 si no hubo ventas) y respeta de
 
 test("TDSI-435: sin fecha es el dia de hoy y una fecha invalida da 400", async () => {
   const r = await monitorearMetodos();
-  assert.deepEqual(r.filtros, { desde: hoyLocal(), hasta: hoyLocal() });
+  assert.deepEqual(r.filtros, { desde: hoyLocal(), hasta: hoyLocal(), ...SIN_FILTROS });
   await assert.rejects(monitorearMetodos({ fecha: "2021-02-30" }), (e) => e.status === 400);
   await assert.rejects(monitorearMetodos({ fecha: "10/05/2021" }), (e) => e.status === 400);
 });
@@ -132,4 +138,57 @@ test("TDSI-436: resumen de pagos mixtos con sus combinaciones de metodos", async
   const soloSimples = await monitorearMetodos({ fecha: D1 });
   assert.deepEqual(soloSimples.pagos_mixtos, { cantidad: 0, monto: 0, combinaciones: [] });
   assert.deepEqual(soloSimples.metodos[0], { metodo: "Efectivo", cantidad: 2, monto: 80, porcentaje: 40, ...desglose([2, 80], [0, 0]) });
+});
+
+const resumen = (r) => r.metodos.map((m) => [m.metodo, m.cantidad, m.monto, m.porcentaje]);
+
+test("TDSI-437: rango de fechas (desde/hasta) suma todos los dias", async () => {
+  const r = await monitorearMetodos({ desde: D1, hasta: D3 });
+  assert.deepEqual(r.filtros, { desde: D1, hasta: D3, ...SIN_FILTROS });
+  assert.equal(r.cantidad_operaciones, 10); // 4 + 1 + 5
+  assert.equal(r.monto_total, 573.33); // 200 + 33.33 + 340
+  assert.deepEqual(resumen(r), [
+    ["Efectivo", 4, 185, 32.27],
+    ["Tarjeta", 3, 260, 45.35],
+    ["QR", 5, 128.33, 22.38],
+  ]);
+});
+
+test("TDSI-437: filtra por caja (tambien mixtos con la caja solo en la cabecera)", async () => {
+  const caja1 = await monitorearMetodos({ desde: D1, hasta: D3, caja_id: CAJA_1 });
+  assert.equal(caja1.filtros.caja_id, CAJA_1);
+  assert.equal(caja1.cantidad_operaciones, 6);
+  assert.equal(caja1.monto_total, 323.33); // 50 + 100 + 33.33 + 80 + 20 + (25 + 15)
+  assert.deepEqual(caja1.pagos_mixtos.combinaciones, [{ metodos: ["Efectivo", "QR"], cantidad: 1, monto: 40 }]);
+
+  const antiguo = await monitorearMetodos({ fecha: D4, caja_id: CAJA_2 });
+  assert.equal(antiguo.cantidad_operaciones, 1);
+  assert.deepEqual(resumen(antiguo), [["Efectivo", 1, 12, 60], ["Tarjeta", 1, 8, 40], ["QR", 0, 0, 0]]);
+  const otraCaja = await monitorearMetodos({ fecha: D4, caja_id: CAJA_1 });
+  assert.equal(otraCaja.cantidad_operaciones, 0);
+});
+
+test("TDSI-437: filtra por cajero y combina con la caja", async () => {
+  const b = await monitorearMetodos({ desde: D1, hasta: D3, cajero_id: CAJERO_B });
+  assert.equal(b.filtros.cajero_id, CAJERO_B);
+  assert.equal(b.cantidad_operaciones, 4); // 30 + 20 (dia 1) + 100 + mixto 100 (dia 3)
+  assert.equal(b.monto_total, 250);
+  assert.deepEqual(b.pagos_mixtos, { cantidad: 1, monto: 100, combinaciones: [{ metodos: ["Tarjeta", "QR"], cantidad: 1, monto: 100 }] });
+
+  const bEnCaja1 = await monitorearMetodos({ desde: D1, hasta: D3, cajero_id: CAJERO_B, caja_id: CAJA_1 });
+  assert.equal(bEnCaja1.cantidad_operaciones, 0);
+  assert.equal(bEnCaja1.monto_total, 0);
+});
+
+test("TDSI-437: rechaza filtros invalidos con 400", async () => {
+  const casos = [
+    { desde: D3, hasta: D1 },
+    { desde: "2021-01-01", hasta: "2021-12-31" },
+    { desde: "2021-13-01" },
+    { caja_id: "C".repeat(61) },
+    { cajero_id: "x".repeat(61) },
+  ];
+  for (const filtros of casos) {
+    await assert.rejects(monitorearMetodos(filtros), (e) => e.status === 400, JSON.stringify(filtros));
+  }
 });

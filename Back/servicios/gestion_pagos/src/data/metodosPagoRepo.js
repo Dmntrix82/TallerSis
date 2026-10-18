@@ -10,7 +10,10 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * pagos.pagos_mixtos por pago_mixto_id: cada parte suma en su metodo (Efectivo 30 + QR 70 suma
  * 30 en Efectivo y 70 en QR). Si la cabecera esta anulada, no suma ninguna parte.
  * Dias en hora de Bolivia. Parametros: $1 desde (YYYY-MM-DD), $2 hasta (YYYY-MM-DD, inclusive).
+ *  * TDSI-437, filtros opcionales: $3 caja_id y $4 cajero_id. La caja de un pago mixto se toma de la fila
+ * o, si no la tiene (mixtos registrados antes de TDSI-376), de su cabecera via pago_mixto_id.
  */
+
 const CTE_FILAS = `
   filas AS (
     SELECT t.id_transaccion, t.metodo, t.monto,
@@ -21,6 +24,9 @@ const CTE_FILAS = `
       LEFT JOIN pagos.pagos_mixtos pm ON pm.id = t.pago_mixto_id
      WHERE t.fecha >= ($1::date)::timestamp AT TIME ZONE 'America/La_Paz'
        AND t.fecha <  ($2::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'
+       AND ($3::text IS NULL OR COALESCE(t.caja_id, pm.caja_id) = $3)
+       AND ($4::text IS NULL OR t.cajero_id = $4)
+       
   ),
   cobradas AS (
     SELECT id_transaccion FROM filas GROUP BY id_transaccion HAVING bool_and(cobrada)
@@ -102,8 +108,8 @@ async function totalesYMixtos(filtros) {
   };
 }
 
-function parametros({ desde, hasta }) {
-  return [desde, hasta];
+function parametros({ desde, hasta, cajaId = null, cajeroId = null }) {
+  return [desde, hasta, cajaId, cajeroId];
 }
 
 module.exports = { agruparPorMetodo, totalesYMixtos };
