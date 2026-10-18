@@ -13,6 +13,7 @@ import CierreCaja from './pages/CierreCaja.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import RevisionTransacciones from './pages/RevisionTransacciones'
+import HistorialOperaciones from './pages/HistorialOperaciones'
 import './App.css'
 
 function RutaProtegida({ children }) {
@@ -49,6 +50,7 @@ function App() {
           <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/revision-transacciones" element={<RutaProtegidaAdmin><RevisionTransacciones /></RutaProtegidaAdmin>} />
+          <Route path="/admin/historial-operaciones" element={<RutaProtegidaAdmin><HistorialOperaciones /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>
