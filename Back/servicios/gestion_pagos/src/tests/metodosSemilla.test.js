@@ -10,6 +10,7 @@ const path = require("node:path");
 const { pool } = require("../config/db");
 const { monitorearMetodos } = require("../services/metodosPagoService");
 const { obtenerPorTransaccion } = require("../services/pagoMixtoService");
+const { consultarHistorial } = require("../services/historialCajerosService");
 const { hoyLocal } = require("../utils/fechaLocal");
 
 const SEMILLA = fs.readFileSync(path.join(__dirname, "../../sql/seed_metodos.sql"), "utf8");
@@ -93,4 +94,14 @@ test("TDSI-145: el detalle del pago mixto de la semilla se puede consultar", asy
   const r = await obtenerPorTransaccion("DEMO-MET-005");
   assert.equal(r.total, 180);
   assert.deepEqual(r.detalle.map((d) => [d.orden, d.metodo, d.monto, d.porcentaje]), [[1, "Tarjeta", 150, 83.33], [2, "Efectivo", 30, 16.67]]);
+});
+
+test("TDSI-145: el historial de cajeros cuadra con el monitoreo por metodo (misma caja, mismo total)", async () => {
+  for (const caja_id of [CAJA_1, CAJA_2]) {
+    const metodos = await monitorearMetodos({ ...RANGO, caja_id });
+    const historial = await consultarHistorial({ ...RANGO, caja_id });
+    assert.equal(historial.resumen.total, metodos.monto_total, caja_id);
+  }
+  const mixtoAntiguo = await consultarHistorial({ ...RANGO, caja_id: CAJA_2, cajero_id: LUIS, metodo: "QR" });
+  assert.ok(mixtoAntiguo.operaciones.some((o) => o.id_transaccion === "DEMO-MET-006" && o.caja_id === CAJA_2));
 });

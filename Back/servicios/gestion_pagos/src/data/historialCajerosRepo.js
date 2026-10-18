@@ -10,30 +10,33 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * TDSI-433, filtros opcionales: $4 caja_id, $5 metodo (operaciones que usaron ese metodo; una mixta
  * Efectivo+QR aparece al filtrar por cualquiera de los dos, con su total completo),
  * $6 estado de revision (PENDIENTE = todavia sin revisar, REVISADA u OBSERVADA).
+ * La caja de un pago mixto se toma de su fila o, si no la tiene, de su cabecera (pago_mixto_id),
+ * igual que en el monitoreo por metodo de pago (TDSI-437).
  */
 const CTE_HISTORIAL = `
   ventas AS (
-    SELECT id_transaccion,
-           MIN(fecha)                                                       AS fecha,
-           MAX(cajero_id)                                                   AS cajero_id,
-           MAX(cajero)                                                      AS cajero,
-           MAX(caja_id)                                                     AS caja_id,
-           MAX(tipo_pago)                                                   AS tipo_pago,
-           SUM(monto)                                                       AS total,
-           array_agg(metodo ORDER BY id)                                    AS metodos,
-           json_agg(json_build_object('metodo', metodo, 'monto', monto) ORDER BY id) AS detalle_metodos,
-           CASE WHEN bool_and(estado = 'Anulado')       THEN 'ANULADA'
-                WHEN bool_or(estado_pago = 'RECHAZADA') THEN 'RECHAZADA'
-                WHEN bool_or(estado_pago = 'PENDIENTE') THEN 'PENDIENTE'
+    SELECT t.id_transaccion,
+           MIN(t.fecha)                                                     AS fecha,
+           MAX(t.cajero_id)                                                 AS cajero_id,
+           MAX(t.cajero)                                                    AS cajero,
+           MAX(COALESCE(t.caja_id, pm.caja_id))                             AS caja_id,
+           MAX(t.tipo_pago)                                                 AS tipo_pago,
+           SUM(t.monto)                                                     AS total,
+           array_agg(t.metodo ORDER BY t.id)                                AS metodos,
+           json_agg(json_build_object('metodo', t.metodo, 'monto', t.monto) ORDER BY t.id) AS detalle_metodos,
+           CASE WHEN bool_and(t.estado = 'Anulado')       THEN 'ANULADA'
+                WHEN bool_or(t.estado_pago = 'RECHAZADA') THEN 'RECHAZADA'
+                WHEN bool_or(t.estado_pago = 'PENDIENTE') THEN 'PENDIENTE'
                 ELSE 'APROBADA' END                                         AS estado
-      FROM pagos.transacciones
-     WHERE cajero_id IS NOT NULL
-       AND fecha >= ($1::date)::timestamp AT TIME ZONE 'America/La_Paz'
-       AND fecha <  ($2::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'
-       AND ($3::text IS NULL OR cajero_id = $3)
-       AND ($4::text IS NULL OR caja_id = $4)
-     GROUP BY id_transaccion
-    HAVING ($5::text IS NULL OR bool_or(metodo = $5))
+      FROM pagos.transacciones t
+      LEFT JOIN pagos.pagos_mixtos pm ON pm.id = t.pago_mixto_id
+     WHERE t.cajero_id IS NOT NULL
+       AND t.fecha >= ($1::date)::timestamp AT TIME ZONE 'America/La_Paz'
+       AND t.fecha <  ($2::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'
+       AND ($3::text IS NULL OR t.cajero_id = $3)
+       AND ($4::text IS NULL OR COALESCE(t.caja_id, pm.caja_id) = $4)
+     GROUP BY t.id_transaccion
+    HAVING ($5::text IS NULL OR bool_or(t.metodo = $5))
   ),
   historial AS (
     SELECT v.*,
