@@ -77,6 +77,19 @@ test("TDSI-473: al aprobar, cierra el turno", async () => {
   assert.equal(autorizacion.estado, "APROBADA");
   assert.equal(turno.estado, "CERRADO");
   assert.equal(turno.cerrado_por, "SUP-TEST");
+
+  // TDSI-473: el arqueo queda guardado en el turno (inicial 100, sin ventas, contado 150.50)
+  assert.equal(Number(turno.efectivo_esperado), 100);
+  assert.equal(Number(turno.efectivo_contado), 150.5);
+  assert.equal(Number(turno.diferencia), 50.5);
+  assert.equal(turno.tipo_diferencia, "SOBRANTE");
+
+  // TDSI-487: y la diferencia queda registrada para gestionarla (TDSI-32)
+  const { rows: difs } = await query(
+    `SELECT tipo, monto, estado FROM caja.diferencias_resolucion WHERE turno_id = $1`,
+    [turnoId]
+  );
+  assert.deepEqual(difs.map((d) => [d.tipo, Number(d.monto), d.estado]), [["SOBRANTE", 50.5, "PENDIENTE"]]);
 });
 
 test("TDSI-472: no se puede rechazar una solicitud ya aprobada", async () => {

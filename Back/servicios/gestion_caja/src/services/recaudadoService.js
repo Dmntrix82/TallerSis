@@ -1,34 +1,35 @@
 const { AppError } = require("../utils/AppError");
 const { obtenerReporteVentas } = require("./pagosProxy");
 const cajasRepo = require("../data/cajasRepo");
+const { hoyLocal, validarDia, limitesDelRango } = require("../utils/fechas");
 
-/** Valida y normaliza el rango de fechas (desde, hasta). */
+/**
+ * TDSI-481: rango de dias (inclusive) en hora de Bolivia. Sin fechas es hoy; con solo
+ * "desde" o solo "hasta", es ese dia. Devuelve los dias y los instantes exactos:
+ * desde las 00:00 del primer dia hasta las 23:59:59.999 del ultimo (gestion_pagos usa <=).
+ */
 function validarRango(desde, hasta) {
-  const d = desde ? new Date(desde) : null;
-  const h = hasta ? new Date(hasta) : null;
+  const diaDesde = desde ? validarDia(desde, "desde") : null;
+  const diaHasta = hasta ? validarDia(hasta, "hasta") : null;
+  const d = diaDesde || diaHasta || hoyLocal();
+  const h = diaHasta || diaDesde || d;
+  if (d > h) throw new AppError("'desde' no puede ser mayor que 'hasta'", 400, { desde, hasta });
 
-  if (desde && Number.isNaN(d.getTime())) throw new AppError("'desde' no es una fecha válida", 400, { desde });
-  if (hasta && Number.isNaN(h.getTime())) throw new AppError("'hasta' no es una fecha válida", 400, { hasta });
-  if (d && h && d > h) throw new AppError("'desde' no puede ser mayor que 'hasta'", 400, { desde, hasta });
-
-  return { desde: d, hasta: h };
+  return { desde: d, hasta: h, ...limitesDelRango(d, h) };
 }
 
 /**
- * TDSI-479: calcula el total recaudado por caja y rango de fechas.
+ * TDSI-479: calcula el total recaudado por caja y rango de fechas (dias de Bolivia, inclusive).
  * Reutiliza pagosProxy.obtenerReporteVentas (que consulta gestion_pagos).
  *
  * - Si viene caja_id → un solo objeto con los totales de esa caja.
  * - Si no viene caja_id → un array con un objeto por cada caja activa.
  */
 async function calcularRecaudadoPorCaja({ caja_id, desde, hasta }) {
-  const { desde: d, hasta: h } = validarRango(desde, hasta);
+  const rango = validarRango(desde, hasta);
+  const desdeFinal = rango.inicio;
+  const hastaFinal = rango.fin;
 
-  // Rango por defecto: hoy (00:00 a 23:59:59)
-  const hoy = new Date();
-  const desdeFinal = d || new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  const hastaFinal = h || new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
-  
 // TDSI-480: caja.movimientos solo tiene APERTURA (la tabla está abandonada
 // para movimientos reales desde TDSI-314). Tanto el cierre (TDSI-320) como
 // este servicio usan egresos = 0. Cuando exista una fuente de egresos por
@@ -41,8 +42,8 @@ async function calcularRecaudadoPorCaja({ caja_id, desde, hasta }) {
     return {
       caja_id,
       caja_nombre: caja.nombre,
-      desde: desdeFinal,
-      hasta: hastaFinal,
+      desde: rango.desde,
+      hasta: rango.hasta,
       totalIngresos: reporte.totalGeneral,
       totalEgresos: 0, // TDSI-480 lo amplía
       totalRecaudado: reporte.totalGeneral,
@@ -63,8 +64,8 @@ async function calcularRecaudadoPorCaja({ caja_id, desde, hasta }) {
     resultados.push({
       caja_id: caja.codigo,
       caja_nombre: caja.nombre,
-      desde: desdeFinal,
-      hasta: hastaFinal,
+      desde: rango.desde,
+      hasta: rango.hasta,
       totalIngresos: reporte.totalGeneral,
       totalEgresos: 0,
       totalRecaudado: reporte.totalGeneral,

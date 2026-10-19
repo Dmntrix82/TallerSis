@@ -1,43 +1,77 @@
 const { AppError } = require("../utils/AppError");
 const turnosRepo = require("../data/turnosRepo");
+const autorizacionesRepo = require("../data/autorizacionesRepo");
 const cierreService = require("./cierreService");
+const { hoyLocal, validarDia } = require("../utils/fechas");
+
+const TIPOS = ["CUADRA", "FALTANTE", "SOBRANTE", "SIN_ARQUEO"];
+
+/** TDSI-485: filtro opcional por tipo de diferencia (acepta minusculas). */
+function validarTipo(valor) {
+  if (valor === undefined || valor === null || valor === "") return null;
+  const tipo = String(valor).trim().toUpperCase();
+  if (!TIPOS.includes(tipo)) {
+    throw new AppError(`El 'tipo' debe ser uno de: ${TIPOS.join(", ")}`, 400, { tipo: valor });
+  }
+  return tipo;
+}
 
 /**
- * TDSI-483/484: lista turnos de una fecha con monto registrado (esperado) y monto disponible (contado).
- * - Turnos CERRADOS: usa efectivo_contado/efectivo_esperado ya guardados.
- * - Turnos ABIERTOS: calcula el esperado con compararEfectivo (sin cerrar nada).
+ * Monto registrado (esperado) y monto disponible (contado) de un turno:
+ *  1. Turno CERRADO con arqueo guardado (TDSI-473/487) -> se usan esos montos.
+ *  2. Si no, y el cajero ya declaro el efectivo en una solicitud de cierre (pendiente o
+ *     aprobada) -> se compara ese contado con compararEfectivo (TDSI-320), tambien en
+ *     turnos abiertos (TDSI-484).
+ *  3. Si nadie conto el efectivo todavia -> se informa el esperado, sin contado ni
+ *     diferencia (SIN_ARQUEO). Nunca se asume contado = 0: eso inventaria un faltante.
+ * Si gestion_pagos no responde, el error se propaga (no se muestra un CUADRA falso).
  */
-async function listarComparacion({ fecha, caja_id, cajero_id, tipo_diferencia }) {
-  if (!fecha) throw new AppError("'fecha' es obligatoria", 400);
+async function compararTurno(t) {
+  if (t.efectivo_esperado != null && t.efectivo_contado != null) {
+    return {
+      efectivo_esperado: Number(t.efectivo_esperado),
+      efectivo_contado: Number(t.efectivo_contado),
+      diferencia: Number(t.diferencia),
+      tipo_diferencia: t.tipo_diferencia,
+      fuente_contado: "CIERRE",
+    };
+  }
 
-  const turnos = await turnosRepo.listarTurnosPorFecha({ fecha, caja_id, cajero_id });
+  const solicitud = await autorizacionesRepo.buscarUltimaSolicitudCierre(t.id);
+  if (solicitud && solicitud.efectivo_contado != null) {
+    const c = await cierreService.compararEfectivo(t.id, solicitud.efectivo_contado);
+    return {
+      efectivo_esperado: c.efectivoEsperado,
+      efectivo_contado: c.efectivoContado,
+      diferencia: c.diferencia,
+      tipo_diferencia: c.tipoDiferencia,
+      fuente_contado: `SOLICITUD_${solicitud.estado}`,
+    };
+  }
+
+  const c = await cierreService.compararEfectivo(t.id, 0); // solo para obtener el esperado
+  return {
+    efectivo_esperado: c.efectivoEsperado,
+    efectivo_contado: null,
+    diferencia: null,
+    tipo_diferencia: "SIN_ARQUEO",
+    fuente_contado: null,
+  };
+}
+
+/**
+ * TDSI-483/484/485/486: turnos de una fecha (hora de Bolivia; por defecto hoy) con su monto
+ * registrado (esperado) y su monto disponible (contado), filtros por caja, cajero y tipo de
+ * diferencia, y el resumen (cuantos cuadran, faltantes, sobrantes y sin arqueo).
+ */
+async function listarComparacion({ fecha, caja_id, cajero_id, tipo_diferencia } = {}) {
+  const dia = fecha ? validarDia(fecha, "fecha") : hoyLocal();
+  const tipo = validarTipo(tipo_diferencia);
+
+  const turnos = await turnosRepo.listarTurnosPorFecha({ fecha: dia, caja_id, cajero_id });
 
   const resultados = [];
   for (const t of turnos) {
-    let esperado, contado, diferencia, tipo;
-
-    if (t.estado === "CERRADO" && t.efectivo_esperado != null) {
-      esperado = Number(t.efectivo_esperado);
-      contado = Number(t.efectivo_contado || 0);
-      diferencia = Number(t.diferencia || 0);
-      tipo = t.tipo_diferencia || "CUADRA";
-    } else {
-      // Turno abierto: calcular el esperado usando la lógica del cierre
-      try {
-        const c = await cierreService.compararEfectivo(t.id, Number(t.efectivo_contado || 0));
-        esperado = c.efectivoEsperado;
-        contado = c.efectivoContado;
-        diferencia = c.diferencia;
-        tipo = c.tipoDiferencia;
-      } catch (e) {
-        // Si falla (ej. gestion_pagos no responde), dejar 0
-        esperado = 0;
-        contado = 0;
-        diferencia = 0;
-        tipo = "CUADRA";
-      }
-    }
-
     resultados.push({
       turno_id: t.id,
       codigo: t.codigo,
@@ -47,27 +81,24 @@ async function listarComparacion({ fecha, caja_id, cajero_id, tipo_diferencia })
       estado: t.estado,
       abierto_en: t.abierto_en,
       cerrado_en: t.cerrado_en,
-      efectivo_esperado: esperado,
-      efectivo_contado: contado,
-      diferencia,
-      tipo_diferencia: tipo,
+      ...(await compararTurno(t)),
     });
   }
 
-  // TDSI-485: filtro por tipo_diferencia
-  const filtrados = tipo_diferencia
-    ? resultados.filter((r) => r.tipo_diferencia === tipo_diferencia)
-    : resultados;
+  const filtrados = tipo ? resultados.filter((r) => r.tipo_diferencia === tipo) : resultados;
+  const contar = (tp) => filtrados.filter((r) => r.tipo_diferencia === tp).length;
 
-  // TDSI-486: resumen
-  const resumen = {
-    total: filtrados.length,
-    cuadran: filtrados.filter((r) => r.tipo_diferencia === "CUADRA").length,
-    faltantes: filtrados.filter((r) => r.tipo_diferencia === "FALTANTE").length,
-    sobrantes: filtrados.filter((r) => r.tipo_diferencia === "SOBRANTE").length,
+  return {
+    filtros: { fecha: dia, caja_id: caja_id || null, cajero_id: cajero_id || null, tipo: tipo },
+    resumen: {
+      total: filtrados.length,
+      cuadran: contar("CUADRA"),
+      faltantes: contar("FALTANTE"),
+      sobrantes: contar("SOBRANTE"),
+      sin_arqueo: contar("SIN_ARQUEO"),
+    },
+    turnos: filtrados,
   };
-
-  return { resumen, turnos: filtrados };
 }
 
 module.exports = { listarComparacion };

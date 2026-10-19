@@ -81,7 +81,13 @@ async function aprobarSolicitud(id, { supervisor_id, pin }) {
   // TDSI-473: CIERRE → cerrar turno
   let turno;
   if (solicitud.tipo === "CIERRE") {
-    const resultado = await cerrarTurno(solicitud.turno_id, { supervisor_id, pin });
+    // TDSI-473/487: con el efectivo que declaro el cajero se guarda el arqueo en el turno
+    // y, si hay faltante o sobrante, queda registrada la diferencia (TDSI-32).
+    const resultado = await cerrarTurno(solicitud.turno_id, {
+      supervisor_id,
+      pin,
+      efectivo_contado: solicitud.efectivo_contado,
+    });
     turno = resultado.turno;
   } else {
     turno = await abrirTurno({

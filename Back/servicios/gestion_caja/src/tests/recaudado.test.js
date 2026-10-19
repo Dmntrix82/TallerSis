@@ -80,11 +80,39 @@ test("TDSI-481: acepta rango de fechas (desde, hasta)", async () => {
   assert.equal(r.totalRecaudado, 0);
 });
 
+test("TDSI-481: un solo dia (desde = hasta) cuenta todo el dia en hora de Bolivia", async () => {
+  // Ventas de un dia fijo: 08:00 y 22:30 hora de Bolivia (la de las 22:30 ya es el dia
+  // siguiente en UTC). Antes, desde=hasta daba 0 y la de la noche se perdia.
+  const DIA = "2021-07-15";
+  await query(
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, caja_id, estado, fecha) VALUES
+       ('VTA-REC-B-DIA-1', 'Efectivo', 40, 'Simple', $1, 'Registrado', ($2::date + time '08:00')::timestamp AT TIME ZONE 'America/La_Paz'),
+       ('VTA-REC-B-DIA-2', 'QR',       25, 'Simple', $1, 'Registrado', ($2::date + time '22:30')::timestamp AT TIME ZONE 'America/La_Paz')`,
+    [CAJA_B, DIA]
+  );
+  const r = await calcularRecaudadoPorCaja({ caja_id: CAJA_B, desde: DIA, hasta: DIA });
+  assert.equal(r.desde, DIA);
+  assert.equal(r.hasta, DIA);
+  assert.equal(r.totalRecaudado, 65);
+  assert.equal(r.porMetodo.QR.ingresos, 25);
+
+  const soloDesde = await calcularRecaudadoPorCaja({ caja_id: CAJA_B, desde: DIA });
+  assert.equal(soloDesde.totalRecaudado, 65);
+  const diaSiguiente = await calcularRecaudadoPorCaja({ caja_id: CAJA_B, desde: "2021-07-16", hasta: "2021-07-16" });
+  assert.equal(diaSiguiente.totalRecaudado, 0);
+});
+
 test("TDSI-481: rechaza si 'desde' no es una fecha válida", async () => {
   await assert.rejects(
     () => calcularRecaudadoPorCaja({ caja_id: CAJA_A, desde: "no-es-fecha" }),
     (e) => e.status === 400
   );
+});
+
+test("TDSI-481: rechaza fechas que no son YYYY-MM-DD o no existen", async () => {
+  for (const desde of ["2026-02-30", "18/10/2026", "2026-10-18T10:00:00Z"]) {
+    await assert.rejects(() => calcularRecaudadoPorCaja({ caja_id: CAJA_A, desde }), (e) => e.status === 400, desde);
+  }
 });
 
 test("TDSI-481: rechaza si 'desde' es mayor que 'hasta'", async () => {

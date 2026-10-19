@@ -1,0 +1,609 @@
+diff --git a/Back/servicios/gestion_caja/package.json b/Back/servicios/gestion_caja/package.json
+index e221436..36c341f 100644
+--- a/Back/servicios/gestion_caja/package.json
++++ b/Back/servicios/gestion_caja/package.json
+@@ -5,7 +5,7 @@
+   "main": "index.js",
+   "scripts": {
+     "start": "node src/index.js",
+-    "test": "node --test src/tests/cierre.test.js src/tests/movimiento.test.js"
++    "test": "node --test --test-concurrency=1 \"src/tests/*.test.js\""
+   },
+   "keywords": [],
+   "author": "",
+diff --git a/Back/servicios/gestion_caja/sql/script_caja.sql b/Back/servicios/gestion_caja/sql/script_caja.sql
+index 671f1f1..c467cd7 100644
+--- a/Back/servicios/gestion_caja/sql/script_caja.sql
++++ b/Back/servicios/gestion_caja/sql/script_caja.sql
+@@ -231,3 +231,11 @@ BEGIN
+             CHECK (estado IN ('PENDIENTE','RESUELTA'));
+     END IF;
+ END $$;
++
++-- ==========================================================================
++-- TDSI-26/471: efectivo que el cajero declara contado al pedir el cierre.
++-- autorizacionService.solicitarCierre lo guarda; sin esta columna el
++-- POST /api/caja/autorizaciones/solicitar-cierre falla.
++-- ==========================================================================
++ALTER TABLE caja.autorizaciones
++  ADD COLUMN IF NOT EXISTS efectivo_contado NUMERIC(14,2);
+diff --git a/Back/servicios/gestion_caja/src/data/autorizacionesRepo.js b/Back/servicios/gestion_caja/src/data/autorizacionesRepo.js
+index 8356194..9c654f7 100644
+--- a/Back/servicios/gestion_caja/src/data/autorizacionesRepo.js
++++ b/Back/servicios/gestion_caja/src/data/autorizacionesRepo.js
+@@ -109,7 +109,20 @@ async function buscarPendientePorTurno(turno_id) {
+   return normalizar(rows[0]);
+ }
+ 
++/** TDSI-31/484: ultima solicitud de CIERRE (pendiente o aprobada) de un turno, con su efectivo contado. */
++async function buscarUltimaSolicitudCierre(turno_id) {
++  const { rows } = await query(
++    `SELECT * FROM caja.autorizaciones
++      WHERE turno_id = $1 AND tipo = 'CIERRE' AND estado IN ('PENDIENTE', 'APROBADA')
++      ORDER BY id DESC
++      LIMIT 1`,
++    [turno_id]
++  );
++  return normalizar(rows[0]);
++}
++
+ module.exports = {
++  buscarUltimaSolicitudCierre,
+   crearSolicitud,
+   crearSolicitudCierre,
+   buscarPendientePorCaja,
+diff --git a/Back/servicios/gestion_caja/src/services/autorizacionService.js b/Back/servicios/gestion_caja/src/services/autorizacionService.js
+index 1211f08..f4c4cb3 100644
+--- a/Back/servicios/gestion_caja/src/services/autorizacionService.js
++++ b/Back/servicios/gestion_caja/src/services/autorizacionService.js
+@@ -81,7 +81,13 @@ async function aprobarSolicitud(id, { supervisor_id, pin }) {
+   // TDSI-473: CIERRE → cerrar turno
+   let turno;
+   if (solicitud.tipo === "CIERRE") {
+-    const resultado = await cerrarTurno(solicitud.turno_id, { supervisor_id, pin });
++    // TDSI-473/487: con el efectivo que declaro el cajero se guarda el arqueo en el turno
++    // y, si hay faltante o sobrante, queda registrada la diferencia (TDSI-32).
++    const resultado = await cerrarTurno(solicitud.turno_id, {
++      supervisor_id,
++      pin,
++      efectivo_contado: solicitud.efectivo_contado,
++    });
+     turno = resultado.turno;
+   } else {
+     turno = await abrirTurno({
+diff --git a/Back/servicios/gestion_caja/src/services/comparacionService.js b/Back/servicios/gestion_caja/src/services/comparacionService.js
+index dfa8e91..c03e8c2 100644
+--- a/Back/servicios/gestion_caja/src/services/comparacionService.js
++++ b/Back/servicios/gestion_caja/src/services/comparacionService.js
+@@ -1,43 +1,77 @@
+ const { AppError } = require("../utils/AppError");
+ const turnosRepo = require("../data/turnosRepo");
++const autorizacionesRepo = require("../data/autorizacionesRepo");
+ const cierreService = require("./cierreService");
++const { hoyLocal, validarDia } = require("../utils/fechas");
++
++const TIPOS = ["CUADRA", "FALTANTE", "SOBRANTE", "SIN_ARQUEO"];
++
++/** TDSI-485: filtro opcional por tipo de diferencia (acepta minusculas). */
++function validarTipo(valor) {
++  if (valor === undefined || valor === null || valor === "") return null;
++  const tipo = String(valor).trim().toUpperCase();
++  if (!TIPOS.includes(tipo)) {
++    throw new AppError(`El 'tipo' debe ser uno de: ${TIPOS.join(", ")}`, 400, { tipo: valor });
++  }
++  return tipo;
++}
+ 
+ /**
+- * TDSI-483/484: lista turnos de una fecha con monto registrado (esperado) y monto disponible (contado).
+- * - Turnos CERRADOS: usa efectivo_contado/efectivo_esperado ya guardados.
+- * - Turnos ABIERTOS: calcula el esperado con compararEfectivo (sin cerrar nada).
++ * Monto registrado (esperado) y monto disponible (contado) de un turno:
++ *  1. Turno CERRADO con arqueo guardado (TDSI-473/487) -> se usan esos montos.
++ *  2. Si no, y el cajero ya declaro el efectivo en una solicitud de cierre (pendiente o
++ *     aprobada) -> se compara ese contado con compararEfectivo (TDSI-320), tambien en
++ *     turnos abiertos (TDSI-484).
++ *  3. Si nadie conto el efectivo todavia -> se informa el esperado, sin contado ni
++ *     diferencia (SIN_ARQUEO). Nunca se asume contado = 0: eso inventaria un faltante.
++ * Si gestion_pagos no responde, el error se propaga (no se muestra un CUADRA falso).
+  */
+-async function listarComparacion({ fecha, caja_id, cajero_id, tipo_diferencia }) {
+-  if (!fecha) throw new AppError("'fecha' es obligatoria", 400);
++async function compararTurno(t) {
++  if (t.efectivo_esperado != null && t.efectivo_contado != null) {
++    return {
++      efectivo_esperado: Number(t.efectivo_esperado),
++      efectivo_contado: Number(t.efectivo_contado),
++      diferencia: Number(t.diferencia),
++      tipo_diferencia: t.tipo_diferencia,
++      fuente_contado: "CIERRE",
++    };
++  }
+ 
+-  const turnos = await turnosRepo.listarTurnosPorFecha({ fecha, caja_id, cajero_id });
++  const solicitud = await autorizacionesRepo.buscarUltimaSolicitudCierre(t.id);
++  if (solicitud && solicitud.efectivo_contado != null) {
++    const c = await cierreService.compararEfectivo(t.id, solicitud.efectivo_contado);
++    return {
++      efectivo_esperado: c.efectivoEsperado,
++      efectivo_contado: c.efectivoContado,
++      diferencia: c.diferencia,
++      tipo_diferencia: c.tipoDiferencia,
++      fuente_contado: `SOLICITUD_${solicitud.estado}`,
++    };
++  }
+ 
+-  const resultados = [];
+-  for (const t of turnos) {
+-    let esperado, contado, diferencia, tipo;
++  const c = await cierreService.compararEfectivo(t.id, 0); // solo para obtener el esperado
++  return {
++    efectivo_esperado: c.efectivoEsperado,
++    efectivo_contado: null,
++    diferencia: null,
++    tipo_diferencia: "SIN_ARQUEO",
++    fuente_contado: null,
++  };
++}
++
++/**
++ * TDSI-483/484/485/486: turnos de una fecha (hora de Bolivia; por defecto hoy) con su monto
++ * registrado (esperado) y su monto disponible (contado), filtros por caja, cajero y tipo de
++ * diferencia, y el resumen (cuantos cuadran, faltantes, sobrantes y sin arqueo).
++ */
++async function listarComparacion({ fecha, caja_id, cajero_id, tipo_diferencia } = {}) {
++  const dia = fecha ? validarDia(fecha, "fecha") : hoyLocal();
++  const tipo = validarTipo(tipo_diferencia);
+ 
+-    if (t.estado === "CERRADO" && t.efectivo_esperado != null) {
+-      esperado = Number(t.efectivo_esperado);
+-      contado = Number(t.efectivo_contado || 0);
+-      diferencia = Number(t.diferencia || 0);
+-      tipo = t.tipo_diferencia || "CUADRA";
+-    } else {
+-      // Turno abierto: calcular el esperado usando la lógica del cierre
+-      try {
+-        const c = await cierreService.compararEfectivo(t.id, Number(t.efectivo_contado || 0));
+-        esperado = c.efectivoEsperado;
+-        contado = c.efectivoContado;
+-        diferencia = c.diferencia;
+-        tipo = c.tipoDiferencia;
+-      } catch (e) {
+-        // Si falla (ej. gestion_pagos no responde), dejar 0
+-        esperado = 0;
+-        contado = 0;
+-        diferencia = 0;
+-        tipo = "CUADRA";
+-      }
+-    }
++  const turnos = await turnosRepo.listarTurnosPorFecha({ fecha: dia, caja_id, cajero_id });
+ 
++  const resultados = [];
++  for (const t of turnos) {
+     resultados.push({
+       turno_id: t.id,
+       codigo: t.codigo,
+@@ -47,27 +81,24 @@ async function listarComparacion({ fecha, caja_id, cajero_id, tipo_diferencia })
+       estado: t.estado,
+       abierto_en: t.abierto_en,
+       cerrado_en: t.cerrado_en,
+-      efectivo_esperado: esperado,
+-      efectivo_contado: contado,
+-      diferencia,
+-      tipo_diferencia: tipo,
++      ...(await compararTurno(t)),
+     });
+   }
+ 
+-  // TDSI-485: filtro por tipo_diferencia
+-  const filtrados = tipo_diferencia
+-    ? resultados.filter((r) => r.tipo_diferencia === tipo_diferencia)
+-    : resultados;
++  const filtrados = tipo ? resultados.filter((r) => r.tipo_diferencia === tipo) : resultados;
++  const contar = (tp) => filtrados.filter((r) => r.tipo_diferencia === tp).length;
+ 
+-  // TDSI-486: resumen
+-  const resumen = {
+-    total: filtrados.length,
+-    cuadran: filtrados.filter((r) => r.tipo_diferencia === "CUADRA").length,
+-    faltantes: filtrados.filter((r) => r.tipo_diferencia === "FALTANTE").length,
+-    sobrantes: filtrados.filter((r) => r.tipo_diferencia === "SOBRANTE").length,
++  return {
++    filtros: { fecha: dia, caja_id: caja_id || null, cajero_id: cajero_id || null, tipo: tipo },
++    resumen: {
++      total: filtrados.length,
++      cuadran: contar("CUADRA"),
++      faltantes: contar("FALTANTE"),
++      sobrantes: contar("SOBRANTE"),
++      sin_arqueo: contar("SIN_ARQUEO"),
++    },
++    turnos: filtrados,
+   };
+-
+-  return { resumen, turnos: filtrados };
+ }
+ 
+ module.exports = { listarComparacion };
+diff --git a/Back/servicios/gestion_caja/src/services/recaudadoService.js b/Back/servicios/gestion_caja/src/services/recaudadoService.js
+index a8b2de2..63f37d3 100644
+--- a/Back/servicios/gestion_caja/src/services/recaudadoService.js
++++ b/Back/servicios/gestion_caja/src/services/recaudadoService.js
+@@ -1,34 +1,35 @@
+ const { AppError } = require("../utils/AppError");
+ const { obtenerReporteVentas } = require("./pagosProxy");
+ const cajasRepo = require("../data/cajasRepo");
++const { hoyLocal, validarDia, limitesDelRango } = require("../utils/fechas");
+ 
+-/** Valida y normaliza el rango de fechas (desde, hasta). */
++/**
++ * TDSI-481: rango de dias (inclusive) en hora de Bolivia. Sin fechas es hoy; con solo
++ * "desde" o solo "hasta", es ese dia. Devuelve los dias y los instantes exactos:
++ * desde las 00:00 del primer dia hasta las 23:59:59.999 del ultimo (gestion_pagos usa <=).
++ */
+ function validarRango(desde, hasta) {
+-  const d = desde ? new Date(desde) : null;
+-  const h = hasta ? new Date(hasta) : null;
+-
+-  if (desde && Number.isNaN(d.getTime())) throw new AppError("'desde' no es una fecha válida", 400, { desde });
+-  if (hasta && Number.isNaN(h.getTime())) throw new AppError("'hasta' no es una fecha válida", 400, { hasta });
+-  if (d && h && d > h) throw new AppError("'desde' no puede ser mayor que 'hasta'", 400, { desde, hasta });
++  const diaDesde = desde ? validarDia(desde, "desde") : null;
++  const diaHasta = hasta ? validarDia(hasta, "hasta") : null;
++  const d = diaDesde || diaHasta || hoyLocal();
++  const h = diaHasta || diaDesde || d;
++  if (d > h) throw new AppError("'desde' no puede ser mayor que 'hasta'", 400, { desde, hasta });
+ 
+-  return { desde: d, hasta: h };
++  return { desde: d, hasta: h, ...limitesDelRango(d, h) };
+ }
+ 
+ /**
+- * TDSI-479: calcula el total recaudado por caja y rango de fechas.
++ * TDSI-479: calcula el total recaudado por caja y rango de fechas (dias de Bolivia, inclusive).
+  * Reutiliza pagosProxy.obtenerReporteVentas (que consulta gestion_pagos).
+  *
+  * - Si viene caja_id → un solo objeto con los totales de esa caja.
+  * - Si no viene caja_id → un array con un objeto por cada caja activa.
+  */
+ async function calcularRecaudadoPorCaja({ caja_id, desde, hasta }) {
+-  const { desde: d, hasta: h } = validarRango(desde, hasta);
++  const rango = validarRango(desde, hasta);
++  const desdeFinal = rango.inicio;
++  const hastaFinal = rango.fin;
+ 
+-  // Rango por defecto: hoy (00:00 a 23:59:59)
+-  const hoy = new Date();
+-  const desdeFinal = d || new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+-  const hastaFinal = h || new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
+-  
+ // TDSI-480: caja.movimientos solo tiene APERTURA (la tabla está abandonada
+ // para movimientos reales desde TDSI-314). Tanto el cierre (TDSI-320) como
+ // este servicio usan egresos = 0. Cuando exista una fuente de egresos por
+@@ -41,8 +42,8 @@ async function calcularRecaudadoPorCaja({ caja_id, desde, hasta }) {
+     return {
+       caja_id,
+       caja_nombre: caja.nombre,
+-      desde: desdeFinal,
+-      hasta: hastaFinal,
++      desde: rango.desde,
++      hasta: rango.hasta,
+       totalIngresos: reporte.totalGeneral,
+       totalEgresos: 0, // TDSI-480 lo amplía
+       totalRecaudado: reporte.totalGeneral,
+@@ -63,8 +64,8 @@ async function calcularRecaudadoPorCaja({ caja_id, desde, hasta }) {
+     resultados.push({
+       caja_id: caja.codigo,
+       caja_nombre: caja.nombre,
+-      desde: desdeFinal,
+-      hasta: hastaFinal,
++      desde: rango.desde,
++      hasta: rango.hasta,
+       totalIngresos: reporte.totalGeneral,
+       totalEgresos: 0,
+       totalRecaudado: reporte.totalGeneral,
+diff --git a/Back/servicios/gestion_caja/src/tests/autorizacionesCierre.test.js b/Back/servicios/gestion_caja/src/tests/autorizacionesCierre.test.js
+index edb958c..9f5ce75 100644
+--- a/Back/servicios/gestion_caja/src/tests/autorizacionesCierre.test.js
++++ b/Back/servicios/gestion_caja/src/tests/autorizacionesCierre.test.js
+@@ -77,6 +77,19 @@ test("TDSI-473: al aprobar, cierra el turno", async () => {
+   assert.equal(autorizacion.estado, "APROBADA");
+   assert.equal(turno.estado, "CERRADO");
+   assert.equal(turno.cerrado_por, "SUP-TEST");
++
++  // TDSI-473: el arqueo queda guardado en el turno (inicial 100, sin ventas, contado 150.50)
++  assert.equal(Number(turno.efectivo_esperado), 100);
++  assert.equal(Number(turno.efectivo_contado), 150.5);
++  assert.equal(Number(turno.diferencia), 50.5);
++  assert.equal(turno.tipo_diferencia, "SOBRANTE");
++
++  // TDSI-487: y la diferencia queda registrada para gestionarla (TDSI-32)
++  const { rows: difs } = await query(
++    `SELECT tipo, monto, estado FROM caja.diferencias_resolucion WHERE turno_id = $1`,
++    [turnoId]
++  );
++  assert.deepEqual(difs.map((d) => [d.tipo, Number(d.monto), d.estado]), [["SOBRANTE", 50.5, "PENDIENTE"]]);
+ });
+ 
+ test("TDSI-472: no se puede rechazar una solicitud ya aprobada", async () => {
+diff --git a/Back/servicios/gestion_caja/src/tests/comparacion.test.js b/Back/servicios/gestion_caja/src/tests/comparacion.test.js
+new file mode 100644
+index 0000000..4d76db8
+--- /dev/null
++++ b/Back/servicios/gestion_caja/src/tests/comparacion.test.js
+@@ -0,0 +1,110 @@
++// TDSI-31: comparacion de monto registrado (esperado) vs monto disponible (contado).
++// Usa la BD real y gestion_pagos (GESTION_PAGOS_URL) para las ventas; limpia lo que crea.
++const test = require("node:test");
++const assert = require("node:assert/strict");
++const { query } = require("../config/db");
++const { listarComparacion } = require("../services/comparacionService");
++const autorizaciones = require("../services/autorizacionService");
++const { hoyLocal } = require("../utils/fechas");
++
++const SUF = Date.now();
++const CAJERO = `cajero.comp.${SUF}`;
++const CAJAS = ["CAJA-CMP-A", "CAJA-CMP-B", "CAJA-CMP-C", "CAJA-CMP-D"];
++const SUPERVISOR = { supervisor_id: "SUP-TEST", pin: "1234" };
++const HOY = hoyLocal();
++const turnos = {};
++
++async function limpiar() {
++  await query(`DELETE FROM pagos.transacciones WHERE id_transaccion LIKE 'CMP-%'`);
++  await query(`DELETE FROM caja.autorizaciones WHERE caja_id = ANY($1)`, [CAJAS]);
++  await query(`DELETE FROM caja.turnos WHERE caja_id = ANY($1)`, [CAJAS]);
++  await query(`DELETE FROM caja.cajas WHERE codigo = ANY($1)`, [CAJAS]);
++}
++
++async function abrirTurno(caja, inicial, extra = "") {
++  const { rows } = await query(
++    `INSERT INTO caja.turnos (codigo, caja_id, cajero_id, cajero_nombre, efectivo_inicial ${extra ? ", estado, cerrado_en" : ""})
++     VALUES ($1, $2, $3, 'Cajero Comparacion', $4 ${extra ? ", 'CERRADO', now()" : ""}) RETURNING id`,
++    [`TUR-${caja}`, caja, CAJERO, inicial]
++  );
++  return Number(rows[0].id);
++}
++
++test.before(async () => {
++  await limpiar();
++  for (const c of CAJAS) {
++    await query(`INSERT INTO caja.cajas (codigo, nombre, estado) VALUES ($1, $1, 'ACTIVA')`, [c]);
++  }
++  // A: inicial 100 + venta en efectivo 50; el cajero cuenta 140 y el supervisor aprueba -> FALTANTE -10
++  turnos.A = await abrirTurno("CAJA-CMP-A", 100);
++  await query(
++    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, caja_id, estado, fecha)
++     VALUES ('CMP-A-1', 'Efectivo', 50, 'Simple', 'CAJA-CMP-A', 'Registrado', now() + interval '1 second')`
++  );
++  await new Promise((r) => setTimeout(r, 1100));
++  const sA = await autorizaciones.solicitarCierre({ turno_id: turnos.A, cajero_id: CAJERO, efectivo_contado: 140 });
++  await autorizaciones.aprobarSolicitud(sA.id, SUPERVISOR);
++
++  // B: abierto con 30, nadie conto todavia -> SIN_ARQUEO (esperado 30, sin contado)
++  turnos.B = await abrirTurno("CAJA-CMP-B", 30);
++
++  // C: abierto con 20 y una solicitud de cierre pendiente contando 25 -> SOBRANTE +5
++  turnos.C = await abrirTurno("CAJA-CMP-C", 20);
++  await autorizaciones.solicitarCierre({ turno_id: turnos.C, cajero_id: CAJERO, efectivo_contado: 25 });
++
++  // D: cerrado antes del arreglo (sin arqueo guardado) pero con su solicitud aprobada contando 60 -> CUADRA
++  turnos.D = await abrirTurno("CAJA-CMP-D", 60, "cerrado");
++  await query(
++    `INSERT INTO caja.autorizaciones (tipo, caja_id, turno_id, cajero_id, efectivo_contado, solicitado_por, estado)
++     VALUES ('CIERRE', 'CAJA-CMP-D', $1, $2, 60, $2, 'APROBADA')`,
++    [turnos.D, CAJERO]
++  );
++});
++
++test.after(limpiar);
++
++const porCaja = (r) => Object.fromEntries(r.turnos.map((t) => [t.caja_id, t]));
++
++test("TDSI-483/484: cada turno con su monto registrado (esperado) y disponible (contado)", async () => {
++  const r = await listarComparacion({ fecha: HOY, cajero_id: CAJERO });
++  assert.equal(r.filtros.fecha, HOY);
++  const t = porCaja(r);
++  const resumen = (x) => [x.estado, x.efectivo_esperado, x.efectivo_contado, x.diferencia, x.tipo_diferencia, x.fuente_contado];
++
++  assert.deepEqual(resumen(t["CAJA-CMP-A"]), ["CERRADO", 150, 140, -10, "FALTANTE", "CIERRE"]);
++  assert.deepEqual(resumen(t["CAJA-CMP-B"]), ["ABIERTO", 30, null, null, "SIN_ARQUEO", null]);
++  assert.deepEqual(resumen(t["CAJA-CMP-C"]), ["ABIERTO", 20, 25, 5, "SOBRANTE", "SOLICITUD_PENDIENTE"]);
++  assert.deepEqual(resumen(t["CAJA-CMP-D"]), ["CERRADO", 60, 60, 0, "CUADRA", "SOLICITUD_APROBADA"]);
++});
++
++test("TDSI-486: resumen de cuantos cuadran, faltantes, sobrantes y sin arqueo", async () => {
++  const r = await listarComparacion({ fecha: HOY, cajero_id: CAJERO });
++  assert.deepEqual(r.resumen, { total: 4, cuadran: 1, faltantes: 1, sobrantes: 1, sin_arqueo: 1 });
++});
++
++test("TDSI-485: filtros por caja, cajero y tipo de diferencia", async () => {
++  const faltantes = await listarComparacion({ fecha: HOY, cajero_id: CAJERO, tipo_diferencia: "faltante" });
++  assert.equal(faltantes.filtros.tipo, "FALTANTE");
++  assert.deepEqual(faltantes.turnos.map((t) => t.caja_id), ["CAJA-CMP-A"]);
++  assert.deepEqual(faltantes.resumen, { total: 1, cuadran: 0, faltantes: 1, sobrantes: 0, sin_arqueo: 0 });
++
++  const cajaC = await listarComparacion({ fecha: HOY, caja_id: "CAJA-CMP-C" });
++  assert.deepEqual(cajaC.turnos.map((t) => t.turno_id), [turnos.C]);
++
++  const otroDia = await listarComparacion({ fecha: "2021-01-01", cajero_id: CAJERO });
++  assert.equal(otroDia.resumen.total, 0);
++});
++
++test("TDSI-487: al aprobar el cierre con faltante queda registrada la diferencia", async () => {
++  const { rows } = await query(
++    `SELECT tipo, monto, estado FROM caja.diferencias_resolucion WHERE turno_id = $1`,
++    [turnos.A]
++  );
++  assert.deepEqual(rows.map((d) => [d.tipo, Number(d.monto), d.estado]), [["FALTANTE", -10, "PENDIENTE"]]);
++});
++
++test("TDSI-485: rechaza fecha o tipo invalidos con 400", async () => {
++  for (const filtros of [{ fecha: "abc" }, { fecha: "2026-02-30" }, { fecha: HOY, tipo_diferencia: "XYZ" }]) {
++    await assert.rejects(() => listarComparacion(filtros), (e) => e.status === 400, JSON.stringify(filtros));
++  }
++});
+diff --git a/Back/servicios/gestion_caja/src/tests/diferencias.test.js b/Back/servicios/gestion_caja/src/tests/diferencias.test.js
+new file mode 100644
+index 0000000..0b769ee
+--- /dev/null
++++ b/Back/servicios/gestion_caja/src/tests/diferencias.test.js
+@@ -0,0 +1,78 @@
++// TDSI-32: gestion de diferencias de caja (faltantes / sobrantes). BD real; limpia lo que crea.
++const test = require("node:test");
++const assert = require("node:assert/strict");
++const { query } = require("../config/db");
++const { cerrarTurno } = require("../services/cierreService");
++const diferencias = require("../services/diferenciaService");
++
++const CAJA = "CAJA-TEST-DIF-1";
++const SUPERVISOR = { supervisor_id: "SUP-TEST", pin: "1234" };
++let difFaltante;
++
++async function limpiar() {
++  await query(`DELETE FROM caja.turnos WHERE caja_id = $1`, [CAJA]); // diferencias_resolucion se borra en cascada
++  await query(`DELETE FROM caja.cajas WHERE codigo = $1`, [CAJA]);
++}
++
++async function turnoAbierto(codigo, inicial) {
++  const { rows } = await query(
++    `INSERT INTO caja.turnos (codigo, caja_id, cajero_id, cajero_nombre, efectivo_inicial)
++     VALUES ($1, $2, 'CAJ-DIF', 'Cajero Diferencias', $3) RETURNING id`,
++    [codigo, CAJA, inicial]
++  );
++  return Number(rows[0].id);
++}
++
++test.before(async () => {
++  await limpiar();
++  await query(`INSERT INTO caja.cajas (codigo, nombre, estado) VALUES ($1, 'Caja Test Dif', 'ACTIVA')`, [CAJA]);
++});
++test.after(limpiar);
++
++test("TDSI-487: cerrar con faltante o sobrante registra la diferencia; si cuadra, no", async () => {
++  const t1 = await turnoAbierto("TUR-DIF-1", 100);
++  const r1 = await cerrarTurno(t1, { ...SUPERVISOR, efectivo_contado: 70 });
++  assert.equal(r1.turno.tipo_diferencia, "FALTANTE");
++
++  const t2 = await turnoAbierto("TUR-DIF-2", 50);
++  await cerrarTurno(t2, { ...SUPERVISOR, efectivo_contado: 55.5 });
++
++  const t3 = await turnoAbierto("TUR-DIF-3", 40);
++  await cerrarTurno(t3, { ...SUPERVISOR, efectivo_contado: 40 });
++
++  const lista = await diferencias.listar({ caja_id: CAJA });
++  assert.deepEqual(lista.map((d) => [d.turno_id, d.tipo, d.monto, d.estado]), [
++    [t2, "SOBRANTE", 5.5, "PENDIENTE"],
++    [t1, "FALTANTE", -30, "PENDIENTE"],
++  ]);
++  difFaltante = lista.find((d) => d.tipo === "FALTANTE").id;
++});
++
++test("TDSI-489: filtra por estado, tipo y caja; rechaza filtros invalidos", async () => {
++  assert.equal((await diferencias.listar({ caja_id: CAJA, tipo: "FALTANTE" })).length, 1);
++  assert.equal((await diferencias.listar({ caja_id: CAJA, estado: "RESUELTA" })).length, 0);
++  assert.equal((await diferencias.listar({ caja_id: "CAJA-NO-EXISTE" })).length, 0);
++  await assert.rejects(() => diferencias.listar({ estado: "CERRADA" }), (e) => e.status === 400);
++  await assert.rejects(() => diferencias.listar({ tipo: "CUADRA" }), (e) => e.status === 400);
++});
++
++test("TDSI-488: resolver exige justificacion y responsable, y queda RESUELTA con fecha", async () => {
++  await assert.rejects(() => diferencias.resolver(difFaltante, { resuelta_por: "SUP-TEST" }), (e) => e.status === 400);
++  await assert.rejects(() => diferencias.resolver(difFaltante, { justificacion: "  ", resuelta_por: "SUP-TEST" }), (e) => e.status === 400);
++  await assert.rejects(() => diferencias.resolver(difFaltante, { justificacion: "Error de vuelto" }), (e) => e.status === 400);
++  await assert.rejects(() => diferencias.resolver("abc", { justificacion: "x", resuelta_por: "y" }), (e) => e.status === 400);
++  await assert.rejects(() => diferencias.resolver(999999999, { justificacion: "x", resuelta_por: "y" }), (e) => e.status === 404);
++
++  const r = await diferencias.resolver(difFaltante, { justificacion: " Error de vuelto en la venta 15 ", resuelta_por: "SUP-TEST" });
++  assert.equal(r.estado, "RESUELTA");
++  assert.equal(r.justificacion, "Error de vuelto en la venta 15");
++  assert.equal(r.resuelta_por, "SUP-TEST");
++  assert.ok(r.resuelta_en);
++
++  await assert.rejects(
++    () => diferencias.resolver(difFaltante, { justificacion: "otra vez", resuelta_por: "SUP-TEST" }),
++    (e) => e.status === 409
++  );
++  assert.equal((await diferencias.listar({ caja_id: CAJA, estado: "RESUELTA" })).length, 1);
++  assert.equal((await diferencias.listar({ caja_id: CAJA, estado: "PENDIENTE" })).length, 1);
++});
+diff --git a/Back/servicios/gestion_caja/src/tests/recaudado.test.js b/Back/servicios/gestion_caja/src/tests/recaudado.test.js
+index a687279..d917a59 100644
+--- a/Back/servicios/gestion_caja/src/tests/recaudado.test.js
++++ b/Back/servicios/gestion_caja/src/tests/recaudado.test.js
+@@ -80,6 +80,28 @@ test("TDSI-481: acepta rango de fechas (desde, hasta)", async () => {
+   assert.equal(r.totalRecaudado, 0);
+ });
+ 
++test("TDSI-481: un solo dia (desde = hasta) cuenta todo el dia en hora de Bolivia", async () => {
++  // Ventas de un dia fijo: 08:00 y 22:30 hora de Bolivia (la de las 22:30 ya es el dia
++  // siguiente en UTC). Antes, desde=hasta daba 0 y la de la noche se perdia.
++  const DIA = "2021-07-15";
++  await query(
++    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, caja_id, estado, fecha) VALUES
++       ('VTA-REC-B-DIA-1', 'Efectivo', 40, 'Simple', $1, 'Registrado', ($2::date + time '08:00')::timestamp AT TIME ZONE 'America/La_Paz'),
++       ('VTA-REC-B-DIA-2', 'QR',       25, 'Simple', $1, 'Registrado', ($2::date + time '22:30')::timestamp AT TIME ZONE 'America/La_Paz')`,
++    [CAJA_B, DIA]
++  );
++  const r = await calcularRecaudadoPorCaja({ caja_id: CAJA_B, desde: DIA, hasta: DIA });
++  assert.equal(r.desde, DIA);
++  assert.equal(r.hasta, DIA);
++  assert.equal(r.totalRecaudado, 65);
++  assert.equal(r.porMetodo.QR.ingresos, 25);
++
++  const soloDesde = await calcularRecaudadoPorCaja({ caja_id: CAJA_B, desde: DIA });
++  assert.equal(soloDesde.totalRecaudado, 65);
++  const diaSiguiente = await calcularRecaudadoPorCaja({ caja_id: CAJA_B, desde: "2021-07-16", hasta: "2021-07-16" });
++  assert.equal(diaSiguiente.totalRecaudado, 0);
++});
++
+ test("TDSI-481: rechaza si 'desde' no es una fecha válida", async () => {
+   await assert.rejects(
+     () => calcularRecaudadoPorCaja({ caja_id: CAJA_A, desde: "no-es-fecha" }),
+@@ -87,6 +109,12 @@ test("TDSI-481: rechaza si 'desde' no es una fecha válida", async () => {
+   );
+ });
+ 
++test("TDSI-481: rechaza fechas que no son YYYY-MM-DD o no existen", async () => {
++  for (const desde of ["2026-02-30", "18/10/2026", "2026-10-18T10:00:00Z"]) {
++    await assert.rejects(() => calcularRecaudadoPorCaja({ caja_id: CAJA_A, desde }), (e) => e.status === 400, desde);
++  }
++});
++
+ test("TDSI-481: rechaza si 'desde' es mayor que 'hasta'", async () => {
+   await assert.rejects(
+     () => calcularRecaudadoPorCaja({ caja_id: CAJA_A, desde: "2026-12-31", hasta: "2026-01-01" }),
+diff --git a/Back/servicios/gestion_caja/src/utils/fechas.js b/Back/servicios/gestion_caja/src/utils/fechas.js
+new file mode 100644
+index 0000000..bfbc940
+--- /dev/null
++++ b/Back/servicios/gestion_caja/src/utils/fechas.js
+@@ -0,0 +1,30 @@
++const { AppError } = require("./AppError");
++
++// El "dia" del negocio es el de Bolivia (America/La_Paz, UTC-4 todo el año, sin horario
++// de verano), no el del servidor: en Docker/Supabase el servidor corre en UTC.
++const ZONA = "America/La_Paz";
++const OFFSET_BOLIVIA = "-04:00";
++const UN_DIA_MS = 24 * 60 * 60 * 1000;
++
++/** Fecha de hoy (YYYY-MM-DD) en hora de Bolivia. */
++function hoyLocal() {
++  return new Intl.DateTimeFormat("en-CA", { timeZone: ZONA }).format(new Date());
++}
++
++/** Valida una fecha "YYYY-MM-DD" (dia real del calendario). */
++function validarDia(valor, campo) {
++  const d = new Date(`${valor}T00:00:00Z`);
++  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(valor)) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== valor) {
++    throw new AppError(`'${campo}' debe ser una fecha valida con formato YYYY-MM-DD`, 400, { [campo]: valor });
++  }
++  return valor;
++}
++
++/** Inicio (00:00) y fin (23:59:59.999) de un rango de dias de Bolivia, como instantes. */
++function limitesDelRango(desde, hasta) {
++  const inicio = new Date(`${desde}T00:00:00${OFFSET_BOLIVIA}`);
++  const fin = new Date(new Date(`${hasta}T00:00:00${OFFSET_BOLIVIA}`).getTime() + UN_DIA_MS - 1);
++  return { inicio, fin };
++}
++
++module.exports = { ZONA, hoyLocal, validarDia, limitesDelRango };

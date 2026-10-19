@@ -231,3 +231,11 @@ BEGIN
             CHECK (estado IN ('PENDIENTE','RESUELTA'));
     END IF;
 END $$;
+
+-- ==========================================================================
+-- TDSI-26/471: efectivo que el cajero declara contado al pedir el cierre.
+-- autorizacionService.solicitarCierre lo guarda; sin esta columna el
+-- POST /api/caja/autorizaciones/solicitar-cierre falla.
+-- ==========================================================================
+ALTER TABLE caja.autorizaciones
+  ADD COLUMN IF NOT EXISTS efectivo_contado NUMERIC(14,2);

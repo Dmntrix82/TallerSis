@@ -109,7 +109,20 @@ async function buscarPendientePorTurno(turno_id) {
   return normalizar(rows[0]);
 }
 
+/** TDSI-31/484: ultima solicitud de CIERRE (pendiente o aprobada) de un turno, con su efectivo contado. */
+async function buscarUltimaSolicitudCierre(turno_id) {
+  const { rows } = await query(
+    `SELECT * FROM caja.autorizaciones
+      WHERE turno_id = $1 AND tipo = 'CIERRE' AND estado IN ('PENDIENTE', 'APROBADA')
+      ORDER BY id DESC
+      LIMIT 1`,
+    [turno_id]
+  );
+  return normalizar(rows[0]);
+}
+
 module.exports = {
+  buscarUltimaSolicitudCierre,
   crearSolicitud,
   crearSolicitudCierre,
   buscarPendientePorCaja,
