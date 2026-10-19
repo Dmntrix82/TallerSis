@@ -79,3 +79,14 @@ export function obtenerRecaudadoPorCaja({ desde, hasta } = {}) {
   const qs = params.toString()
   return apiFetch(`/api/caja/recaudado${qs ? `?${qs}` : ''}`)
 }
+
+// TDSI-139/485: comparacion del monto registrado (esperado) vs el disponible (contado) de los
+// turnos de una fecha (YYYY-MM-DD, obligatoria), con filtros opcionales por caja, cajero y tipo
+// (CUADRA | FALTANTE | SOBRANTE). Responde data: { resumen: { total, cuadran, faltantes, sobrantes }, turnos }.
+export function obtenerComparacionMontos({ fecha, caja_id, cajero_id, tipo }) {
+  const params = new URLSearchParams({ fecha })
+  if (caja_id) params.set('caja_id', caja_id)
+  if (cajero_id) params.set('cajero_id', cajero_id)
+  if (tipo) params.set('tipo', tipo)
+  return apiFetch(`/api/caja/comparacion?${params.toString()}`)
+}

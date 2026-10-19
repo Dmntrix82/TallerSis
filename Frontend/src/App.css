@@ -1797,3 +1797,79 @@
   text-align: right;
   min-width: 80px;
 }
+/* Comparación de montos (TDSI-140 / TDSI-515 a 518) */
+.comparacion-resumen--cuadra {
+  border-top-color: var(--color-brand-olive);
+}
+
+.comparacion-resumen--faltante {
+  border-top-color: #b91c1c;
+}
+
+.comparacion-resumen--sobrante {
+  border-top-color: #b7791f;
+}
+
+.comparacion-fila td:first-child {
+  border-left: 4px solid transparent;
+}
+
+.comparacion-fila--cuadra td:first-child {
+  border-left-color: var(--color-brand-olive);
+}
+
+.comparacion-fila--faltante td {
+  background-color: #fef2f2;
+}
+
+.comparacion-fila--faltante td:first-child {
+  border-left-color: #b91c1c;
+}
+
+.comparacion-fila--sobrante td {
+  background-color: #fffbeb;
+}
+
+.comparacion-fila--sobrante td:first-child {
+  border-left-color: #b7791f;
+}
+
+.comparacion-detalle {
+  display: block;
+  color: #616e7c;
+  font-size: 0.8rem;
+}
+
+.comparacion-diferencia--cuadra,
+.comparacion-diferencia--faltante,
+.comparacion-diferencia--sobrante {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.comparacion-diferencia--cuadra {
+  color: var(--color-brand-dark);
+}
+
+.comparacion-diferencia--faltante {
+  color: #b91c1c;
+}
+
+.comparacion-diferencia--sobrante {
+  color: #92400e;
+}
+
+.badge-comparacion--cuadra {
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+}
+
+.badge-comparacion--faltante {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge-comparacion--sobrante {
+  background-color: #fffbeb;
+  color: #92400e;
+}
