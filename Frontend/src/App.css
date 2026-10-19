@@ -1499,3 +1499,49 @@
   background-color: #fee2e2;
   color: #b91c1c;
 }
+/* Reportes de caja (TDSI-150 / TDSI-523 a 526) */
+.reporte-encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.reporte-encabezado h2 {
+  margin: 0;
+}
+
+.reporte-encabezado .tablero-sucursal {
+  margin: 0.25rem 0 0;
+}
+
+.reporte-seccion {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.reporte-tabla {
+  overflow-x: auto;
+}
+
+.reporte-tabla .tabla-facturas th,
+.reporte-tabla .tabla-facturas td {
+  padding: 0.6rem 0.75rem;
+  white-space: nowrap;
+}
+
+.badge-arqueo--cuadra {
+  background-color: var(--color-brand-mint);
+  color: var(--color-brand-dark);
+}
+
+.badge-arqueo--faltante {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge-arqueo--sobrante {
+  background-color: #fffbeb;
+  color: #92400e;
+}
