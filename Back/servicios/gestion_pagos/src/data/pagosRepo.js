@@ -1,4 +1,5 @@
 const { query, withTransaction } = require("../config/db");
+const { AppError } = require("../utils/AppError");
 
 const num = (v) => (v === null || v === undefined ? v : Number(v));
 
@@ -124,6 +125,35 @@ async function anularTransaccion(id_transaccion, { anulado_por }) {
 
     return rows.map((r) => ({ ...r, monto: num(r.monto) }));
   });
+}
+
+/**
+ * TDSI-37/545: corrige datos de facturacion de una venta ya registrada,
+ * manteniendo su id_transaccion. Solo actualiza las filas con estado
+ * 'Registrado' (si fuera un pago Mixto con 2 filas, corrige las dos).
+ */
+async function actualizarDatosVenta(id_transaccion, { nit, razon_social, tipo_documento, telefono, modificado_por, autorizado_por }) {
+  const columnas = { nit, razon_social, tipo_documento, telefono };
+  const sets = ["fecha_modificacion = now()", "modificado_por = $2", "autorizado_por = $3"];
+  const params = [id_transaccion, modificado_por, autorizado_por];
+
+  for (const [columna, valor] of Object.entries(columnas)) {
+    if (valor === undefined) continue;
+    params.push(valor);
+    sets.push(`${columna} = $${params.length}`);
+  }
+
+  const { rows } = await query(
+    `UPDATE pagos.transacciones
+        SET ${sets.join(", ")}
+      WHERE id_transaccion = $1 AND estado = 'Registrado'
+      RETURNING *`,
+    params
+  );
+  if (rows.length === 0) {
+    throw new AppError("La venta ya no se puede modificar (no existe o fue anulada justo ahora).", 409);
+  }
+  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
 }
 
 /**
@@ -441,6 +471,7 @@ module.exports = {
   buscarRazonSocialPorDocumento,
   listarPorCajero,
   anularTransaccion,
+  actualizarDatosVenta,
   reporteTurno,
   listarCajeros,
   rankingCajas,

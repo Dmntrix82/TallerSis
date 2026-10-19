@@ -140,4 +140,61 @@ async function listarCajeros() {
   return repo.listarCajeros();
 }
 
-module.exports = { listarMisFacturas, anularVenta, reporteTurno, historialCliente, totalesGenerales, listarCajeros };
+const CAMPOS_MODIFICABLES = ["nit", "razon_social", "tipo_documento", "telefono"];
+
+/**
+ * TDSI-37/545: corrige los datos de facturacion de una venta ya registrada
+ * (ej. un NIT mal escrito), SIN anularla ni cambiar su id_transaccion.
+ * Requiere el PIN de un supervisor y que siga dentro de las 2 horas desde
+ * la emision (TDSI-543/544, ya existian para la anulacion).
+ */
+async function modificarVenta(id_transaccion, { supervisor_id, pin, modificado_por, ...cambios } = {}) {
+  const datos = {};
+  for (const campo of CAMPOS_MODIFICABLES) {
+    if (cambios[campo] !== undefined) datos[campo] = cambios[campo];
+  }
+  if (Object.keys(datos).length === 0) {
+    throw new AppError("Indique al menos un dato a modificar (nit, razon_social, tipo_documento o telefono).", 400);
+  }
+
+  if (datos.tipo_documento !== undefined && datos.tipo_documento !== null) {
+    const errorFormato = validarFormatoDocumento(datos.tipo_documento, datos.nit);
+    if (errorFormato) throw new AppError(errorFormato, 400);
+    if (!datos.razon_social) {
+      throw new AppError("Si corrige el tipo de documento, la razón social es obligatoria.", 400);
+    }
+  }
+
+  const filas = await repo.buscarTransaccionesPorIdTransaccion(id_transaccion);
+  if (!filas.length) {
+    throw new AppError(`No existe una venta registrada con el número "${id_transaccion}", o ya fue anulada.`, 404);
+  }
+  if (!dentroDelPlazo(filas[0].fecha)) {
+    throw new AppError(
+      `La venta "${id_transaccion}" ya superó el plazo de 2 horas para poder modificarse.`,
+      409,
+      { fecha_emision: filas[0].fecha }
+    );
+  }
+
+  const supervisor = await validarSupervisor({ supervisor_id, pin });
+
+  const actualizada = await repo.actualizarDatosVenta(id_transaccion, {
+    ...datos,
+    modificado_por: modificado_por || null,
+    autorizado_por: supervisor.supervisor_id,
+  });
+  emitirActualizacion();
+
+  return actualizada;
+}
+
+module.exports = {
+  listarMisFacturas,
+  anularVenta,
+  modificarVenta,
+  reporteTurno,
+  historialCliente,
+  totalesGenerales,
+  listarCajeros,
+};
