@@ -31,10 +31,18 @@ async function consultarEstadoCobro(id) {
     throw new AppError("El id del cobro no es válido.", 400, { id });
   }
 
-  const cobro = await repo.obtenerCobroQrPorId(id);
+  let cobro = await repo.obtenerCobroQrPorId(id);
   if (!cobro) {
     throw new AppError("No existe un cobro con ese id.", 404, { id });
   }
+
+  // TDSI-534: si ya paso el expira_en y nadie lo habia marcado todavia, se
+  // marca recien aqui -- asi el frontend que consulta periodicamente es
+  // quien dispara la transicion a Expirado.
+  if (cobro.estado === "Pendiente" && new Date(cobro.expira_en) <= new Date()) {
+    cobro = (await repo.expirarCobroQrSiVencido(id)) || cobro;
+  }
+
   return cobro;
 }
 
@@ -54,12 +62,22 @@ async function confirmarPago(id, { confirmado_por }) {
   const actualizado = await repo.confirmarCobroQr(id, String(confirmado_por).trim());
   if (actualizado) return actualizado;
 
-  const actual = await repo.obtenerCobroQrPorId(id);
+  // No se confirmo: averiguar por que para dar un mensaje claro. Si ya
+  // vencio su expira_en, se marca Expirado recien aqui (TDSI-534) en vez de
+  // dejarlo "Pendiente" a secas, que seria enganoso.
+  let actual = await repo.obtenerCobroQrPorId(id);
   if (!actual) {
     throw new AppError("No existe un cobro con ese id.", 404, { id });
   }
+  if (actual.estado === "Pendiente" && new Date(actual.expira_en) <= new Date()) {
+    actual = (await repo.expirarCobroQrSiVencido(id)) || actual;
+  }
+
   if (actual.estado === "Pagado") {
     throw new AppError("Este cobro ya fue confirmado como pagado; no se puede confirmar dos veces.", 409, { id });
+  }
+  if (actual.estado === "Expirado") {
+    throw new AppError("Este cobro QR expiró (pasaron más de 5 minutos); genere uno nuevo para cobrar.", 409, { id });
   }
   throw new AppError(`Este cobro ya no se puede confirmar (estado actual: ${actual.estado}).`, 409, { id });
 }

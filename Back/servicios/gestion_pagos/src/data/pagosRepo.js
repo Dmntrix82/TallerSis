@@ -54,18 +54,36 @@ async function obtenerCobroQrPorId(id) {
 }
 
 /**
- * TDSI-533: el cajero confirma a mano que vio llegar el deposito. El WHERE
- * estado = 'Pendiente' hace que esto sea atomico por construccion: si el
- * cobro ya estaba Pagado (o Expirado), no actualiza ninguna fila y devuelve
- * null, sin necesidad de bloquear nada aparte.
+ * TDSI-533/534: el cajero confirma a mano que vio llegar el deposito. El
+ * WHERE hace que esto sea atomico por construccion: si el cobro ya estaba
+ * Pagado, Expirado, o si ya paso su expira_en (aunque nadie lo haya marcado
+ * Expirado todavia), no actualiza ninguna fila y devuelve null -- asi un
+ * cobro vencido nunca se puede confirmar, se haya "limpiado" o no.
  */
 async function confirmarCobroQr(id, confirmado_por) {
   const { rows } = await query(
     `UPDATE pagos.cobros_qr
      SET estado = 'Pagado', confirmado_en = now(), confirmado_por = $2
-     WHERE id = $1 AND estado = 'Pendiente'
+     WHERE id = $1 AND estado = 'Pendiente' AND expira_en >= now()
      RETURNING *`,
     [id, confirmado_por]
+  );
+  if (!rows.length) return null;
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
+/**
+ * TDSI-534: pasa un cobro Pendiente vencido a Expirado. Se llama "de paso"
+ * cada vez que se consulta o se intenta confirmar un cobro -- no hace falta
+ * un cron aparte, con que se revise en esos dos puntos alcanza.
+ */
+async function expirarCobroQrSiVencido(id) {
+  const { rows } = await query(
+    `UPDATE pagos.cobros_qr
+     SET estado = 'Expirado'
+     WHERE id = $1 AND estado = 'Pendiente' AND expira_en < now()
+     RETURNING *`,
+    [id]
   );
   if (!rows.length) return null;
   return { ...rows[0], monto: num(rows[0].monto) };
@@ -485,6 +503,7 @@ module.exports = {
   crearCobroQr,
   obtenerCobroQrPorId,
   confirmarCobroQr,
+  expirarCobroQrSiVencido,
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
   buscarTodasTransaccionesPorIdTransaccion,
