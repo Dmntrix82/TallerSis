@@ -56,4 +56,40 @@ function calcularTotal(subtotal, impuesto, descuento = 0) {
   return aMonto(totalC);
 }
 
-module.exports = { calcularSubtotalItem, calcularSubtotalFactura, calcularImpuesto, calcularTotal, TASA_IVA };
+/**
+ * TDSI-40/538: al emitir la factura, el cajero manda los items y los totales
+ * que esta mostrando en pantalla (los que calculo con TDSI-537) -- esto los
+ * recalcula de cero a partir de los items y rechaza si no coinciden, para
+ * no emitir una factura con un total manipulado o desincronizado.
+ */
+function validarTotalesFactura({ items, descuento = 0, subtotal, impuesto, total }) {
+  const subtotalCalculado = calcularSubtotalFactura(items);
+  const impuestoCalculado = calcularImpuesto(subtotalCalculado);
+  const totalCalculado = calcularTotal(subtotalCalculado, impuestoCalculado, descuento || 0);
+
+  const discrepancias = [];
+  if (aCentavos(subtotal) !== aCentavos(subtotalCalculado)) {
+    discrepancias.push({ campo: "subtotal", recibido: subtotal, calculado: subtotalCalculado });
+  }
+  if (aCentavos(impuesto) !== aCentavos(impuestoCalculado)) {
+    discrepancias.push({ campo: "impuesto", recibido: impuesto, calculado: impuestoCalculado });
+  }
+  if (aCentavos(total) !== aCentavos(totalCalculado)) {
+    discrepancias.push({ campo: "total", recibido: total, calculado: totalCalculado });
+  }
+
+  if (discrepancias.length > 0) {
+    throw new AppError("Los totales no coinciden con lo calculado a partir de los ítems.", 422, { discrepancias });
+  }
+
+  return { subtotal: subtotalCalculado, impuesto: impuestoCalculado, descuento: descuento || 0, total: totalCalculado };
+}
+
+module.exports = {
+  calcularSubtotalItem,
+  calcularSubtotalFactura,
+  calcularImpuesto,
+  calcularTotal,
+  validarTotalesFactura,
+  TASA_IVA,
+};
