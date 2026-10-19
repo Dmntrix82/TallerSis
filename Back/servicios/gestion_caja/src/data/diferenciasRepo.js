@@ -61,4 +61,17 @@ async function obtenerPorId(id) {
   return normalizar(rows[0]);
 }
 
-module.exports = { insertar, listar, resolver, obtenerPorId };
+/** TDSI-492: diferencias registradas en un conjunto de turnos. */
+async function listarPorTurnos(turnoIds) {
+  if (!turnoIds.length) return [];
+  const { rows } = await query(
+    `SELECT id, turno_id, monto, tipo, estado, justificacion, resuelta_por, resuelta_en
+       FROM caja.diferencias_resolucion
+      WHERE turno_id = ANY($1::bigint[])
+      ORDER BY turno_id, id`,
+    [turnoIds]
+  );
+  return rows.map(normalizar);
+}
+
+module.exports = { listarPorTurnos, insertar, listar, resolver, obtenerPorId };

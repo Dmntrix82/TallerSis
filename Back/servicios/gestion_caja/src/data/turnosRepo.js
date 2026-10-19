@@ -124,7 +124,22 @@ async function listarTurnosPorFecha({ fecha, caja_id, cajero_id }) {
   return rows;
 }
 
+/** TDSI-491: turnos de una caja abiertos entre dos instantes (rango de dias de Bolivia), del mas antiguo al mas reciente. */
+async function listarTurnosPorCajaYRango({ caja_id, inicio, fin }) {
+  const { rows } = await query(
+    `SELECT id::int AS id, codigo, caja_id, cajero_id, cajero_nombre,
+            efectivo_inicial, efectivo_contado, efectivo_esperado, diferencia, tipo_diferencia,
+            estado, abierto_en, cerrado_en
+       FROM caja.turnos
+      WHERE caja_id = $1 AND abierto_en >= $2 AND abierto_en <= $3
+      ORDER BY abierto_en, id`,
+    [caja_id, inicio, fin]
+  );
+  return rows;
+}
+
 module.exports = {
+  listarTurnosPorCajaYRango,
   buscarCajaPorCodigo,
   crearTurno,
   buscarTurnoAbiertoPorCaja,
