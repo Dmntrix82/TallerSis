@@ -451,6 +451,15 @@ async function guardarTokenVerificacion(id_transaccion, token) {
   );
 }
 
+/** TDSI-38/528: busca la venta por su token de verificacion (para el QR escaneado). */
+async function buscarPorTokenVerificacion(token) {
+  const { rows } = await query(
+    `SELECT * FROM pagos.transacciones WHERE token_verificacion = $1`,
+    [token]
+  );
+  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
+}
+
 module.exports = {
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
@@ -458,6 +467,7 @@ module.exports = {
   buscarRazonSocialPorDocumento,
   obtenerTokenVerificacion,
   guardarTokenVerificacion,
+  buscarPorTokenVerificacion,
   listarPorCajero,
   anularTransaccion,
   reporteTurno,

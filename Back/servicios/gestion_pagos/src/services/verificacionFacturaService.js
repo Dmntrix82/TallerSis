@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const QRCode = require("qrcode");
+const { AppError } = require("../utils/AppError");
 const repo = require("../data/pagosRepo");
 
 // Para que el QR sirva de verdad al escanearlo desde un celular, la URL debe
@@ -45,9 +46,33 @@ async function generarImagenQrVerificacion(token, { ancho = 160 } = {}) {
   return Buffer.from(dataUrl.split(",")[1], "base64");
 }
 
+/**
+ * TDSI-528: lo que ve el cliente al escanear el QR. Es de solo lectura y
+ * publico (sin login), asi que solo se devuelven los datos necesarios para
+ * identificar la compra -- nada interno del negocio (cajero, caja_id, etc.).
+ */
+async function obtenerFacturaPorToken(token) {
+  const filas = await repo.buscarPorTokenVerificacion(token);
+  if (!filas.length) {
+    throw new AppError("No se encontró ninguna factura con ese código de verificación.", 404);
+  }
+
+  const [primera] = filas;
+  return {
+    id_transaccion: primera.id_transaccion,
+    fecha: primera.fecha,
+    estado: primera.estado,
+    cliente: primera.razon_social || "Consumidor final",
+    nit: primera.nit,
+    total: filas.reduce((suma, f) => suma + Number(f.monto), 0),
+    metodos: filas.map((f) => ({ metodo: f.metodo, monto: Number(f.monto) })),
+  };
+}
+
 module.exports = {
   generarTokenVerificacion,
   urlVerificacion,
   obtenerOCrearToken,
   generarImagenQrVerificacion,
+  obtenerFacturaPorToken,
 };
