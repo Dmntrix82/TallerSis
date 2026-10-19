@@ -1,7 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { registrarPago, registrarPagoMixto, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { calcularVuelto } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+
+// TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
+const BILLETES_RAPIDOS = [10, 20, 50, 100, 200]
 
 const METODOS_PAGO = [
   {
@@ -58,6 +62,7 @@ const ESTADO_INICIAL = {
   metodos: [], // 1 metodo = pago simple, 2 metodos = pago mixto
   montoMixto1: '',
   montoMixto2: '',
+  montoRecibido: '', // TDSI-29: solo aplica a pago simple en Efectivo
   tipoDocumento: 'NINGUNO',
   numeroDocumento: '',
   razonSocial: '',
@@ -96,6 +101,16 @@ function validarFormulario(datos) {
       return 'La suma de los montos del pago mixto debe ser igual al monto total.'
     }
   }
+  // TDSI-29/548: en efectivo (pago simple) hay que saber cuánto dio el cliente,
+  // y no puede ser menor al total (no se puede dar un vuelto negativo).
+  if (datos.metodos.length === 1 && datos.metodos[0] === 'Efectivo') {
+    if (!datos.montoRecibido || Number(datos.montoRecibido) <= 0) {
+      return 'Ingrese cuánto dinero recibió del cliente.'
+    }
+    if (Number(datos.montoRecibido) < Number(datos.monto)) {
+      return 'El monto recibido es insuficiente: es menor al total a cobrar.'
+    }
+  }
   if (datos.tipoDocumento !== 'NINGUNO') {
     if (!datos.numeroDocumento.trim() || !datos.razonSocial.trim()) {
       return `Complete el número de ${datos.tipoDocumento} y la razón social.`
@@ -121,11 +136,63 @@ function Pagos() {
   const [envioFactura, setEnvioFactura] = useState(null) // { ok, mensaje } | null
   const [enviandoFactura, setEnviandoFactura] = useState(false)
 
+  // TDSI-29: vuelto calculado por el backend (endpoint dedicado), en vivo mientras se escribe.
+  const [vuelto, setVuelto] = useState(null)
+  const [errorVuelto, setErrorVuelto] = useState(null)
+  const [calculandoVuelto, setCalculandoVuelto] = useState(false)
+
   const esMixto = datos.metodos.length === 2
   const mostrarPanelMixto = esMixto && paso === 'formulario'
+  const esEfectivoSimple = datos.metodos.length === 1 && datos.metodos[0] === 'Efectivo'
 
   function actualizarCampo(campo, valor) {
     setDatos((prev) => ({ ...prev, [campo]: valor }))
+  }
+
+  // TDSI-29/571: apenas hay total + monto recibido validos, se consulta el
+  // vuelto al backend (nunca se calcula "de mentira" solo en el navegador).
+  useEffect(() => {
+    if (!esEfectivoSimple || !datos.monto || !datos.montoRecibido) {
+      setVuelto(null)
+      setErrorVuelto(null)
+      return
+    }
+    const total = Number(datos.monto)
+    const montoRecibido = Number(datos.montoRecibido)
+    if (!(total > 0) || !(montoRecibido > 0)) {
+      setVuelto(null)
+      setErrorVuelto(null)
+      return
+    }
+
+    let cancelado = false
+    setCalculandoVuelto(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const r = await calcularVuelto(total, montoRecibido)
+        if (!cancelado) {
+          setVuelto(r.data.vuelto)
+          setErrorVuelto(null)
+        }
+      } catch (err) {
+        if (!cancelado) {
+          setVuelto(null)
+          setErrorVuelto(err.message)
+        }
+      } finally {
+        if (!cancelado) setCalculandoVuelto(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelado = true
+      clearTimeout(timeout)
+    }
+  }, [esEfectivoSimple, datos.monto, datos.montoRecibido])
+
+  // TDSI-29/572: cada click suma ese billete al monto recibido (se puede combinar varios).
+  function agregarBillete(valor) {
+    setDatos((prev) => ({ ...prev, montoRecibido: String((Number(prev.montoRecibido) || 0) + valor) }))
   }
 
   function elegirTipoDocumento(tipoDocumento) {
@@ -163,7 +230,7 @@ function Pagos() {
 
     if (actuales.includes(id)) {
       setErrorValidacion(null)
-      setDatos((prev) => ({ ...prev, metodos: prev.metodos.filter((m) => m !== id), montoMixto1: '', montoMixto2: '' }))
+      setDatos((prev) => ({ ...prev, metodos: prev.metodos.filter((m) => m !== id), montoMixto1: '', montoMixto2: '', montoRecibido: '' }))
       return
     }
 
@@ -180,7 +247,7 @@ function Pagos() {
     }
 
     setErrorValidacion(null)
-    setDatos((prev) => ({ ...prev, metodos: [...prev.metodos, id], montoMixto1: '', montoMixto2: '' }))
+    setDatos((prev) => ({ ...prev, metodos: [...prev.metodos, id], montoMixto1: '', montoMixto2: '', montoRecibido: '' }))
   }
 
   function continuar(event) {
@@ -249,6 +316,9 @@ function Pagos() {
           caja_id: cajero?.caja,
           cajero: cajero?.nombre,
         }
+        if (esEfectivoSimple && datos.montoRecibido) {
+          payload.monto_recibido = Number(datos.montoRecibido)
+        }
         const respuesta = await registrarPago(payload)
         idTransaccionRegistrada = respuesta.pago.id_transaccion
         setPagoRegistrado({ ...respuesta.pago, detalle: null })
@@ -313,6 +383,39 @@ function Pagos() {
                 </div>
                 {esMixto && <p className="ayuda-mixto">Pago mixto: complete los montos en el panel de la derecha.</p>}
               </fieldset>
+
+              {esEfectivoSimple && (
+                <div className="cobro-efectivo">
+                  <label className="campo">
+                    Monto recibido (Bs.)
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={datos.montoRecibido}
+                      onChange={(e) => actualizarCampo('montoRecibido', e.target.value)}
+                    />
+                  </label>
+
+                  <div className="billetes-rapidos">
+                    {BILLETES_RAPIDOS.map((valor) => (
+                      <button key={valor} type="button" className="billete-rapido" onClick={() => agregarBillete(valor)}>
+                        +{valor}
+                      </button>
+                    ))}
+                    {datos.montoRecibido && (
+                      <button type="button" className="billete-rapido billete-rapido--limpiar" onClick={() => actualizarCampo('montoRecibido', '')}>
+                        Limpiar
+                      </button>
+                    )}
+                  </div>
+
+                  {calculandoVuelto && <p className="ayuda-mixto">Calculando vuelto...</p>}
+                  {errorVuelto && <p className="error">{errorVuelto}</p>}
+                  {vuelto !== null && !calculandoVuelto && (
+                    <p className="vuelto-destacado">Vuelto a entregar: Bs. {vuelto.toFixed(2)}</p>
+                  )}
+                </div>
+              )}
 
               <fieldset style={{ border: 'none', padding: 0 }}>
                 <legend>Datos de facturación</legend>
@@ -411,6 +514,12 @@ function Pagos() {
                 ) : (
                   <li>Método de pago: {datos.metodos[0]}</li>
                 )}
+                {esEfectivoSimple && (
+                  <>
+                    <li>Monto recibido: Bs. {datos.montoRecibido}</li>
+                    <li>Vuelto a entregar: Bs. {vuelto !== null ? vuelto.toFixed(2) : '-'}</li>
+                  </>
+                )}
                 <li>
                   Datos de facturación:{' '}
                   {datos.tipoDocumento === 'NINGUNO'
@@ -450,6 +559,12 @@ function Pagos() {
                   <li>Método de pago: {pagoRegistrado.metodo}</li>
                 )}
                 <li>Monto: Bs. {pagoRegistrado.monto}</li>
+                {pagoRegistrado.monto_recibido != null && (
+                  <>
+                    <li>Monto recibido: Bs. {pagoRegistrado.monto_recibido}</li>
+                    <li>Vuelto entregado: Bs. {pagoRegistrado.vuelto}</li>
+                  </>
+                )}
                 <li>Estado: {pagoRegistrado.estado}</li>
                 <li>Fecha: {new Date(pagoRegistrado.fecha).toLocaleString()}</li>
               </ul>
