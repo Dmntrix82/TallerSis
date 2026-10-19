@@ -247,3 +247,24 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(255),
     ADD COLUMN IF NOT EXISTS anulado_en  TIMESTAMPTZ;
+
+-- ==========================================================================
+-- TDSI-39/155: cobro con QR. No hay integracion con ningun banco, asi que
+-- esto NO genera un QR de pago real -- es solo el registro interno del
+-- cobro pendiente (monto + referencia + vencimiento a los 5 min) que se
+-- muestra en pantalla junto a la imagen fija del QR de la cuenta. El cajero
+-- confirma el pago a mano despues de verlo llegar a su banco (ver TDSI-533).
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
+    id             SERIAL PRIMARY KEY,
+    referencia     VARCHAR(20) NOT NULL UNIQUE,
+    monto          NUMERIC(10, 2) NOT NULL,
+    estado         VARCHAR(20) NOT NULL DEFAULT 'Pendiente'
+                   CHECK (estado IN ('Pendiente', 'Pagado', 'Expirado')),
+    creado_en      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expira_en      TIMESTAMPTZ NOT NULL,
+    caja_id        VARCHAR(50),
+    cajero         VARCHAR(255),
+    confirmado_en  TIMESTAMPTZ,
+    confirmado_por VARCHAR(255)
+);

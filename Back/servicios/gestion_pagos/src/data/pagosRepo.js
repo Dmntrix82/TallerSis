@@ -24,6 +24,28 @@ async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tip
   return { ...rows[0], monto: num(rows[0].monto) };
 }
 
+// ---------- Cobro con QR (TDSI-39/155) ----------
+
+/**
+ * Crea el registro de cobro pendiente: la referencia interna se genera con
+ * el mismo correlativo de la tabla (igual que VTA-NNNNNN en transacciones),
+ * asi queda unica por construccion.
+ */
+async function crearCobroQr({ monto, minutosVencimiento, caja_id, cajero }) {
+  const { rows } = await query(
+    `WITH nuevo AS (
+       SELECT nextval(pg_get_serial_sequence('pagos.cobros_qr', 'id')) AS id
+     )
+     INSERT INTO pagos.cobros_qr
+       (id, referencia, monto, expira_en, caja_id, cajero)
+     SELECT id, 'COB-' || lpad(id::text, 6, '0'), $1, now() + ($2 || ' minutes')::interval, $3, $4
+     FROM nuevo
+     RETURNING *`,
+    [monto, minutosVencimiento, caja_id || null, cajero || null]
+  );
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
 /** Todas las filas de una misma venta (una sola si es pago Simple, varias si es Mixto). */
 async function buscarTransaccionesPorIdTransaccion(id_transaccion) {
   const { rows } = await query(
@@ -435,6 +457,7 @@ async function obtenerPagoMixtoPorTransaccion(id_transaccion) {
 }
 
 module.exports = {
+  crearCobroQr,
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
   buscarTodasTransaccionesPorIdTransaccion,
