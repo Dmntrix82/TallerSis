@@ -247,3 +247,13 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(255),
     ADD COLUMN IF NOT EXISTS anulado_en  TIMESTAMPTZ;
+
+-- ==========================================================================
+-- TDSI-37/151: modificacion de una venta ya registrada (corregir datos del
+-- cliente, etc.) sin anularla ni cambiar su numero -- autorizada por un
+-- supervisor de caja, solo dentro de las 2 horas desde la emision.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS fecha_modificacion TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS modificado_por      VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS autorizado_por      VARCHAR(60);
