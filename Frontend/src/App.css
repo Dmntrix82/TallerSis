@@ -212,6 +212,73 @@
   margin-bottom: 1rem;
 }
 
+/* TDSI-40: detalle de factura por items (cantidad x precio) */
+.ayuda-detalle-factura {
+  margin-top: -0.75rem;
+  color: #52606d;
+  font-size: 0.9rem;
+}
+
+.detalle-factura-toggle {
+  margin-bottom: 1rem;
+}
+
+.detalle-factura {
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.detalle-factura-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.detalle-factura-tabla th,
+.detalle-factura-tabla td {
+  padding: 0.25rem;
+  text-align: left;
+}
+
+.detalle-factura-tabla input {
+  width: 100%;
+  padding: 0.3rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+}
+
+.detalle-factura-quitar {
+  background: none;
+  border: none;
+  color: #b91c1c;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.detalle-factura-resumen {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+
+.detalle-factura-resumen li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.15rem 0;
+}
+
+.detalle-factura-total {
+  font-weight: 700;
+  border-top: 1px solid #cbd2d9;
+  margin-top: 0.25rem;
+  padding-top: 0.4rem;
+}
+
 .metodo-opcion {
   display: flex;
   align-items: center;
