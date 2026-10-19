@@ -1340,7 +1340,6 @@
   margin: 0;
   color: #616e7c;
 }
-<<<<<<< HEAD
 /* Estado de cajas (TDSI-126 / TDSI-495 a 498) */
 .cajas-grid {
   display: grid;
@@ -1426,7 +1425,6 @@
 }
 
 .cajas-mensaje {
-=======
 /* Solicitudes de apertura de caja (TDSI-128 / TDSI-499 a 502) */
 .btn-peligro {
   background-color: #b91c1c;
@@ -1437,15 +1435,12 @@
 }
 
 .solicitudes-barra {
->>>>>>> 05fc82b (TDSI-25 frontend p1)
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-<<<<<<< HEAD
   padding: 0.75rem 1rem;
   font-size: 0.95rem;
-=======
   margin-bottom: 1rem;
 }
 
@@ -1495,5 +1490,4 @@
 .badge-solicitud--rechazada {
   background-color: #fee2e2;
   color: #b91c1c;
->>>>>>> 05fc82b (TDSI-25 frontend p1)
 }
