@@ -1,6 +1,6 @@
 const PDFDocument = require("pdfkit");
-const QRCode = require("qrcode");
 const { montoEnLetras } = require("../utils/numeroALetras");
+const { generarImagenQrVerificacion } = require("./verificacionFacturaService");
 
 // TDSI-303: comprobante en formato de tirilla (ancho angosto, como una impresora
 // termica de 80mm) para poder imprimirlo al momento o adjuntarlo en el correo.
@@ -108,7 +108,7 @@ function dibujarContenido(doc, { factura, dia, hora, qrBuffer }) {
   doc.y = yQr + ANCHO_QR + 6; // doc.image no mueve el cursor solo: hay que avanzarlo a mano.
 
   doc.fontSize(6.5).fillColor("#444444");
-  centrado(doc, `Código de verificación: ${factura.comprobante.codigoVerificacion.slice(0, 16)}`);
+  centrado(doc, "Escanee el código QR para verificar esta factura");
   doc.moveDown(0.4);
   centrado(doc, "Documento generado por el sistema TallerSis.");
   centrado(doc, "Uso académico - Taller de Sistemas de Información.");
@@ -121,11 +121,9 @@ function dibujarContenido(doc, { factura, dia, hora, qrBuffer }) {
 /** Genera el PDF de la factura/comprobante como Buffer, listo para adjuntar en un correo o servir para imprimir. */
 async function generarFacturaPdfBuffer(factura) {
   const { dia, hora } = formatearFechaHora(factura.comprobante.fecha);
-  const qrDataUrl = await QRCode.toDataURL(
-    `${factura.comprobante.id_transaccion}|${factura.total.toFixed(2)}|${factura.comprobante.codigoVerificacion}`,
-    { margin: 0, width: ANCHO_QR * 2 }
-  );
-  const qrBuffer = Buffer.from(qrDataUrl.split(",")[1], "base64");
+  // TDSI-38/529: el QR ahora lleva a la URL publica de verificacion (TDSI-527/528),
+  // no a un texto suelto -- al escanearlo, el cliente ve su factura de verdad.
+  const qrBuffer = await generarImagenQrVerificacion(factura.comprobante.tokenVerificacion, { ancho: ANCHO_QR * 2 });
   const contexto = { factura, dia, hora, qrBuffer };
 
   // La altura de la tirilla depende de cuantos metodos de pago tenga la venta, asi que
