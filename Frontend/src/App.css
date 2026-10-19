@@ -1734,3 +1734,66 @@
 .diferencia--faltante {
   color: #b91c1c;
 }
+
+/* Total recaudado por caja (TDSI-138 / TDSI-511 a 514) */
+.recaudado-totales {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.recaudado-totales div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.recaudado-totales dt {
+  color: #616e7c;
+  font-size: 0.9rem;
+}
+
+.recaudado-totales dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.recaudado-neto {
+  padding-top: 0.35rem;
+  border-top: 1px solid #e4e7eb;
+}
+
+.recaudado-neto dt,
+.recaudado-neto dd {
+  color: var(--color-brand-dark);
+  font-weight: 700;
+}
+
+.recaudado-metodos {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  background-color: #f5f6fa;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.recaudado-metodos li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+
+.recaudado-metodo-operaciones {
+  color: #616e7c;
+}
+
+.recaudado-metodo-neto {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 80px;
+}

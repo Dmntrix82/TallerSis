@@ -68,3 +68,14 @@ export function compararEfectivo(turnoId, efectivoContado) {
     body: JSON.stringify({ efectivoContado }),
   })
 }
+
+// TDSI-137/482: total recaudado de cada caja activa en un rango de fechas (por defecto, hoy).
+// Cada caja trae { caja_id, caja_nombre, totalIngresos, totalEgresos, totalRecaudado, operaciones,
+// porMetodo: { Efectivo, Tarjeta, QR } } y cada metodo { ingresos, egresos, neto, operaciones }.
+export function obtenerRecaudadoPorCaja({ desde, hasta } = {}) {
+  const params = new URLSearchParams()
+  if (desde) params.set('desde', desde)
+  if (hasta) params.set('hasta', hasta)
+  const qs = params.toString()
+  return apiFetch(`/api/caja/recaudado${qs ? `?${qs}` : ''}`)
+}
