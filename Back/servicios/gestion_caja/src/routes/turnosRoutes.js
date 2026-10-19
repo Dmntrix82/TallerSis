@@ -60,6 +60,7 @@ router.post("/turnos/:turnoId/cerrar", wrap(async (req, res) => {
   const data = await cierre.cerrarTurno(req.params.turnoId, {
     supervisor_id: req.body.supervisor_id,
     pin: req.body.pin,
+    efectivo_contado: req.body.efectivo_contado,
   });
   res.json({ ok: true, mensaje: "Turno cerrado", data });
 }));

@@ -10,6 +10,7 @@ const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
 const autorizacionesRoutes = require("./routes/autorizacionesRoutes");
 const recaudadoRoutes = require("./routes/recaudadoRoutes");
 const comparacionRoutes = require("./routes/comparacionRoutes");
+const diferenciasRoutes = require("./routes/diferenciasRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4004;
@@ -39,6 +40,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/caja/autorizaciones", autorizacionesRoutes);
 app.use("/api/caja/recaudado", recaudadoRoutes);
 app.use("/api/caja/comparacion", comparacionRoutes);
+app.use("/api/caja/diferencias", diferenciasRoutes);
 app.use("/api/caja", turnosRoutes);
 app.use("/api/caja", cajasRoutes);
 app.use(errorHandler);

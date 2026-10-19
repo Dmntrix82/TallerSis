@@ -210,3 +210,24 @@ CREATE INDEX IF NOT EXISTS idx_autorizaciones_pendientes
 
 CREATE INDEX IF NOT EXISTS idx_autorizaciones_caja
   ON caja.autorizaciones (caja_id, estado);
+
+-- ==========================================================================
+-- TDSI-32 / TDSI-141: estado de resolucion de las diferencias de caja
+-- --------------------------------------------------------------------------
+-- Idempotente: agrega la columna y su CHECK solo si todavia no existen.
+-- ==========================================================================
+ALTER TABLE caja.diferencias_resolucion
+    ADD COLUMN IF NOT EXISTS estado VARCHAR(10) NOT NULL DEFAULT 'PENDIENTE';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'diferencias_resolucion_estado_check'
+           AND conrelid = 'caja.diferencias_resolucion'::regclass
+    ) THEN
+        ALTER TABLE caja.diferencias_resolucion
+            ADD CONSTRAINT diferencias_resolucion_estado_check
+            CHECK (estado IN ('PENDIENTE','RESUELTA'));
+    END IF;
+END $$;
