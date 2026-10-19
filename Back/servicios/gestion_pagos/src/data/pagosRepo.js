@@ -46,6 +46,13 @@ async function crearCobroQr({ monto, minutosVencimiento, caja_id, cajero }) {
   return { ...rows[0], monto: num(rows[0].monto) };
 }
 
+/** TDSI-532: consultar el estado actual de un cobro pendiente (Pendiente/Pagado/Expirado). */
+async function obtenerCobroQrPorId(id) {
+  const { rows } = await query(`SELECT * FROM pagos.cobros_qr WHERE id = $1`, [id]);
+  if (!rows.length) return null;
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
 /** Todas las filas de una misma venta (una sola si es pago Simple, varias si es Mixto). */
 async function buscarTransaccionesPorIdTransaccion(id_transaccion) {
   const { rows } = await query(
@@ -458,6 +465,7 @@ async function obtenerPagoMixtoPorTransaccion(id_transaccion) {
 
 module.exports = {
   crearCobroQr,
+  obtenerCobroQrPorId,
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
   buscarTodasTransaccionesPorIdTransaccion,

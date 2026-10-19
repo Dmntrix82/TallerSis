@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { crearCobroPendiente } = require("../services/cobroQrService");
+const { crearCobroPendiente, consultarEstadoCobro } = require("../services/cobroQrService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -9,6 +9,12 @@ router.post("/qr", wrap(async (req, res) => {
   const { monto, caja_id, cajero } = req.body;
   const cobro = await crearCobroPendiente({ monto: Number(monto), caja_id, cajero });
   res.status(201).json(cobro);
+}));
+
+// TDSI-39/532: el frontend consulta periodicamente si ya se confirmo el pago.
+router.get("/qr/:id/estado", wrap(async (req, res) => {
+  const cobro = await consultarEstadoCobro(req.params.id);
+  res.json(cobro);
 }));
 
 module.exports = router;

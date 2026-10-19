@@ -25,4 +25,17 @@ async function crearCobroPendiente({ monto, caja_id, cajero }) {
   return cobro;
 }
 
-module.exports = { crearCobroPendiente, MINUTOS_VENCIMIENTO_QR };
+/** TDSI-39/532: lo que consulta el frontend mientras espera el pago ("Esperando pago"/"Pagado"/"Expirado"). */
+async function consultarEstadoCobro(id) {
+  if (!/^\d+$/.test(String(id))) {
+    throw new AppError("El id del cobro no es válido.", 400, { id });
+  }
+
+  const cobro = await repo.obtenerCobroQrPorId(id);
+  if (!cobro) {
+    throw new AppError("No existe un cobro con ese id.", 404, { id });
+  }
+  return cobro;
+}
+
+module.exports = { crearCobroPendiente, consultarEstadoCobro, MINUTOS_VENCIMIENTO_QR };
