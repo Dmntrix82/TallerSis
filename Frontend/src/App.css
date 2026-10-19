@@ -201,8 +201,57 @@
 
 .pago-form,
 .pago-resumen,
-.pago-exito {
+.pago-exito,
+.cobro-qr-espera {
   max-width: 420px;
+}
+
+/* TDSI-39: pantalla de espera de pago con QR */
+.cobro-qr-espera {
+  text-align: center;
+}
+
+.cobro-qr-imagen {
+  width: 220px;
+  height: 220px;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  padding: 0.5rem;
+  background-color: #fff;
+  margin: 0.5rem 0;
+}
+
+.cobro-qr-monto {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0;
+}
+
+.cobro-qr-referencia {
+  color: #52606d;
+  margin: 0 0 1rem;
+}
+
+.cobro-qr-estado {
+  font-weight: 600;
+}
+
+.cobro-qr-estado--pendiente {
+  color: #9a6700;
+}
+
+.cobro-qr-estado--expirado {
+  color: #b91c1c;
+}
+
+.cobro-qr-cuenta-regresiva {
+  color: #52606d;
+  margin-top: -0.5rem;
+}
+
+.cobro-qr-espera .pago-acciones {
+  justify-content: center;
+  margin-top: 1rem;
 }
 
 .metodo-opciones {

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { registrarPago, registrarPagoMixto, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
@@ -79,6 +80,13 @@ const MENSAJE_FORMATO_DOCUMENTO = {
   CI: 'El CI debe tener entre 7 y 8 dígitos.',
 }
 
+function formatearTiempoRestante(segundos) {
+  if (segundos == null) return null
+  const minutos = Math.floor(segundos / 60)
+  const resto = segundos % 60
+  return `${minutos}:${String(resto).padStart(2, '0')}`
+}
+
 function validarFormulario(datos) {
   if (!datos.monto || Number(datos.monto) <= 0) {
     return 'Ingrese un monto válido.'
@@ -120,9 +128,44 @@ function Pagos() {
   const [pagoRegistrado, setPagoRegistrado] = useState(null)
   const [envioFactura, setEnvioFactura] = useState(null) // { ok, mensaje } | null
   const [enviandoFactura, setEnviandoFactura] = useState(false)
+  const [cobroQr, setCobroQr] = useState(null) // { id, referencia, monto, estado, expira_en } | null
+  const [segundosRestantes, setSegundosRestantes] = useState(null)
 
   const esMixto = datos.metodos.length === 2
+  const esQrSimple = datos.metodos.length === 1 && datos.metodos[0] === 'QR'
   const mostrarPanelMixto = esMixto && paso === 'formulario'
+
+  // TDSI-39/532: mientras se espera el pago, se consulta el estado cada 4s
+  // (el backend es quien decide si ya expiro o si se confirmo).
+  useEffect(() => {
+    if (paso !== 'esperando-qr' || !cobroQr || cobroQr.estado !== 'Pendiente') {
+      return
+    }
+    const intervalo = setInterval(async () => {
+      try {
+        const actualizado = await consultarEstadoCobroQr(cobroQr.id)
+        setCobroQr(actualizado)
+      } catch {
+        // Si falla la consulta (p.ej. problema de red) se reintenta en el siguiente ciclo.
+      }
+    }, 4000)
+    return () => clearInterval(intervalo)
+  }, [paso, cobroQr?.id, cobroQr?.estado])
+
+  // TDSI-39/533: cuenta regresiva en pantalla hasta que expira el QR (solo visual;
+  // la autoridad sobre si expiro o no la tiene el backend, via el polling de arriba).
+  useEffect(() => {
+    if (!cobroQr || cobroQr.estado !== 'Pendiente') {
+      setSegundosRestantes(null)
+      return
+    }
+    function recalcular() {
+      setSegundosRestantes(Math.max(0, Math.round((new Date(cobroQr.expira_en).getTime() - Date.now()) / 1000)))
+    }
+    recalcular()
+    const intervalo = setInterval(recalcular, 1000)
+    return () => clearInterval(intervalo)
+  }, [cobroQr?.expira_en, cobroQr?.estado])
 
   function actualizarCampo(campo, valor) {
     setDatos((prev) => ({ ...prev, [campo]: valor }))
@@ -201,10 +244,7 @@ function Pagos() {
     setPaso('formulario')
   }
 
-  async function confirmarCobro() {
-    setEnviando(true)
-    setErrorApi(null)
-
+  function construirDatosFacturacion() {
     const datosFacturacion = {}
     if (datos.tipoDocumento !== 'NINGUNO') {
       datosFacturacion.tipo_documento = datos.tipoDocumento
@@ -217,6 +257,36 @@ function Pagos() {
     if (datos.enviarCorreo) {
       datosFacturacion.email = datos.email.trim()
     }
+    return datosFacturacion
+  }
+
+  // El correo ya se pidió en el formulario: se envía solo, sin volver a preguntar.
+  async function enviarFacturaSiCorresponde(idTransaccion) {
+    if (!datos.enviarCorreo || !datos.email.trim()) {
+      return
+    }
+    setEnviandoFactura(true)
+    try {
+      const r = await enviarFacturaPorCorreo(idTransaccion, datos.email.trim())
+      setEnvioFactura({ ok: true, mensaje: r.mensaje })
+    } catch (err) {
+      setEnvioFactura({ ok: false, mensaje: err.message })
+    } finally {
+      setEnviandoFactura(false)
+    }
+  }
+
+  async function confirmarCobro() {
+    // El QR no se registra como venta todavia: primero hay que generarlo y
+    // esperar a que el cajero confirme que vio llegar el pago (ver abajo).
+    if (esQrSimple) {
+      await generarCobroQr()
+      return
+    }
+
+    setEnviando(true)
+    setErrorApi(null)
+    const datosFacturacion = construirDatosFacturacion()
 
     try {
       let idTransaccionRegistrada
@@ -255,19 +325,7 @@ function Pagos() {
       }
 
       setPaso('listo')
-
-      // El correo ya se pidió en el formulario: se envía solo, sin volver a preguntar.
-      if (datos.enviarCorreo && datos.email.trim()) {
-        setEnviandoFactura(true)
-        try {
-          const r = await enviarFacturaPorCorreo(idTransaccionRegistrada, datos.email.trim())
-          setEnvioFactura({ ok: true, mensaje: r.mensaje })
-        } catch (err) {
-          setEnvioFactura({ ok: false, mensaje: err.message })
-        } finally {
-          setEnviandoFactura(false)
-        }
-      }
+      await enviarFacturaSiCorresponde(idTransaccionRegistrada)
     } catch (err) {
       setErrorApi(err.message)
     } finally {
@@ -275,10 +333,86 @@ function Pagos() {
     }
   }
 
+  // TDSI-39/531: crea el cobro pendiente que se muestra junto al QR fijo de la
+  // cuenta (se usa tanto para generarlo la primera vez como para "Regenerar QR").
+  async function generarCobroQr() {
+    setEnviando(true)
+    setErrorApi(null)
+    try {
+      const cobro = await crearCobroQr({ monto: Number(datos.monto), caja_id: cajero?.caja, cajero: cajero?.nombre })
+      setCobroQr(cobro)
+      setPaso('esperando-qr')
+    } catch (err) {
+      setErrorApi(err.message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  async function registrarVentaQr() {
+    const payload = {
+      ...construirDatosFacturacion(),
+      metodo: 'QR',
+      monto: Number(datos.monto),
+      caja_id: cajero?.caja,
+      cajero: cajero?.nombre,
+    }
+    const respuesta = await registrarPago(payload)
+    setPagoRegistrado({ ...respuesta.pago, detalle: null })
+    setPaso('listo')
+    await enviarFacturaSiCorresponde(respuesta.pago.id_transaccion)
+  }
+
+  // TDSI-39/533: el cajero confirma a mano que vio llegar el deposito. Recien
+  // ahi se registra la venta real (factura, correo, PDF), igual que cualquier
+  // otro metodo de pago.
+  async function confirmarPagoQrRecibido() {
+    setEnviando(true)
+    setErrorApi(null)
+    try {
+      await confirmarCobroQr(cobroQr.id, cajero?.nombre)
+      await registrarVentaQr()
+    } catch (err) {
+      setErrorApi(err.message)
+      // Si el error fue porque el QR ya expiro (o porque el cobro quedo
+      // confirmado pero el registro de la venta falló a mitad de camino),
+      // se refresca el estado para que la pantalla ofrezca la accion correcta.
+      try {
+        setCobroQr(await consultarEstadoCobroQr(cobroQr.id))
+      } catch {
+        // Si tampoco se puede consultar el estado, se deja el error de arriba.
+      }
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  // Cubre el caso en que el cobro ya quedo "Pagado" en el servidor pero el
+  // registro de la venta fallo (p.ej. corte de red): no hay que volver a
+  // confirmar el cobro (ya esta confirmado), solo reintentar la venta.
+  async function reintentarRegistroVentaQr() {
+    setEnviando(true)
+    setErrorApi(null)
+    try {
+      await registrarVentaQr()
+    } catch (err) {
+      setErrorApi(err.message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  function cancelarCobroQr() {
+    setCobroQr(null)
+    setErrorApi(null)
+    setPaso('confirmacion')
+  }
+
   function registrarOtro() {
     setDatos(ESTADO_INICIAL)
     setPagoRegistrado(null)
     setEnvioFactura(null)
+    setCobroQr(null)
     setPaso('formulario')
   }
 
@@ -431,9 +565,82 @@ function Pagos() {
                   Editar
                 </button>
                 <button type="button" className="btn" onClick={confirmarCobro} disabled={enviando}>
-                  {enviando ? 'Confirmando...' : 'Confirmar cobro'}
+                  {enviando
+                    ? (esQrSimple ? 'Generando QR...' : 'Confirmando...')
+                    : (esQrSimple ? 'Generar QR' : 'Confirmar cobro')}
                 </button>
               </div>
+            </div>
+          )}
+
+          {paso === 'esperando-qr' && cobroQr && (
+            <div className="cobro-qr-espera">
+              <h2>Cobro con QR</h2>
+              <img src={urlQrCuenta()} alt="QR de la cuenta del negocio" className="cobro-qr-imagen" />
+              <p className="cobro-qr-monto">Bs. {cobroQr.monto}</p>
+              <p className="cobro-qr-referencia">Referencia: {cobroQr.referencia}</p>
+
+              {cobroQr.estado === 'Pendiente' && (
+                <>
+                  <p className="cobro-qr-estado cobro-qr-estado--pendiente">Esperando pago...</p>
+                  {segundosRestantes != null && (
+                    <p className="cobro-qr-cuenta-regresiva">
+                      {segundosRestantes > 0
+                        ? `El QR expira en ${formatearTiempoRestante(segundosRestantes)}`
+                        : 'Verificando vencimiento...'}
+                    </p>
+                  )}
+                  {errorApi && <p className="error">{errorApi}</p>}
+                  <div className="pago-acciones">
+                    <button type="button" className="btn btn-secundario" onClick={cancelarCobroQr} disabled={enviando}>
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={confirmarPagoQrRecibido}
+                      disabled={enviando || segundosRestantes === 0}
+                    >
+                      {enviando ? 'Confirmando...' : 'Confirmar pago recibido'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {cobroQr.estado === 'Pagado' && (
+                <>
+                  <p className="cobro-qr-estado cobro-qr-estado--pendiente">
+                    Pago confirmado. Terminando de registrar la venta...
+                  </p>
+                  {errorApi && (
+                    <>
+                      <p className="error">{errorApi}</p>
+                      <div className="pago-acciones">
+                        <button type="button" className="btn" onClick={reintentarRegistroVentaQr} disabled={enviando}>
+                          {enviando ? 'Reintentando...' : 'Reintentar registrar venta'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {cobroQr.estado === 'Expirado' && (
+                <>
+                  <p className="cobro-qr-estado cobro-qr-estado--expirado">
+                    El QR expiró (pasaron más de 5 minutos). Genere uno nuevo para cobrar.
+                  </p>
+                  {errorApi && <p className="error">{errorApi}</p>}
+                  <div className="pago-acciones">
+                    <button type="button" className="btn btn-secundario" onClick={cancelarCobroQr} disabled={enviando}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="btn" onClick={generarCobroQr} disabled={enviando}>
+                      {enviando ? 'Generando...' : 'Regenerar QR'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

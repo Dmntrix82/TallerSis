@@ -1,8 +1,15 @@
 const { Router } = require("express");
-const { crearCobroPendiente, consultarEstadoCobro, confirmarPago } = require("../services/cobroQrService");
+const { crearCobroPendiente, consultarEstadoCobro, confirmarPago, generarImagenQrCuenta } = require("../services/cobroQrService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+
+// TDSI-39/155: imagen fija del QR de la cuenta del negocio (misma para todos los cobros).
+router.get("/qr-cuenta.png", wrap(async (req, res) => {
+  const buffer = await generarImagenQrCuenta();
+  res.set("Content-Type", "image/png");
+  res.send(buffer);
+}));
 
 // TDSI-39/531: el cajero elige QR como metodo de pago -> se crea el cobro pendiente.
 router.post("/qr", wrap(async (req, res) => {
