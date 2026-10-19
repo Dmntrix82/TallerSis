@@ -247,3 +247,11 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(255),
     ADD COLUMN IF NOT EXISTS anulado_en  TIMESTAMPTZ;
+
+-- ==========================================================================
+-- TDSI-38/153: token unico de verificacion por factura, para el QR que lleva
+-- al cliente a consultarla (distinto del codigo cosmetico que ya se imprime
+-- en el PDF, ese es un hash calculado al vuelo y no se guarda en la base).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS token_verificacion VARCHAR(64) UNIQUE;
