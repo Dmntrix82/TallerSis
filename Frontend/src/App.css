@@ -1135,6 +1135,104 @@
   padding: 1rem;
 }
 
+/* TDSI-38/551-554: pagina publica de verificacion de factura (QR), pensada
+   primero para celulares -- de ahi el ancho maximo chico y los paddings cortos. */
+.verificar-factura-pagina {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  background-color: #f4f5f7;
+}
+
+.verificar-factura-tarjeta {
+  width: 100%;
+  max-width: 420px;
+  height: fit-content;
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(11, 11, 11, 0.1);
+  padding: 1.75rem 1.25rem;
+}
+
+.verificar-factura-marca {
+  font-weight: 700;
+  color: var(--color-brand-dark);
+  margin-bottom: 1rem;
+}
+
+.verificar-factura-tarjeta h1 {
+  font-size: 1.2rem;
+  margin: 0 0 0.25rem;
+}
+
+.verificar-factura-numero {
+  color: #616e7c;
+  margin: 0 0 1.25rem;
+}
+
+.verificar-factura-anulada {
+  display: inline-block;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  font-weight: 700;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
+}
+
+.verificar-factura-error h1 {
+  color: #b91c1c;
+}
+
+.verificar-factura-datos {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 1.25rem;
+}
+
+.verificar-factura-datos dt {
+  color: #616e7c;
+  font-size: 0.85rem;
+}
+
+.verificar-factura-datos dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.verificar-factura-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.25rem;
+}
+
+.verificar-factura-tabla th,
+.verificar-factura-tabla td {
+  padding: 0.5rem 0;
+  text-align: left;
+  border-bottom: 1px solid #e4e7eb;
+}
+
+.verificar-factura-tabla th:last-child,
+.verificar-factura-tabla td:last-child {
+  text-align: right;
+}
+
+.verificar-factura-tabla tfoot td {
+  font-weight: 700;
+  border-bottom: none;
+  padding-top: 0.75rem;
+}
+
+.verificar-factura-pie {
+  font-size: 0.75rem;
+  color: #9aa5b1;
+  text-align: center;
+  margin: 0;
+}
+
 .modal-caja {
   width: 100%;
   max-width: 420px;

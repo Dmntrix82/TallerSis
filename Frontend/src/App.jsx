@@ -10,6 +10,7 @@ import VentasOnline from './pages/VentasOnline';
 import Facturas from './pages/Facturas.jsx'
 import TableroIngresos from './pages/TableroIngresos.jsx'
 import CierreCaja from './pages/CierreCaja.jsx'
+import VerificarFactura from './pages/VerificarFactura.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import './App.css'
@@ -28,13 +29,16 @@ function App() {
   const { pathname } = useLocation()
   const esPantallaLogin = pathname === '/login'
   const esSeccionAdmin = pathname.startsWith('/admin')
+  // TDSI-38: pagina publica (sin login) a la que lleva el QR de la factura.
+  const esPaginaPublica = pathname.startsWith('/facturas/verificar/')
 
   return (
     <>
-      {!esPantallaLogin && (esSeccionAdmin ? <AdminNavbar /> : <Navbar />)}
-      <main className={esPantallaLogin ? undefined : 'container'}>
+      {!esPantallaLogin && !esPaginaPublica && (esSeccionAdmin ? <AdminNavbar /> : <Navbar />)}
+      <main className={esPantallaLogin || esPaginaPublica ? undefined : 'container'}>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/facturas/verificar/:token" element={<VerificarFactura />} />
 
           {/* Rutas del cajero */}
           <Route path="/" element={<RutaProtegida><Home /></RutaProtegida>} />
