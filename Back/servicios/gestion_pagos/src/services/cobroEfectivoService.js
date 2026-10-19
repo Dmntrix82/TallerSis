@@ -14,10 +14,10 @@ function calcularVuelto(total, montoRecibido) {
  * a cobrar (no se puede dar un vuelto negativo).
  */
 function validarMontoRecibido(total, montoRecibido) {
-  if (typeof total !== "number" || total <= 0) {
+  if (!Number.isFinite(total) || total <= 0) {
     throw new AppError("El total a cobrar debe ser un número mayor a 0.", 400);
   }
-  if (typeof montoRecibido !== "number" || montoRecibido <= 0) {
+  if (!Number.isFinite(montoRecibido) || montoRecibido <= 0) {
     throw new AppError("El monto recibido debe ser un número mayor a 0.", 400);
   }
   if (montoRecibido < total) {
