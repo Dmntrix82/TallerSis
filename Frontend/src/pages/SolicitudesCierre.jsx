@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AutorizacionCierreModal from '../components/AutorizacionCierreModal.jsx'
+import { listarSolicitudesPendientes, aprobarSolicitud, rechazarSolicitud } from '../api/autorizaciones.js'
+import { compararEfectivo } from '../api/caja.js'
 
 const ETIQUETA_ESTADO = {
   PENDIENTE: 'Pendiente',
@@ -18,24 +20,50 @@ const ETIQUETA_DIFERENCIA = {
 // TDSI-505: estado de cada solicitud (Pendiente / Aprobada / Rechazada).
 // TDSI-506: mensajes de confirmacion y de error.
 //
-// La conexion con el backend se hace en otro commit:
-// - cargar la bandeja: listarSolicitudesPendientes() (../api/autorizaciones.js) trae apertura y
-//   cierre juntas -> quedarse con tipo === 'CIERRE' y setSolicitudes(...)
-// - diferencia: por cada solicitud, compararEfectivo(s.turno_id, s.efectivo_contado)
-//   (../api/caja.js) -> guardar r.data en arqueos[s.id]
-// - confirmarDecision: aprobarSolicitud / rechazarSolicitud con las credenciales del formulario.
+// El endpoint de pendientes trae las de apertura y cierre juntas: aqui solo se usan las de
+// tipo CIERRE. La solicitud no trae la diferencia, asi que por cada una se pide el arqueo
+// (efectivo esperado vs contado) al endpoint comparar-efectivo del turno.
 // El backend solo devuelve las PENDIENTES; las que se resuelven aqui se quedan en la
 // lista con su nuevo estado hasta que se actualice la bandeja.
 function SolicitudesCierre() {
   const [solicitudes, setSolicitudes] = useState([])
-  const [arqueos] = useState({}) // id de solicitud -> { efectivoEsperado, diferencia, tipoDiferencia }
-  const [cargando] = useState(false)
-  const [error] = useState(null)
+  const [arqueos, setArqueos] = useState({}) // id de solicitud -> { efectivoEsperado, diferencia, tipoDiferencia }
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState(null)
   const [mensaje, setMensaje] = useState(null)
   const [decision, setDecision] = useState(null) // { solicitud, accion: 'APROBAR' | 'RECHAZAR' }
+  const [recargar, setRecargar] = useState(0)
+
+  useEffect(() => {
+    let vigente = true
+    setCargando(true)
+    setError(null)
+    setArqueos({})
+
+    listarSolicitudesPendientes()
+      .then((r) => {
+        if (!vigente) return
+        const deCierre = r.data.filter((s) => s.tipo === 'CIERRE')
+        setSolicitudes(deCierre)
+
+        // Si el arqueo de una solicitud falla, esa fila solo queda sin diferencia ("—").
+        deCierre.forEach((s) => {
+          compararEfectivo(s.turno_id, s.efectivo_contado)
+            .then((a) => vigente && setArqueos((prev) => ({ ...prev, [s.id]: a.data })))
+            .catch(() => {})
+        })
+      })
+      .catch((err) => vigente && setError(err.mensaje || err.message))
+      .finally(() => vigente && setCargando(false))
+
+    return () => {
+      vigente = false
+    }
+  }, [recargar])
 
   function actualizarBandeja() {
     setMensaje(null)
+    setRecargar((n) => n + 1)
   }
 
   function abrirDecision(solicitud, accion) {
@@ -43,10 +71,16 @@ function SolicitudesCierre() {
     setDecision({ solicitud, accion })
   }
 
-  // Lo llama el formulario con { supervisor_id, pin[, motivo_rechazo] }; si lanza error,
-  // el formulario lo muestra y no se cierra. `respuesta` es la data que devuelve el backend:
-  // al aprobar { autorizacion, turno }, al rechazar la autorizacion actualizada.
-  function aplicarDecision(solicitud, accion, respuesta) {
+  // Lo llama el formulario con { supervisor_id, pin[, motivo_rechazo] }; si lanza error
+  // (PIN incorrecto, solicitud ya resuelta...), el formulario lo muestra y no se cierra.
+  // Al aprobar el backend responde { autorizacion, turno }; al rechazar, la autorizacion.
+  async function confirmarDecision(credenciales) {
+    const { solicitud, accion } = decision
+    const { data: respuesta } =
+      accion === 'APROBAR'
+        ? await aprobarSolicitud(solicitud.id, credenciales)
+        : await rechazarSolicitud(solicitud.id, credenciales)
+
     const actualizada = accion === 'APROBAR' ? respuesta.autorizacion : respuesta
     setMensaje(
       accion === 'APROBAR'
@@ -55,10 +89,6 @@ function SolicitudesCierre() {
     )
     setSolicitudes((prev) => prev.map((s) => (s.id === solicitud.id ? { ...s, ...actualizada } : s)))
     setDecision(null)
-  }
-
-  async function confirmarDecision() {
-    throw new Error('La bandeja todavía no está conectada al servidor.')
   }
 
   const pendientes = solicitudes.filter((s) => s.estado === 'PENDIENTE').length
