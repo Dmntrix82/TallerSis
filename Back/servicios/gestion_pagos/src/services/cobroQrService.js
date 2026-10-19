@@ -38,4 +38,30 @@ async function consultarEstadoCobro(id) {
   return cobro;
 }
 
-module.exports = { crearCobroPendiente, consultarEstadoCobro, MINUTOS_VENCIMIENTO_QR };
+/**
+ * TDSI-39/533: el cajero, tras ver llegar el deposito a su banco, confirma el
+ * pago a mano. No hay deteccion automatica de ningun banco -- este endpoint
+ * ES la confirmacion.
+ */
+async function confirmarPago(id, { confirmado_por }) {
+  if (!/^\d+$/.test(String(id))) {
+    throw new AppError("El id del cobro no es válido.", 400, { id });
+  }
+  if (!confirmado_por || !String(confirmado_por).trim()) {
+    throw new AppError("Debe indicar quién confirma el pago.", 400);
+  }
+
+  const actualizado = await repo.confirmarCobroQr(id, String(confirmado_por).trim());
+  if (actualizado) return actualizado;
+
+  const actual = await repo.obtenerCobroQrPorId(id);
+  if (!actual) {
+    throw new AppError("No existe un cobro con ese id.", 404, { id });
+  }
+  if (actual.estado === "Pagado") {
+    throw new AppError("Este cobro ya fue confirmado como pagado; no se puede confirmar dos veces.", 409, { id });
+  }
+  throw new AppError(`Este cobro ya no se puede confirmar (estado actual: ${actual.estado}).`, 409, { id });
+}
+
+module.exports = { crearCobroPendiente, consultarEstadoCobro, confirmarPago, MINUTOS_VENCIMIENTO_QR };

@@ -53,6 +53,24 @@ async function obtenerCobroQrPorId(id) {
   return { ...rows[0], monto: num(rows[0].monto) };
 }
 
+/**
+ * TDSI-533: el cajero confirma a mano que vio llegar el deposito. El WHERE
+ * estado = 'Pendiente' hace que esto sea atomico por construccion: si el
+ * cobro ya estaba Pagado (o Expirado), no actualiza ninguna fila y devuelve
+ * null, sin necesidad de bloquear nada aparte.
+ */
+async function confirmarCobroQr(id, confirmado_por) {
+  const { rows } = await query(
+    `UPDATE pagos.cobros_qr
+     SET estado = 'Pagado', confirmado_en = now(), confirmado_por = $2
+     WHERE id = $1 AND estado = 'Pendiente'
+     RETURNING *`,
+    [id, confirmado_por]
+  );
+  if (!rows.length) return null;
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
 /** Todas las filas de una misma venta (una sola si es pago Simple, varias si es Mixto). */
 async function buscarTransaccionesPorIdTransaccion(id_transaccion) {
   const { rows } = await query(
@@ -466,6 +484,7 @@ async function obtenerPagoMixtoPorTransaccion(id_transaccion) {
 module.exports = {
   crearCobroQr,
   obtenerCobroQrPorId,
+  confirmarCobroQr,
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
   buscarTodasTransaccionesPorIdTransaccion,
