@@ -84,6 +84,7 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
             MAX(nit) AS nit,
             MAX(razon_social) AS razon_social,
             MAX(tipo_documento) AS tipo_documento,
+            MAX(telefono) AS telefono,
             MAX(caja_id) AS caja_id,
             bool_and(estado = 'Anulado') AS anulado
        FROM pagos.transacciones
@@ -101,6 +102,7 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
     nit: r.nit,
     razon_social: r.razon_social,
     tipo_documento: r.tipo_documento,
+    telefono: r.telefono,
     caja_id: r.caja_id,
     estado: r.anulado ? 'Anulado' : 'Registrado',
   }));
