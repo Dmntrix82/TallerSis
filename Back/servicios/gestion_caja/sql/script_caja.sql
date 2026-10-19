@@ -239,3 +239,20 @@ END $$;
 -- ==========================================================================
 ALTER TABLE caja.autorizaciones
   ADD COLUMN IF NOT EXISTS efectivo_contado NUMERIC(14,2);
+
+-- ==========================================================================
+-- TDSI-35 / TDSI-475: operaciones que requieren aprobacion superior
+-- --------------------------------------------------------------------------
+-- El cajero registra la operacion especial (tipo, descripcion, turno) y queda
+-- PENDIENTE; el supervisor la aprueba o rechaza con su usuario + PIN, la hora
+-- (resuelto_en) y el motivo (obligatorio al rechazar). Idempotente.
+-- ==========================================================================
+ALTER TABLE caja.aprobaciones_especiales
+  ADD COLUMN IF NOT EXISTS caja_id               VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS monto                 NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS solicitado_por_nombre VARCHAR(150),
+  ADD COLUMN IF NOT EXISTS autorizado_por_nombre VARCHAR(150),
+  ADD COLUMN IF NOT EXISTS motivo                VARCHAR(300);
+
+CREATE INDEX IF NOT EXISTS idx_aprobaciones_especiales_estado
+  ON caja.aprobaciones_especiales (estado, tipo, creado_en DESC);
