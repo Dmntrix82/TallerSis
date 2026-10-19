@@ -3,7 +3,7 @@ const { withTransaction } = require("./transaccion");
 
 const COLUMNAS = `e.id, e.lote_id, l.fecha::text AS fecha, e.estado, e.intentos, e.solicitado_por,
                   e.ultimo_intento_en, e.ultimo_status, e.ultimo_error, e.referencia_contabilidad,
-                  e.proximo_intento_en, e.enviado_en, e.creado_en`;
+                  e.proximo_intento_en, e.enviado_en, e.creado_en, e.canal, e.pubsub_message_id`;
 
 function aEnvio(fila) {
   if (!fila) return null;
@@ -51,16 +51,19 @@ async function crearEnvio({ loteId, payload, solicitadoPor }) {
   return { envio: await obtenerPorId(rows[0].id, { conPayload: true }) };
 }
 
-/** TDSI-421: Contabilidad recibio el reporte -> envio ENVIADO y el lote pasa a ENVIADO. */
-async function marcarEnviado(envio, { status, referencia }) {
+/**
+ * TDSI-421: Contabilidad recibio el reporte -> envio ENVIADO y el lote pasa a ENVIADO.
+ * TDSI-656: por Pub/Sub se guarda el messageId (tambien como referencia).
+ */
+async function marcarEnviado(envio, { status, referencia, messageId, canal }) {
   await withTransaction(async (c) => {
     await c.query(
       `UPDATE proveedores.envios_contabilidad
        SET estado = 'ENVIADO', intentos = intentos + 1, ultimo_intento_en = now(),
            ultimo_status = $2, ultimo_error = NULL, referencia_contabilidad = $3,
-           proximo_intento_en = NULL, enviado_en = now()
+           proximo_intento_en = NULL, enviado_en = now(), canal = $4, pubsub_message_id = $5
        WHERE id = $1`,
-      [envio.id, status ?? null, referencia ?? null]
+      [envio.id, status ?? null, referencia ?? messageId ?? null, canal ?? null, messageId ?? null]
     );
     await c.query(
       `UPDATE proveedores.lotes_cierre_diario SET estado = 'ENVIADO'
@@ -77,10 +80,11 @@ async function marcarEnviado(envio, { status, referencia }) {
  * y se programa el proximo intento con espera creciente (base, base*2, base*4...).
  * Si ya se usaron los maxIntentos, o Contabilidad rechazo el reporte (4xx), queda en ERROR.
  */
-async function registrarFallo(envio, resultado, maxIntentos, backoffBaseSeg) {
+async function registrarFallo(envio, resultado, maxIntentos, backoffBaseSeg, canal = null) {
   await query(
     `UPDATE proveedores.envios_contabilidad
      SET intentos = intentos + 1,
+         canal = $7,
          ultimo_intento_en = now(),
          ultimo_status = $2,
          ultimo_error = $3,
@@ -95,6 +99,7 @@ async function registrarFallo(envio, resultado, maxIntentos, backoffBaseSeg) {
       Boolean(resultado.reintentable),
       maxIntentos,
       backoffBaseSeg,
+      canal,
     ]
   );
   return obtenerPorId(envio.id);

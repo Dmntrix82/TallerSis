@@ -156,3 +156,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_envio_por_lote
 
 CREATE INDEX IF NOT EXISTS idx_envios_contabilidad_estado
     ON proveedores.envios_contabilidad (estado, proximo_intento_en);
+-- ==========================================================================
+-- Migracion 003 - TDSI-656: envio del reporte por Google Pub/Sub
+-- canal: por donde salio el envio (HTTP o PUBSUB).
+-- pubsub_message_id: id que devuelve Pub/Sub al publicar el mensaje.
+-- Se puede correr varias veces.
+-- ==========================================================================
+
+ALTER TABLE proveedores.envios_contabilidad
+    ADD COLUMN IF NOT EXISTS canal              VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS pubsub_message_id  VARCHAR(100);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_envios_contabilidad_canal') THEN
+        ALTER TABLE proveedores.envios_contabilidad
+            ADD CONSTRAINT ck_envios_contabilidad_canal CHECK (canal IN ('HTTP', 'PUBSUB'));
+    END IF;
+END $$;

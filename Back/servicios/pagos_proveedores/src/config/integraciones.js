@@ -17,6 +17,35 @@ function listaPeriodos(nombre) {
   return valores;
 }
 
+// TDSI-656: topico de Pub/Sub, "projects/<proyecto>/topics/<topico>" o solo "<topico>".
+function topico(nombre) {
+  const v = String(process.env[nombre] || "").trim();
+  if (v && !/^(projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/topics\/)?[A-Za-z][\w.~+%-]{2,254}$/.test(v))
+    throw new Error(`${nombre} debe tener la forma projects/<proyecto>/topics/<topico>`);
+  return v || null;
+}
+
+// TDSI-656: la llave de la cuenta de servicio pegada en el .env, en una sola linea
+// (JSON entre comillas simples) o en base64. Alternativa a GOOGLE_APPLICATION_CREDENTIALS.
+function credencialesGoogle(nombre) {
+  const v = String(process.env[nombre] || "").trim();
+  if (!v) return null;
+  const texto = v.startsWith("{") ? v : Buffer.from(v, "base64").toString("utf8");
+  let cred;
+  try {
+    cred = JSON.parse(texto);
+  } catch {
+    // Con comillas dobles dotenv convierte los \n de private_key en saltos reales: se devuelven a \n.
+    try { cred = JSON.parse(texto.replace(/\r?\n/g, "\\n")); } catch { cred = null; }
+  }
+  if (!cred) {
+    throw new Error(`${nombre} no es un JSON valido (pegalo en una sola linea entre comillas simples, o en base64)`);
+  }
+  if (!cred.client_email || !cred.private_key || !cred.project_id)
+    throw new Error(`${nombre} debe tener project_id, client_email y private_key`);
+  return { project_id: cred.project_id, client_email: cred.client_email, private_key: cred.private_key };
+}
+
 const bool = (nombre) => String(process.env[nombre] || "false").toLowerCase() === "true";
 
 module.exports = {
@@ -37,4 +66,11 @@ module.exports = {
 
   // TDSI-122: al generar un lote, enviar su reporte a Contabilidad sin que nadie lo pida
   CONTABILIDAD_ENVIO_AUTOMATICO: String(process.env.CONTABILIDAD_ENVIO_AUTOMATICO ?? "true").toLowerCase() === "true",
+
+  // TDSI-656: con PUBSUB_TOPIC el reporte se publica en Google Pub/Sub en vez de ir por HTTP.
+  // Credenciales: GOOGLE_CREDENTIALS_JSON (llave en el .env) o, si no esta,
+  // GOOGLE_APPLICATION_CREDENTIALS (ruta a la llave, la lee la libreria de Google).
+  PUBSUB_TOPIC: topico("PUBSUB_TOPIC"),
+  GOOGLE_CREDENTIALS: credencialesGoogle("GOOGLE_CREDENTIALS_JSON"),
+  PUBSUB_TIMEOUT_MS: entero("PUBSUB_TIMEOUT_MS", 10000, 1000, 60000),
 };

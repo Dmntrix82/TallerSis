@@ -2,6 +2,7 @@
 // antigua reservada para pruebas; borrar el lote borra tambien su envio (ON DELETE CASCADE).
 process.env.MODO_AISLADO = "true";
 process.env.CONTABILIDAD_MAX_INTENTOS = "3";
+process.env.PUBSUB_TOPIC = ""; // estas pruebas usan el canal HTTP simulado aunque el .env tenga Pub/Sub
 
 const test = require("node:test");
 const assert = require("node:assert/strict");

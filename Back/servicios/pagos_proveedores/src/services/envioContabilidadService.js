@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const enviosRepo = require("../data/enviosContabilidadRepo");
 const { enviarReporte } = require("../clients/contabilidadProxy");
+const { publicarReporte } = require("../clients/pubsubPublisher");
 const cfg = require("../config/integraciones");
 const { consultarLote } = require("./loteCierreService");
 const { armarReporte } = require("./reporteContabilidadService");
@@ -26,12 +27,26 @@ function validarId(id) {
  * (si falla y quedan intentos, queda PENDIENTE para que el worker lo reintente).
  * El Idempotency-Key es fijo por envio ("envio-<id>"), asi un reintento nunca
  * duplica el reporte en Contabilidad aunque el intento anterior si haya llegado.
+ * TDSI-656: con PUBSUB_TOPIC configurado el reporte se publica en Pub/Sub y queda ENVIADO
+ * apenas Pub/Sub devuelve el messageId (no se espera a que Contabilidad lo procese).
+ * El atributo idempotency_key cumple el mismo rol que el header HTTP para el consumidor.
  */
 async function intentarEnvio(envio) {
   const payload = envio.payload || (await enviosRepo.obtenerPorId(envio.id, { conPayload: true })).payload;
-  const r = await enviarReporte(payload, `envio-${envio.id}`);
-  if (r.ok) return enviosRepo.marcarEnviado(envio, r);
-  return enviosRepo.registrarFallo(envio, r, cfg.CONTABILIDAD_MAX_INTENTOS, cfg.CONTABILIDAD_BACKOFF_BASE_SEG);
+  const clave = `envio-${envio.id}`;
+  const canal = cfg.PUBSUB_TOPIC ? "PUBSUB" : "HTTP";
+  const r = canal === "PUBSUB"
+    ? await publicarReporte(payload, {
+        tipo: payload.tipo,
+        fecha: payload.fecha,
+        envio_id: envio.id,
+        idempotency_key: clave,
+        origen: "pagos_proveedores",
+        grupo: "A",
+      })
+    : await enviarReporte(payload, clave);
+  if (r.ok) return enviosRepo.marcarEnviado(envio, { ...r, canal });
+  return enviosRepo.registrarFallo(envio, r, cfg.CONTABILIDAD_MAX_INTENTOS, cfg.CONTABILIDAD_BACKOFF_BASE_SEG, canal);
 }
 
 /**
