@@ -17,6 +17,7 @@ import ComparacionMontos from './pages/ComparacionMontos.jsx'
 import DiferenciasCaja from './pages/DiferenciasCaja.jsx'
 import SolicitudesApertura from './pages/SolicitudesApertura.jsx'
 import SolicitudesCierre from './pages/SolicitudesCierre.jsx'
+import OperacionesAprobacion from './pages/OperacionesAprobacion.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
@@ -65,6 +66,7 @@ function App() {
           <Route path="/admin/diferencias" element={<RutaProtegidaAdmin><DiferenciasCaja /></RutaProtegidaAdmin>} />
           <Route path="/admin/solicitudes-apertura" element={<RutaProtegidaAdmin><SolicitudesApertura /></RutaProtegidaAdmin>} />
           <Route path="/admin/solicitudes-cierre" element={<RutaProtegidaAdmin><SolicitudesCierre /></RutaProtegidaAdmin>} />
+          <Route path="/admin/aprobaciones" element={<RutaProtegidaAdmin><OperacionesAprobacion /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>
