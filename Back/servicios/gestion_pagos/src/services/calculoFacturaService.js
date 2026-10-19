@@ -37,4 +37,23 @@ function calcularImpuesto(subtotal) {
   return aMonto(Math.round(aCentavos(subtotal) * TASA_IVA));
 }
 
-module.exports = { calcularSubtotalItem, calcularSubtotalFactura, calcularImpuesto, TASA_IVA };
+/** TDSI-40/536: total = subtotal + impuesto - descuento (descuento es opcional, por defecto 0). */
+function calcularTotal(subtotal, impuesto, descuento = 0) {
+  if (!Number.isFinite(subtotal) || subtotal < 0) {
+    throw new AppError("El subtotal debe ser un número mayor o igual a 0.", 400, { subtotal });
+  }
+  if (!Number.isFinite(impuesto) || impuesto < 0) {
+    throw new AppError("El impuesto debe ser un número mayor o igual a 0.", 400, { impuesto });
+  }
+  if (!Number.isFinite(descuento) || descuento < 0) {
+    throw new AppError("El descuento debe ser un número mayor o igual a 0.", 400, { descuento });
+  }
+
+  const totalC = aCentavos(subtotal) + aCentavos(impuesto) - aCentavos(descuento);
+  if (totalC < 0) {
+    throw new AppError("El descuento no puede ser mayor al subtotal más el impuesto.", 400, { subtotal, impuesto, descuento });
+  }
+  return aMonto(totalC);
+}
+
+module.exports = { calcularSubtotalItem, calcularSubtotalFactura, calcularImpuesto, calcularTotal, TASA_IVA };
