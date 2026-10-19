@@ -257,3 +257,22 @@ ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS fecha_modificacion TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS modificado_por      VARCHAR(255),
     ADD COLUMN IF NOT EXISTS autorizado_por      VARCHAR(60);
+
+-- ==========================================================================
+-- TDSI-37/546: bitacora de que se cambio exactamente en cada modificacion
+-- de una venta (valor anterior y nuevo por cada campo tocado).
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.bitacora_modificaciones (
+    id              BIGSERIAL PRIMARY KEY,
+    id_transaccion  VARCHAR(60)  NOT NULL,
+    campo           VARCHAR(50)  NOT NULL,
+    valor_anterior  TEXT,
+    valor_nuevo     TEXT,
+    modificado_por  VARCHAR(255),
+    autorizado_por  VARCHAR(60),
+    modificado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bitacora_modificaciones_transaccion
+    ON pagos.bitacora_modificaciones (id_transaccion);
+
+ALTER TABLE pagos.bitacora_modificaciones ENABLE ROW LEVEL SECURITY;

@@ -189,10 +189,16 @@ async function modificarVenta(id_transaccion, { supervisor_id, pin, modificado_p
   return actualizada;
 }
 
+/** TDSI-546: la bitacora (valor anterior y nuevo) de las modificaciones de una venta. */
+async function listarBitacoraModificaciones(id_transaccion) {
+  return repo.listarBitacoraModificaciones(id_transaccion);
+}
+
 module.exports = {
   listarMisFacturas,
   anularVenta,
   modificarVenta,
+  listarBitacoraModificaciones,
   reporteTurno,
   historialCliente,
   totalesGenerales,

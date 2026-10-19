@@ -134,26 +134,64 @@ async function anularTransaccion(id_transaccion, { anulado_por }) {
  */
 async function actualizarDatosVenta(id_transaccion, { nit, razon_social, tipo_documento, telefono, modificado_por, autorizado_por }) {
   const columnas = { nit, razon_social, tipo_documento, telefono };
-  const sets = ["fecha_modificacion = now()", "modificado_por = $2", "autorizado_por = $3"];
-  const params = [id_transaccion, modificado_por, autorizado_por];
+  const camposTocados = Object.keys(columnas).filter((c) => columnas[c] !== undefined);
 
-  for (const [columna, valor] of Object.entries(columnas)) {
-    if (valor === undefined) continue;
-    params.push(valor);
-    sets.push(`${columna} = $${params.length}`);
-  }
+  return withTransaction(async (client) => {
+    // TDSI-546: se lee el valor "anterior" antes de pisarlo, para la bitacora.
+    const { rows: antes } = await client.query(
+      `SELECT * FROM pagos.transacciones WHERE id_transaccion = $1 AND estado = 'Registrado' FOR UPDATE`,
+      [id_transaccion]
+    );
+    if (antes.length === 0) {
+      throw new AppError("La venta ya no se puede modificar (no existe o fue anulada justo ahora).", 409);
+    }
 
+    const sets = ["fecha_modificacion = now()", "modificado_por = $2", "autorizado_por = $3"];
+    const params = [id_transaccion, modificado_por, autorizado_por];
+    for (const columna of camposTocados) {
+      params.push(columnas[columna]);
+      sets.push(`${columna} = $${params.length}`);
+    }
+
+    const { rows: despues } = await client.query(
+      `UPDATE pagos.transacciones
+          SET ${sets.join(", ")}
+        WHERE id_transaccion = $1 AND estado = 'Registrado'
+        RETURNING *`,
+      params
+    );
+
+    // Una fila de bitacora por cada campo que de verdad cambio (si era Mixto,
+    // por cada fila de la venta: ej. 2 filas x 1 campo cambiado = 2 registros).
+    for (const filaAntes of antes) {
+      const filaDespues = despues.find((r) => r.id === filaAntes.id);
+      for (const campo of camposTocados) {
+        const valorAnterior = filaAntes[campo];
+        const valorNuevo = filaDespues[campo];
+        if (String(valorAnterior ?? "") === String(valorNuevo ?? "")) continue;
+        await client.query(
+          `INSERT INTO pagos.bitacora_modificaciones
+             (id_transaccion, campo, valor_anterior, valor_nuevo, modificado_por, autorizado_por)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id_transaccion, campo, valorAnterior, valorNuevo, modificado_por, autorizado_por]
+        );
+      }
+    }
+
+    return despues.map((r) => ({ ...r, monto: num(r.monto) }));
+  });
+}
+
+/** TDSI-546: historial de modificaciones de una venta, mas reciente primero. */
+async function listarBitacoraModificaciones(id_transaccion) {
   const { rows } = await query(
-    `UPDATE pagos.transacciones
-        SET ${sets.join(", ")}
-      WHERE id_transaccion = $1 AND estado = 'Registrado'
-      RETURNING *`,
-    params
+    `SELECT id, campo, valor_anterior, valor_nuevo, modificado_por, autorizado_por, modificado_en
+       FROM pagos.bitacora_modificaciones
+      WHERE id_transaccion = $1
+      ORDER BY modificado_en DESC`,
+    [id_transaccion]
   );
-  if (rows.length === 0) {
-    throw new AppError("La venta ya no se puede modificar (no existe o fue anulada justo ahora).", 409);
-  }
-  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
+  return rows;
 }
 
 /**
@@ -472,6 +510,7 @@ module.exports = {
   listarPorCajero,
   anularTransaccion,
   actualizarDatosVenta,
+  listarBitacoraModificaciones,
   reporteTurno,
   listarCajeros,
   rankingCajas,

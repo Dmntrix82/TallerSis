@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const { verificarToken } = require("../middlewares/verificarToken");
 const { obtenerDocumentoDeFacturacion } = require("../services/facturaDocumentoProxy");
-const { modificarVenta } = require("../services/ventasCajeroService");
+const { modificarVenta, listarBitacoraModificaciones } = require("../services/ventasCajeroService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -18,6 +18,12 @@ router.get("/:numero/documentos/:tipo", verificarToken, wrap(async (req, res) =>
 router.put("/:numero/modificar", wrap(async (req, res) => {
   const data = await modificarVenta(req.params.numero, req.body);
   res.json({ ok: true, mensaje: "Venta modificada correctamente.", data });
+}));
+
+// TDSI-546: historial de modificaciones de esa venta (valor anterior y nuevo).
+router.get("/:numero/bitacora", wrap(async (req, res) => {
+  const data = await listarBitacoraModificaciones(req.params.numero);
+  res.json({ ok: true, data });
 }));
 
 module.exports = router;
