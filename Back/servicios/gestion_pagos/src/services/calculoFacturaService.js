@@ -26,4 +26,15 @@ function calcularSubtotalFactura(items) {
   return aMonto(subtotalC);
 }
 
-module.exports = { calcularSubtotalItem, calcularSubtotalFactura };
+// TDSI-535: tasa de IVA vigente en Bolivia para este proyecto.
+const TASA_IVA = 0.13;
+
+/** TDSI-40/535: impuesto (IVA 13%) sobre un subtotal ya calculado. */
+function calcularImpuesto(subtotal) {
+  if (!Number.isFinite(subtotal) || subtotal < 0) {
+    throw new AppError("El subtotal sobre el que se calcula el impuesto debe ser un número mayor o igual a 0.", 400, { subtotal });
+  }
+  return aMonto(Math.round(aCentavos(subtotal) * TASA_IVA));
+}
+
+module.exports = { calcularSubtotalItem, calcularSubtotalFactura, calcularImpuesto, TASA_IVA };
