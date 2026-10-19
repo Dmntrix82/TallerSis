@@ -3,6 +3,7 @@ const repo = require("../data/pagosRepo");
 const { guardarClienteEnFacturacion } = require("./clientesProxy");
 const { emitirActualizacion } = require("../utils/tableroEvents");
 const { TIPOS_DOCUMENTO_VALIDOS, validarFormatoDocumento } = require("../utils/documento");
+const { calcularVuelto, validarMontoRecibido } = require("./cobroEfectivoService");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
@@ -12,7 +13,7 @@ const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
  * tipo_documento es opcional: null/ausente = "sin datos de facturacion" (venta
  * sin factura); si se elige NIT o CI, el numero y la razon social son obligatorios.
  */
-async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_social, telefono, email, caja_id, turno_id, cajero }) {
+async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_social, telefono, email, caja_id, turno_id, cajero, monto_recibido }) {
   if (!metodo || monto === undefined) {
     throw new AppError("Los campos metodo y monto son obligatorios.", 400);
   }
@@ -21,6 +22,15 @@ async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_s
   }
   if (typeof monto !== "number" || monto <= 0) {
     throw new AppError("El monto debe ser un numero mayor a 0.", 400);
+  }
+
+  // TDSI-29/550: si pagan en efectivo y mandan cuanto entregó el cliente, se
+  // vuelve a validar y calcular el vuelto aquí mismo (nunca se confía en un
+  // vuelto que mande el frontend ya calculado) y se guarda junto al cobro.
+  let vuelto = null;
+  if (metodo === "Efectivo" && monto_recibido !== undefined && monto_recibido !== null) {
+    validarMontoRecibido(monto, monto_recibido);
+    vuelto = calcularVuelto(monto, monto_recibido);
   }
 
   const tipoDocumento = tipo_documento || null;
@@ -53,6 +63,8 @@ async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_s
     caja_id,
     turno_id,
     cajero,
+    monto_recibido: metodo === "Efectivo" ? monto_recibido ?? null : null,
+    vuelto,
   });
   const totalTransacciones = await repo.contarTransacciones();
   emitirActualizacion();
