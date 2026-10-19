@@ -1873,3 +1873,27 @@
   background-color: #fffbeb;
   color: #92400e;
 }
+/* Diferencias de caja (TDSI-142 / TDSI-519 a 522) */
+.badge-diferencia--faltante {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge-diferencia--sobrante {
+  background-color: #fffbeb;
+  color: #92400e;
+}
+
+.diferencia-monto--faltante,
+.diferencia-monto--sobrante {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.diferencia-monto--faltante {
+  color: #b91c1c;
+}
+
+.diferencia-monto--sobrante {
+  color: #92400e;
+}

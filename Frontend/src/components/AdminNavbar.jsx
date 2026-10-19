@@ -23,6 +23,7 @@ function AdminNavbar() {
       <NavLink to="/admin/reportes">Reportes</NavLink>
       <NavLink to="/admin/recaudado">Recaudado</NavLink>
       <NavLink to="/admin/comparacion">Comparación</NavLink>
+      <NavLink to="/admin/diferencias">Diferencias</NavLink>
       <NavLink to="/admin/solicitudes-apertura">Solicitudes de apertura</NavLink>
       <NavLink to="/admin/solicitudes-cierre">Solicitudes de cierre</NavLink>
 
