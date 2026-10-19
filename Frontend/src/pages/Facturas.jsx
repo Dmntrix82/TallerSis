@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { listarMisFacturas, anularVenta, urlFacturaPdf } from '../api/pagos.js'
+import { listarMisFacturas, anularVenta, solicitarAnulacionPendiente, urlFacturaPdf } from '../api/pagos.js'
 import { useAuth } from '../context/AuthContext.jsx'
 
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000 // 2 horas
+const MOTIVO_MAX = 300
 
 const ESTADOS = {
   Registrado: { texto: 'Emitida', clase: 'badge-estado--emitida' },
+  AnulacionSolicitada: { texto: 'Anulación solicitada', clase: 'badge-estado--solicitada' },
   Anulado: { texto: 'Anulada', clase: '' },
 }
 
@@ -37,6 +39,14 @@ function Facturas() {
   // Paso 2: pregunta de seguridad final, antes de anular de verdad.
   const [pidiendoConfirmacion, setPidiendoConfirmacion] = useState(false)
   const [anulando, setAnulando] = useState(false)
+
+  // TDSI-28/133: alternativa para cuando NO hay un supervisor presente -- la
+  // venta queda "en espera" y un supervisor la resuelve despues (bandeja de
+  // Anulaciones pendientes del administrador), sin pedir PIN al toque.
+  const [pidiendoMotivoSolicitud, setPidiendoMotivoSolicitud] = useState(false)
+  const [motivoSolicitud, setMotivoSolicitud] = useState('')
+  const [errorSolicitud, setErrorSolicitud] = useState(null)
+  const [enviandoSolicitud, setEnviandoSolicitud] = useState(false)
 
   async function cargarFacturas() {
     if (!cajero) return
@@ -74,6 +84,40 @@ function Facturas() {
     setFacturaParaAnular(null)
     setPidiendoConfirmacion(false)
     setErrorCredenciales(null)
+    setPidiendoMotivoSolicitud(false)
+    setMotivoSolicitud('')
+    setErrorSolicitud(null)
+  }
+
+  function irASolicitarSinSupervisor() {
+    setPidiendoMotivoSolicitud(true)
+    setErrorCredenciales(null)
+  }
+
+  async function enviarSolicitudAnulacion(event) {
+    event.preventDefault()
+    if (!motivoSolicitud.trim()) {
+      setErrorSolicitud('Escriba el motivo de la anulación.')
+      return
+    }
+    setEnviandoSolicitud(true)
+    setErrorSolicitud(null)
+    try {
+      await solicitarAnulacionPendiente(facturaParaAnular.id_transaccion, {
+        cajero: cajero?.nombre,
+        motivo: motivoSolicitud.trim(),
+      })
+      setMensaje({
+        ok: true,
+        texto: `Solicitud enviada para la factura ${facturaParaAnular.id_transaccion}. Queda pendiente de que un supervisor la revise.`,
+      })
+      cerrarTodo()
+      await cargarFacturas()
+    } catch (err) {
+      setErrorSolicitud(err.message)
+    } finally {
+      setEnviandoSolicitud(false)
+    }
   }
 
   function actualizarCredencial(campo, valor) {
@@ -159,7 +203,7 @@ function Facturas() {
           <tbody>
             {facturas.map((factura) => {
               const estado = ESTADOS[factura.estado] ?? { texto: factura.estado, clase: '' }
-              const puedeAnular = factura.estado !== 'Anulado' && dentroDelPlazo(factura.fecha)
+              const puedeAnular = factura.estado === 'Registrado' && dentroDelPlazo(factura.fecha)
               return (
                 <tr key={factura.id_transaccion}>
                   <td>{factura.id_transaccion}</td>
@@ -179,7 +223,10 @@ function Facturas() {
                         Anular factura
                       </button>
                     )}
-                    {factura.estado !== 'Anulado' && !dentroDelPlazo(factura.fecha) && (
+                    {factura.estado === 'AnulacionSolicitada' && (
+                      <span style={{ fontSize: '0.8rem', color: '#616e7c' }}>Esperando a un supervisor...</span>
+                    )}
+                    {factura.estado === 'Registrado' && !dentroDelPlazo(factura.fecha) && (
                       <span style={{ fontSize: '0.8rem', color: '#616e7c' }}>Fuera de plazo (2h)</span>
                     )}
                   </td>
@@ -191,7 +238,7 @@ function Facturas() {
       )}
 
       {/* Ventana emergente 1: usuario + PIN del supervisor de caja */}
-      {facturaParaAnular && !pidiendoConfirmacion && (
+      {facturaParaAnular && !pidiendoConfirmacion && !pidiendoMotivoSolicitud && (
         <div className="modal-overlay">
           <form className="modal-caja" onSubmit={aceptarCredenciales}>
             <h2>Autorización de supervisor</h2>
@@ -230,6 +277,49 @@ function Facturas() {
               </button>
               <button type="submit" className="btn">
                 Aceptar
+              </button>
+            </div>
+
+            {/* TDSI-28: para cuando no hay un supervisor a la mano en este momento. */}
+            <button type="button" className="link-discreto" onClick={irASolicitarSinSupervisor}>
+              ¿No hay un supervisor disponible ahora? Solicitar anulación
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* TDSI-28/133: solicitud de anulación sin supervisor presente -- queda en espera. */}
+      {facturaParaAnular && pidiendoMotivoSolicitud && (
+        <div className="modal-overlay">
+          <form className="modal-caja" onSubmit={enviarSolicitudAnulacion}>
+            <h2>Solicitar anulación</h2>
+            <p>
+              La factura <strong>{facturaParaAnular.id_transaccion}</strong> quedará en espera hasta que un supervisor
+              la revise y la apruebe o la rechace desde su panel.
+            </p>
+
+            <label className="campo">
+              Motivo de la anulación
+              <textarea
+                rows={4}
+                maxLength={MOTIVO_MAX}
+                value={motivoSolicitud}
+                onChange={(e) => {
+                  setMotivoSolicitud(e.target.value)
+                  setErrorSolicitud(null)
+                }}
+                autoFocus
+              />
+            </label>
+
+            {errorSolicitud && <p className="error">{errorSolicitud}</p>}
+
+            <div className="pago-exito-acciones">
+              <button type="button" className="btn btn-secundario" onClick={cerrarTodo} disabled={enviandoSolicitud}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn" disabled={enviandoSolicitud}>
+                {enviandoSolicitud ? 'Enviando...' : 'Enviar solicitud'}
               </button>
             </div>
           </form>

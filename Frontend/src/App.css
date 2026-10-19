@@ -1155,6 +1155,24 @@
   margin-top: 0.5rem;
 }
 
+.link-discreto {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: 1rem;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #616e7c;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-discreto:hover {
+  color: var(--color-brand-dark);
+}
+
 .login-panel {
   flex: 1;
   display: flex;
