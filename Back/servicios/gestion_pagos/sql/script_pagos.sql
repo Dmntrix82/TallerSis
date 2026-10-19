@@ -247,3 +247,16 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(255),
     ADD COLUMN IF NOT EXISTS anulado_en  TIMESTAMPTZ;
+
+-- ==========================================================================
+-- TDSI-29/135: vuelto en cobros con efectivo. monto_recibido es lo que el
+-- cliente entrega en efectivo; vuelto es lo que el cajero debe devolver.
+-- Nulos para pagos que no son en efectivo (Tarjeta/QR).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS monto_recibido NUMERIC(14,2) CHECK (monto_recibido IS NULL OR monto_recibido >= 0),
+    ADD COLUMN IF NOT EXISTS vuelto         NUMERIC(14,2) CHECK (vuelto IS NULL OR vuelto >= 0);
+
+ALTER TABLE pagos.pagos_mixtos
+    ADD COLUMN IF NOT EXISTS monto_recibido NUMERIC(14,2) CHECK (monto_recibido IS NULL OR monto_recibido >= 0),
+    ADD COLUMN IF NOT EXISTS vuelto         NUMERIC(14,2) CHECK (vuelto IS NULL OR vuelto >= 0);
