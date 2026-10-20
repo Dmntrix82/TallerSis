@@ -27,7 +27,8 @@ function SolicitudesApertura() {
     setCargando(true)
     setError(null)
     listarSolicitudesPendientes()
-      .then((r) => setSolicitudes(r.data))
+      // /pendientes devuelve tambien las solicitudes de CIERRE (TDSI-26): aqui solo van las de apertura
+      .then((r) => setSolicitudes(r.data.filter((s) => s.tipo === 'APERTURA')))
       .catch((err) => setError(err.mensaje || err.message))
       .finally(() => setCargando(false))
   }, [recargar])
