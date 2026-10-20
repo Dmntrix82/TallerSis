@@ -42,8 +42,4 @@ module.exports = {
   MAX_INTENTOS: entero("CONTABILIDAD_MAX_INTENTOS", 3, 1, 10),
   BACKOFF_BASE_SEG: entero("CONTABILIDAD_BACKOFF_BASE_SEG", 30, 1, 3600),
   INTERVALO_WORKER_SEG: entero("CONTABILIDAD_INTERVALO_WORKER_SEG", 15, 5, 3600),
-  EMPRESA: {
-    nombre: process.env.EMPRESA_NOMBRE || "TallerSis",
-    nit: process.env.EMPRESA_NIT || "1009876015",
-  },
 };

@@ -12,82 +12,49 @@ function err(mensaje, status = 400, detalle = null) {
 const TIPOS = { venta: "FACTURA_VENTA", anulacion: "FACTURA_ANULACION" };
 const ESTADOS = ["Pendiente", "Enviado", "Error"];
 const num = (v) => Math.round(Number(v || 0) * 100) / 100;
-const iso = (v) => (v instanceof Date ? v.toISOString() : v ?? null);
+
+// Fecha del documento en hora de Bolivia (YYYY-MM-DD): una factura de las 22:00 es de ese dia, no del siguiente.
+const fechaBolivia = (v) => new Date(v).toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
 
 /**
- * TDSI-22: mensaje de una factura para Contabilidad (Grupo D).
- * tipo 'venta' al emitirse y 'anulacion' al autorizarse su anulacion; los dos llevan la
- * factura completa para que Contabilidad pueda registrar o revertir el asiento.
- * IVA incluido en el precio (Bolivia): base imponible = total, IVA = total x porcentaje.
+ * TDSI-22: mensaje de una factura en el formato que pide el Modulo de Contabilidad (Grupo D).
+ * Contabilidad lee solo el cuerpo: sistema_origen debe ser exactamente "FACTURACION" y
+ * referencia_externa + tipo_operacion identifican el documento (uq_envio_factura_tipo).
+ * 'venta' al emitirse y 'anulacion' al autorizarse su anulacion, con los mismos datos.
  */
-function armarMensaje({ factura, tipo, anulacion = null, ivaPorcentaje = 13, emitidoEn = new Date() }) {
-  const total = num(factura.total);
-  const iva = Number(factura.impuesto) > 0 ? num(factura.impuesto) : num((total * ivaPorcentaje) / 100);
-
-  const mensaje = {
-    tipo: TIPOS[tipo],
-    version: 1,
-    id_mensaje: `factura-${factura.id}-${tipo}`,
-    origen: "TALLERSIS_FACTURACION",
-    envio: { tipo },
-    empresa: cfg.EMPRESA,
-    factura: {
-      id: Number(factura.id),
-      numero: factura.numero,
-      fecha_emision: iso(factura.fecha),
-      estado: factura.estado,
-      canal: factura.canal,
-      venta_id: factura.venta_id ?? null,
-      con_factura: factura.con_factura,
-      cuf: factura.cuf ?? null,
-      codigo_control: factura.codigo_control ?? null,
-      moneda: "BOB",
+function armarMensaje({ factura, tipo }) {
+  const fecha = fechaBolivia(factura.fecha);
+  return {
+    sistema_origen: "FACTURACION",
+    referencia_externa: factura.numero,
+    tipo_operacion: tipo,
+    fecha_documento: fecha,
+    datos: {
+      fecha_documento: fecha,
+      nit_cliente: factura.cliente_nit ?? null,
+      nombre_cliente: factura.cliente_nombre || "Consumidor final",
+      monto: num(factura.total),
+      condicion_pago: "contado",
+      costo_venta: 0, // no hay catalogo de productos con costo
+      monto_descuento: num(factura.descuento),
+      modo_impuesto: "incluido", // IVA incluido en el precio
     },
-    cliente: {
-      nit: factura.cliente_nit ?? null,
-      razon_social: factura.cliente_nombre || "Consumidor final",
-    },
-    items: (factura.items || []).map((i) => ({
-      descripcion: i.descripcion,
-      cantidad: num(i.cantidad),
-      precio_unitario: num(i.precio_unitario),
-      subtotal: num(i.subtotal),
-    })),
-    metodos_pago: (factura.metodosPago || []).map((m) => ({ metodo: m.metodo, monto: num(m.monto) })),
-    totales: {
-      subtotal: num(factura.subtotal),
-      descuento: num(factura.descuento),
-      total,
-      base_imponible: total,
-      iva: { porcentaje: num(ivaPorcentaje), monto: iva },
-    },
-    emitido_en: emitidoEn.toISOString(),
   };
-
-  if (tipo === "anulacion") {
-    mensaje.anulacion = anulacion && {
-      id: Number(anulacion.id),
-      motivo: anulacion.motivo,
-      solicitado_por: anulacion.solicitado_por,
-      solicitado_en: iso(anulacion.solicitado_en),
-      autorizado_por: anulacion.autorizado_por,
-      autorizado_nombre: anulacion.autorizado_nombre,
-      autorizado_en: iso(anulacion.autorizado_en),
-      observacion: anulacion.observacion ?? null,
-    };
-  }
-  return mensaje;
 }
 
-/** Un intento de publicacion; deja registrado el resultado. */
+/**
+ * Un intento de publicacion; deja registrado el resultado.
+ * Los atributos son informativos (Contabilidad no los lee); la anulacion lleva ahi su motivo.
+ */
 async function intentarEnvio(envio) {
   const payload = envio.payload || (await repo.obtener(envio.id, { conPayload: true })).payload;
   const r = await publicar(payload, {
-    tipo: payload.tipo,
-    envio_tipo: payload.envio?.tipo,
-    factura_id: payload.factura?.id,
-    factura_numero: payload.factura?.numero,
-    idempotency_key: payload.id_mensaje,
+    tipo: TIPOS[envio.tipo],
+    tipo_operacion: envio.tipo,
+    factura_id: envio.factura_id,
+    referencia_externa: payload.referencia_externa,
+    idempotency_key: `factura-${envio.factura_id}-${envio.tipo}`,
+    motivo_anulacion: envio.motivo_anulacion,
     origen: "facturacion",
     grupo: "A",
   });
@@ -114,11 +81,11 @@ async function enviarFactura(facturaId, tipo) {
       throw err(`La factura ${factura.numero} no tiene una anulacion autorizada.`, 409);
   }
 
-  const payload = armarMensaje({ factura, tipo, anulacion, ivaPorcentaje: await repo.porcentajeIva() });
+  const payload = armarMensaje({ factura, tipo });
   const { envio, yaExiste } = await repo.crear({ facturaId: factura.id, tipo, payload });
   if (yaExiste) return yaExiste;
   // El primer intento publica el mensaje tal como se armo (JSONB reordena las claves al guardarlo).
-  return intentarEnvio({ ...envio, payload });
+  return intentarEnvio({ ...envio, payload, motivo_anulacion: anulacion?.motivo });
 }
 
 /**

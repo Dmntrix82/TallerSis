@@ -81,17 +81,26 @@ test("TDSI-22: al emitir se publica el mensaje 'venta' completo y el envio queda
   assert.equal(envio.intentos, 1);
 
   const [{ json, attributes }] = falso.publicados;
-  assert.equal(json.tipo, "FACTURA_VENTA");
-  assert.equal(json.id_mensaje, `factura-${f.id}-venta`);
-  assert.deepEqual(json.envio, { tipo: "venta" });
-  assert.equal(json.factura.numero, f.numero);
-  assert.deepEqual(json.cliente, { nit: NIT, razon_social: "Ferreteria Prueba S.R.L." });
-  assert.deepEqual(json.items[0], { descripcion: "Martillo", cantidad: 2, precio_unitario: 45.5, subtotal: 91 });
-  assert.deepEqual(json.metodos_pago, [{ metodo: "Efectivo", monto: 60 }, { metodo: "QR", monto: 50 }]);
-  assert.deepEqual(json.totales, { subtotal: 110, descuento: 0, total: 110, base_imponible: 110, iva: { porcentaje: 13, monto: 14.3 } });
-  assert.equal(json.anulacion, undefined);
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+  // Formato exacto que pide Contabilidad (Grupo D): el cuerpo es lo unico que leen.
+  assert.deepEqual(json, {
+    sistema_origen: "FACTURACION",
+    referencia_externa: f.numero,
+    tipo_operacion: "venta",
+    fecha_documento: hoy,
+    datos: {
+      fecha_documento: hoy,
+      nit_cliente: NIT,
+      nombre_cliente: "Ferreteria Prueba S.R.L.",
+      monto: 110,
+      condicion_pago: "contado",
+      costo_venta: 0,
+      monto_descuento: 0,
+      modo_impuesto: "incluido",
+    },
+  });
   assert.deepEqual(attributes, {
-    tipo: "FACTURA_VENTA", envio_tipo: "venta", factura_id: String(f.id), factura_numero: f.numero,
+    tipo: "FACTURA_VENTA", tipo_operacion: "venta", factura_id: String(f.id), referencia_externa: f.numero,
     idempotency_key: `factura-${f.id}-venta`, origen: "facturacion", grupo: "A",
   });
 });
@@ -106,7 +115,7 @@ test("TDSI-22: una factura se envia una sola vez por tipo (uq_envio_factura_tipo
   assert.equal(rows[0].n, 1);
 });
 
-test("TDSI-22: la anulacion autorizada se publica como 'anulacion' con quien la pidio y autorizo", async () => {
+test("TDSI-22: la anulacion autorizada se publica como 'anulacion' (motivo en los atributos)", async () => {
   const f = await nuevaFactura();
   await contabilidad.enviarFactura(f.id, "venta");
   await assert.rejects(contabilidad.enviarFactura(f.id, "anulacion"), { status: 409 });
@@ -116,13 +125,14 @@ test("TDSI-22: la anulacion autorizada se publica como 'anulacion' con quien la 
   assert.equal(envio.estado, "Enviado");
   assert.equal(envio.tipo, "anulacion");
 
-  const { json } = falso.publicados[1];
-  assert.equal(json.tipo, "FACTURA_ANULACION");
-  assert.equal(json.factura.estado, "Anulada");
-  assert.equal(json.totales.total, 110);
-  assert.equal(json.anulacion.motivo, "Error en el monto");
-  assert.equal(json.anulacion.solicitado_por, "cajero1");
-  assert.equal(json.anulacion.autorizado_nombre, "Supervisor Uno");
+  const { json, attributes } = falso.publicados[1];
+  assert.equal(json.sistema_origen, "FACTURACION");
+  assert.equal(json.referencia_externa, f.numero);
+  assert.equal(json.tipo_operacion, "anulacion");
+  assert.equal(json.datos.monto, 110);
+  assert.equal(json.datos.nit_cliente, NIT);
+  assert.equal(attributes.tipo, "FACTURA_ANULACION");
+  assert.equal(attributes.motivo_anulacion, "Error en el monto");
   const { rows } = await pool.query(
     `SELECT tipo FROM facturacion.factura_envios_contabilidad WHERE factura_id = $1 ORDER BY tipo DESC`, [f.id]);
   assert.deepEqual(rows.map((r) => r.tipo), ["venta", "anulacion"]);
@@ -201,4 +211,18 @@ test("TDSI-22: POST /api/facturas crea la factura y responde con el envio a Cont
   } finally {
     server.close();
   }
+});
+
+test("TDSI-22: la fecha del documento es la de Bolivia y el descuento va en monto_descuento", () => {
+  const { armarMensaje } = contabilidad;
+  const m = armarMensaje({
+    tipo: "venta",
+    factura: { numero: "F-000099", fecha: new Date("2026-10-21T02:30:00Z"), cliente_nit: null, cliente_nombre: null, total: "35.00", descuento: "5.50" },
+  });
+  assert.equal(m.fecha_documento, "2026-10-20"); // 22:30 del 20 en Bolivia
+  assert.equal(m.datos.fecha_documento, "2026-10-20");
+  assert.equal(m.datos.nombre_cliente, "Consumidor final");
+  assert.equal(m.datos.nit_cliente, null);
+  assert.equal(m.datos.monto, 35);
+  assert.equal(m.datos.monto_descuento, 5.5);
 });

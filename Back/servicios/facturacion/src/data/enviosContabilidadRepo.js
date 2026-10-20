@@ -152,16 +152,7 @@ async function anulacionAutorizada(facturaId) {
   return rows[0] || null;
 }
 
-/** Porcentaje del IVA activo (facturacion.configuracion_impuestos); 13 si no hay fila. */
-async function porcentajeIva() {
-  const { rows } = await query(
-    `SELECT porcentaje FROM facturacion.configuracion_impuestos
-     WHERE nombre = 'IVA' AND activo ORDER BY id LIMIT 1`
-  );
-  return rows[0] ? Number(rows[0].porcentaje) : 13;
-}
-
 module.exports = {
   obtener, obtenerPorFactura, crear, marcarEnviado, registrarFallo, tomarPendientes,
-  prepararReenvio, listar, datosFactura, anulacionAutorizada, porcentajeIva,
+  prepararReenvio, listar, datosFactura, anulacionAutorizada,
 };
