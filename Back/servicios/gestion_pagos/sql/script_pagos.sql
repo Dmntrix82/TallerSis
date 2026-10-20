@@ -377,4 +377,10 @@ ALTER TABLE pagos.bitacora_modificaciones ENABLE ROW LEVEL SECURITY;
 -- en el PDF, ese es un hash calculado al vuelo y no se guarda en la base).
 -- ==========================================================================
 ALTER TABLE pagos.transacciones
-    ADD COLUMN IF NOT EXISTS token_verificacion VARCHAR(64) UNIQUE;
+    ADD COLUMN IF NOT EXISTS token_verificacion VARCHAR(64);
+-- Un pago Mixto tiene varias filas con el mismo id_transaccion y todas llevan el
+-- mismo token: por eso NO puede ser UNIQUE (rompia el PDF de las ventas Mixto).
+-- Si la columna ya se habia creado con UNIQUE, se quita esa restriccion.
+ALTER TABLE pagos.transacciones DROP CONSTRAINT IF EXISTS transacciones_token_verificacion_key;
+CREATE INDEX IF NOT EXISTS idx_transacciones_token_verificacion
+    ON pagos.transacciones (token_verificacion);
