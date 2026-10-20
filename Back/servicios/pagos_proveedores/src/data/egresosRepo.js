@@ -39,4 +39,32 @@ async function egresosDelDiaPorMetodo(fecha) {
   return resultado.rows.map((r) => ({ metodo: r.metodo, total: Number(r.total), cantidad: r.cantidad }));
 }
 
-module.exports = { insertarEgreso, listarEgresos, egresosDelDiaPorMetodo };
+/**
+ * TDSI-22: cada egreso del dia (hora de Bolivia) con la orden de pago y el proveedor,
+ * para el detalle del reporte a Contabilidad.
+ */
+async function egresosDelDia(fecha) {
+  const resultado = await query(
+    `SELECT e.id, o.numero AS orden_pago, o.orden_compra_id, o.proveedor_nit, o.proveedor_razon_social,
+            COALESCE(e.descripcion, o.concepto) AS concepto, e.metodo, e.monto, e.registrado_por, e.registrado_en
+     FROM proveedores.egresos e
+     JOIN proveedores.ordenes_pago o ON o.id = e.orden_pago_id
+     WHERE e.registrado_en >= ($1::date)::timestamp AT TIME ZONE 'America/La_Paz'
+       AND e.registrado_en <  ($1::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'
+     ORDER BY e.registrado_en, e.id`,
+    [fecha]
+  );
+  return resultado.rows.map((r) => ({
+    egreso_id: Number(r.id),
+    orden_pago: r.orden_pago,
+    orden_compra_id: r.orden_compra_id,
+    proveedor: { nit: r.proveedor_nit, razon_social: r.proveedor_razon_social },
+    concepto: r.concepto,
+    metodo: r.metodo,
+    monto: Number(r.monto),
+    registrado_por: r.registrado_por,
+    registrado_en: r.registrado_en.toISOString(),
+  }));
+}
+
+module.exports = { insertarEgreso, listarEgresos, egresosDelDiaPorMetodo, egresosDelDia };

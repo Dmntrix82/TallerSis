@@ -22,6 +22,9 @@ async function solicitarAnulacion({ factura_numero, motivo, solicitado_por } = {
 
   if (typeof motivo !== "string" || !motivo.trim())
     throw err("El motivo de la anulación es obligatorio");
+  // TDSI-22: Contabilidad rechaza anulaciones con un motivo de menos de 10 caracteres
+  if (motivo.trim().length < 10)
+    throw err("El motivo de la anulación debe tener al menos 10 caracteres");
   if (motivo.trim().length > 300)
     throw err("El motivo debe tener máximo 300 caracteres");
 

@@ -4,3 +4,9 @@
 
 node_modules/
 **/node_modules/
+
+# TDSI-656: llaves de cuentas de servicio de Google (nunca al repo)
+credenciales*.json
+**/credenciales*.json
+*service-account*.json
+project-a96e5fe1-*.json
