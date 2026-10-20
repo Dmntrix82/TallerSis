@@ -1,4 +1,5 @@
 const { query, withTransaction } = require("../config/db");
+const { AppError } = require("../utils/AppError");
 
 const num = (v) => (v === null || v === undefined ? v : Number(v));
 
@@ -83,6 +84,7 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
             MAX(nit) AS nit,
             MAX(razon_social) AS razon_social,
             MAX(tipo_documento) AS tipo_documento,
+            MAX(telefono) AS telefono,
             MAX(caja_id) AS caja_id,
             bool_and(estado = 'Anulado') AS anulado
        FROM pagos.transacciones
@@ -100,6 +102,7 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
     nit: r.nit,
     razon_social: r.razon_social,
     tipo_documento: r.tipo_documento,
+    telefono: r.telefono,
     caja_id: r.caja_id,
     estado: r.anulado ? 'Anulado' : 'Registrado',
   }));
@@ -210,6 +213,73 @@ async function resolverSolicitudAnulacion(id, { aprobar, supervisor, observacion
     );
     return upd.rows[0];
   });
+}
+
+/**
+ * TDSI-37/545: corrige datos de facturacion de una venta ya registrada,
+ * manteniendo su id_transaccion. Solo actualiza las filas con estado
+ * 'Registrado' (si fuera un pago Mixto con 2 filas, corrige las dos).
+ */
+async function actualizarDatosVenta(id_transaccion, { nit, razon_social, tipo_documento, telefono, modificado_por, autorizado_por }) {
+  const columnas = { nit, razon_social, tipo_documento, telefono };
+  const camposTocados = Object.keys(columnas).filter((c) => columnas[c] !== undefined);
+
+  return withTransaction(async (client) => {
+    // TDSI-546: se lee el valor "anterior" antes de pisarlo, para la bitacora.
+    const { rows: antes } = await client.query(
+      `SELECT * FROM pagos.transacciones WHERE id_transaccion = $1 AND estado = 'Registrado' FOR UPDATE`,
+      [id_transaccion]
+    );
+    if (antes.length === 0) {
+      throw new AppError("La venta ya no se puede modificar (no existe o fue anulada justo ahora).", 409);
+    }
+
+    const sets = ["fecha_modificacion = now()", "modificado_por = $2", "autorizado_por = $3"];
+    const params = [id_transaccion, modificado_por, autorizado_por];
+    for (const columna of camposTocados) {
+      params.push(columnas[columna]);
+      sets.push(`${columna} = $${params.length}`);
+    }
+
+    const { rows: despues } = await client.query(
+      `UPDATE pagos.transacciones
+          SET ${sets.join(", ")}
+        WHERE id_transaccion = $1 AND estado = 'Registrado'
+        RETURNING *`,
+      params
+    );
+
+    // Una fila de bitacora por cada campo que de verdad cambio (si era Mixto,
+    // por cada fila de la venta: ej. 2 filas x 1 campo cambiado = 2 registros).
+    for (const filaAntes of antes) {
+      const filaDespues = despues.find((r) => r.id === filaAntes.id);
+      for (const campo of camposTocados) {
+        const valorAnterior = filaAntes[campo];
+        const valorNuevo = filaDespues[campo];
+        if (String(valorAnterior ?? "") === String(valorNuevo ?? "")) continue;
+        await client.query(
+          `INSERT INTO pagos.bitacora_modificaciones
+             (id_transaccion, campo, valor_anterior, valor_nuevo, modificado_por, autorizado_por)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id_transaccion, campo, valorAnterior, valorNuevo, modificado_por, autorizado_por]
+        );
+      }
+    }
+
+    return despues.map((r) => ({ ...r, monto: num(r.monto) }));
+  });
+}
+
+/** TDSI-546: historial de modificaciones de una venta, mas reciente primero. */
+async function listarBitacoraModificaciones(id_transaccion) {
+  const { rows } = await query(
+    `SELECT id, campo, valor_anterior, valor_nuevo, modificado_por, autorizado_por, modificado_en
+       FROM pagos.bitacora_modificaciones
+      WHERE id_transaccion = $1
+      ORDER BY modificado_en DESC`,
+    [id_transaccion]
+  );
+  return rows;
 }
 
 /**
@@ -531,6 +601,8 @@ module.exports = {
   listarSolicitudesAnulacionPendientes,
   buscarSolicitudAnulacion,
   resolverSolicitudAnulacion,
+  actualizarDatosVenta,
+  listarBitacoraModificaciones,
   reporteTurno,
   listarCajeros,
   rankingCajas,

@@ -343,3 +343,31 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.pagos_mixtos
     ADD COLUMN IF NOT EXISTS monto_recibido NUMERIC(14,2) CHECK (monto_recibido IS NULL OR monto_recibido >= 0),
     ADD COLUMN IF NOT EXISTS vuelto         NUMERIC(14,2) CHECK (vuelto IS NULL OR vuelto >= 0);
+-- ==========================================================================
+-- TDSI-37/151: modificacion de una venta ya registrada (corregir datos del
+-- cliente, etc.) sin anularla ni cambiar su numero -- autorizada por un
+-- supervisor de caja, solo dentro de las 2 horas desde la emision.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS fecha_modificacion TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS modificado_por      VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS autorizado_por      VARCHAR(60);
+
+-- ==========================================================================
+-- TDSI-37/546: bitacora de que se cambio exactamente en cada modificacion
+-- de una venta (valor anterior y nuevo por cada campo tocado).
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.bitacora_modificaciones (
+    id              BIGSERIAL PRIMARY KEY,
+    id_transaccion  VARCHAR(60)  NOT NULL,
+    campo           VARCHAR(50)  NOT NULL,
+    valor_anterior  TEXT,
+    valor_nuevo     TEXT,
+    modificado_por  VARCHAR(255),
+    autorizado_por  VARCHAR(60),
+    modificado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bitacora_modificaciones_transaccion
+    ON pagos.bitacora_modificaciones (id_transaccion);
+
+ALTER TABLE pagos.bitacora_modificaciones ENABLE ROW LEVEL SECURITY;

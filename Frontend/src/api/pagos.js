@@ -112,6 +112,19 @@ export function autorizarAnulacionPendiente(id, { supervisor_id, pin, decision, 
   )
 }
 
+// TDSI-37/545: corrige datos de facturacion de una venta ya registrada (ej. NIT mal
+// escrito), autorizado por un supervisor, dentro de las 2 horas desde la emision.
+export function modificarVenta(id_transaccion, { supervisor_id, pin, modificado_por, ...cambios }) {
+  return apiFetch(
+    `/api/facturas/${encodeURIComponent(id_transaccion)}/modificar`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ supervisor_id, pin, modificado_por, ...cambios }),
+    },
+    GESTION_PAGOS_API_BASE_URL,
+  )
+}
+
 // TDSI-329: lista de cajeros con al menos una venta, para la pantalla "Cajeros" del administrador.
 export function listarCajeros() {
   return apiFetch('/api/pagos/cajeros', {}, GESTION_PAGOS_API_BASE_URL)
