@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/ventaOnline.test.js src/tests/anulacion.test.js src/tests/auth.test.js src/tests/estadoTransaccion.test.js src/tests/monitoreo.test.js src/tests/monitoreoEndpoint.test.js src/tests/revision.test.js src/tests/revisionSemilla.test.js src/tests/revisionEndpoint.test.js src/tests/historialCajeros.test.js src/tests/historialCajerosEndpoint.test.js src/tests/historialSemilla.test.js src/tests/metodosPago.test.js src/tests/metodosPagoEndpoint.test.js src/tests/metodosSemilla.test.js",
+    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/ventaOnline.test.js src/tests/anulacion.test.js src/tests/anulacionPendiente.test.js src/tests/auth.test.js src/tests/estadoTransaccion.test.js src/tests/monitoreo.test.js src/tests/monitoreoEndpoint.test.js src/tests/revision.test.js src/tests/revisionSemilla.test.js src/tests/revisionEndpoint.test.js src/tests/historialCajeros.test.js src/tests/historialCajerosEndpoint.test.js src/tests/historialSemilla.test.js src/tests/metodosPago.test.js src/tests/metodosPagoEndpoint.test.js src/tests/metodosSemilla.test.js",
     "crear-cliente": "node scripts/crearSistemaCliente.js"
   },
   "license": "ISC",

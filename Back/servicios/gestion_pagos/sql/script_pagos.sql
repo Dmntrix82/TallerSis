@@ -302,3 +302,32 @@ CREATE TABLE IF NOT EXISTS pagos.revisiones_transaccion (
 CREATE INDEX IF NOT EXISTS idx_revisiones_estado ON pagos.revisiones_transaccion (estado);
 
 ALTER TABLE pagos.revisiones_transaccion ENABLE ROW LEVEL SECURITY;
+-- ==========================================================================
+-- TDSI-28/133/539-541: bandeja de "Anulaciones pendientes" para cuando el
+-- supervisor NO esta presente en la caja. Convive con la autorizacion
+-- inmediata con PIN (TDSI-306/17): el cajero elige una u otra segun si hay
+-- un supervisor a mano o no.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones DROP CONSTRAINT IF EXISTS transacciones_estado_check;
+ALTER TABLE pagos.transacciones
+    ADD CONSTRAINT transacciones_estado_check
+    CHECK (estado::text = ANY (ARRAY['Registrado','AnulacionSolicitada','Anulado']::varchar[]));
+
+CREATE TABLE IF NOT EXISTS pagos.solicitudes_anulacion (
+    id                 BIGSERIAL PRIMARY KEY,
+    id_transaccion     VARCHAR(60)  NOT NULL,
+    motivo             VARCHAR(300) NOT NULL,
+    solicitado_por     VARCHAR(100),
+    solicitado_en      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    estado             VARCHAR(20)  NOT NULL DEFAULT 'Solicitada'
+                        CHECK (estado IN ('Solicitada','Autorizada','Rechazada')),
+    autorizado_por     VARCHAR(60),
+    autorizado_nombre  VARCHAR(100),
+    autorizado_en      TIMESTAMPTZ,
+    observacion        VARCHAR(300)
+);
+CREATE INDEX IF NOT EXISTS idx_solicitudes_anulacion_pendientes
+    ON pagos.solicitudes_anulacion (id_transaccion)
+    WHERE estado = 'Solicitada';
+
+ALTER TABLE pagos.solicitudes_anulacion ENABLE ROW LEVEL SECURITY;

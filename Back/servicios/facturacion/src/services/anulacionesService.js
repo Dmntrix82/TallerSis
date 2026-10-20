@@ -104,4 +104,9 @@ async function autorizarAnulacion(id, { supervisor_id, pin, decision, observacio
   };
 }
 
-module.exports = { solicitarAnulacion, autorizarAnulacion };
+/** TDSI-539: lista para la pantalla del supervisor -- solicitudes que todavia no se resolvieron */
+async function listarPendientes() {
+  return repo.listarPendientes();
+}
+
+module.exports = { solicitarAnulacion, autorizarAnulacion, listarPendientes };

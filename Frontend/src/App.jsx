@@ -18,6 +18,7 @@ import DiferenciasCaja from './pages/DiferenciasCaja.jsx'
 import SolicitudesApertura from './pages/SolicitudesApertura.jsx'
 import SolicitudesCierre from './pages/SolicitudesCierre.jsx'
 import OperacionesAprobacion from './pages/OperacionesAprobacion.jsx'
+import AnulacionesPendientes from './pages/AnulacionesPendientes.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
@@ -73,6 +74,7 @@ function App() {
           <Route path="/admin/revision-transacciones" element={<RutaProtegidaAdmin><RevisionTransacciones /></RutaProtegidaAdmin>} />
           <Route path="/admin/historial-operaciones" element={<RutaProtegidaAdmin><HistorialOperaciones /></RutaProtegidaAdmin>} />
           <Route path="/admin/metodos-pago" element={<RutaProtegidaAdmin><MetodosPago /></RutaProtegidaAdmin>} />
+          <Route path="/admin/anulaciones-pendientes" element={<RutaProtegidaAdmin><AnulacionesPendientes /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

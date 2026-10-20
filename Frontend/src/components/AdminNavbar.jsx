@@ -30,6 +30,7 @@ function AdminNavbar() {
       <NavLink to="/admin/solicitudes-apertura">Solicitudes de apertura</NavLink>
       <NavLink to="/admin/solicitudes-cierre">Solicitudes de cierre</NavLink>
       <NavLink to="/admin/aprobaciones">Aprobaciones</NavLink>
+      <NavLink to="/admin/anulaciones-pendientes">Anulaciones pendientes</NavLink>
 
       <div className="navbar-sesion">
         <span className="navbar-cajero">{administrador?.nombre}</span>
