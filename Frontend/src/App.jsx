@@ -12,6 +12,7 @@ import TableroIngresos from './pages/TableroIngresos.jsx'
 import CierreCaja from './pages/CierreCaja.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
+import CierreDiario from './pages/CierreDiario.jsx'
 import MonitoreoCajeros from './pages/MonitoreoCajeros'
 import './App.css'
 
@@ -48,7 +49,8 @@ function App() {
           <Route path="/admin/clientes" element={<RutaProtegidaAdmin><Clientes /></RutaProtegidaAdmin>} />
           <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
-          <Route path="/admin/monitoreo-cajeros" element={<MonitoreoCajeros />} />
+          <Route path="/admin/cierre-diario" element={<RutaProtegidaAdmin><CierreDiario /></RutaProtegidaAdmin>} />
+          <Route path="/admin/monitoreo-cajeros" element={<RutaProtegidaAdmin><MonitoreoCajeros /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

@@ -15,8 +15,10 @@ function AdminNavbar() {
       <span className="navbar-brand">TallerSis · Administración</span>
       <NavLink to="/admin/cajeros">Cajeros</NavLink>
       <NavLink to="/admin/clientes">Clientes</NavLink>
+      <NavLink to="/admin/ventas-online">Ventas online</NavLink>
       <NavLink to="/admin/tablero">Tablero</NavLink>
       <NavLink to="/admin/cierre-diario">Cierre diario</NavLink>
+      <NavLink to="/admin/monitoreo-cajeros">Monitoreo de cajeros</NavLink>
 
       <div className="navbar-sesion">
         <span className="navbar-cajero">{administrador?.nombre}</span>
