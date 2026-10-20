@@ -13,9 +13,10 @@ const redondear = (v) => Math.round(v * 100) / 100;
 async function consolidarDia(fecha) {
   const fechaValida = validarFechaCierre(fecha);
 
-  const [ingresos, egresosPorMetodo] = await Promise.all([
+  const [ingresos, egresosPorMetodo, egresosDetalle] = await Promise.all([
     obtenerIngresosDelDia(fechaValida),
     egresosRepo.egresosDelDiaPorMetodo(fechaValida),
+    egresosRepo.egresosDelDia(fechaValida), // TDSI-22: detalle para el reporte a Contabilidad
   ]);
 
   const egresos = {
@@ -23,6 +24,7 @@ async function consolidarDia(fecha) {
     porMetodo: egresosPorMetodo,
     total: redondear(egresosPorMetodo.reduce((acc, m) => acc + m.total, 0)),
     cantidad: egresosPorMetodo.reduce((acc, m) => acc + m.cantidad, 0),
+    detalle: egresosDetalle,
   };
 
   return { fecha: fechaValida, modoAislado: cfg.MODO_AISLADO, ingresos, egresos };

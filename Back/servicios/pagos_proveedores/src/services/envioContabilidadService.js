@@ -65,7 +65,8 @@ async function enviarLote({ fecha, solicitado_por } = {}) {
       envio: yaExiste,
     });
   }
-  return intentarEnvio(envio);
+  // El primer intento publica el reporte tal como se armo (JSONB reordena las claves al guardarlo).
+  return intentarEnvio({ ...envio, payload: reporte });
 }
 
 /**

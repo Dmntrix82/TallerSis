@@ -73,4 +73,10 @@ module.exports = {
   PUBSUB_TOPIC: topico("PUBSUB_TOPIC"),
   GOOGLE_CREDENTIALS: credencialesGoogle("GOOGLE_CREDENTIALS_JSON"),
   PUBSUB_TIMEOUT_MS: entero("PUBSUB_TIMEOUT_MS", 10000, 1000, 60000),
+
+  // TDSI-22: datos de la empresa que van en el reporte a Contabilidad
+  EMPRESA: {
+    nombre: process.env.EMPRESA_NOMBRE || "TallerSis",
+    nit: process.env.EMPRESA_NIT || "1009876015",
+  },
 };

@@ -175,3 +175,27 @@ ALTER TABLE facturacion.factura_anulaciones
     ADD COLUMN IF NOT EXISTS observacion        VARCHAR(300);
 
 ALTER TABLE facturacion.supervisores ENABLE ROW LEVEL SECURITY;
+-- ==========================================================================
+-- Migracion 002 - TDSI-22: envio de facturas a Contabilidad (Grupo D) por Pub/Sub
+-- tipo y uq_envio_factura_tipo: definidos por el Modulo de Contabilidad.
+-- Una factura tiene a lo sumo un envio 'venta' (al emitirse) y uno 'anulacion'
+-- (al autorizarse su anulacion). El resto de columnas lleva el control del envio.
+-- Se puede correr varias veces.
+-- ==========================================================================
+
+ALTER TABLE facturacion.factura_envios_contabilidad
+  ADD COLUMN IF NOT EXISTS tipo VARCHAR(20) NOT NULL DEFAULT 'venta'
+    CHECK (tipo IN ('venta','anulacion'));
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_envio_factura_tipo
+  ON facturacion.factura_envios_contabilidad (factura_id, tipo);
+
+ALTER TABLE facturacion.factura_envios_contabilidad
+    ADD COLUMN IF NOT EXISTS payload             JSONB,
+    ADD COLUMN IF NOT EXISTS pubsub_message_id   VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS ultimo_error        VARCHAR(400),
+    ADD COLUMN IF NOT EXISTS proximo_intento_en  TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS creado_en           TIMESTAMPTZ NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_factura_envios_contabilidad_pendientes
+    ON facturacion.factura_envios_contabilidad (estado, proximo_intento_en);
