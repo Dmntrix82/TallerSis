@@ -22,6 +22,9 @@ import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
 import MonitoreoCajeros from './pages/MonitoreoCajeros'
+import RevisionTransacciones from './pages/RevisionTransacciones'
+import HistorialOperaciones from './pages/HistorialOperaciones'
+import MetodosPago from './pages/MetodosPago.jsx'
 import './App.css'
 
 function RutaProtegida({ children }) {
@@ -67,6 +70,9 @@ function App() {
           <Route path="/admin/solicitudes-apertura" element={<RutaProtegidaAdmin><SolicitudesApertura /></RutaProtegidaAdmin>} />
           <Route path="/admin/solicitudes-cierre" element={<RutaProtegidaAdmin><SolicitudesCierre /></RutaProtegidaAdmin>} />
           <Route path="/admin/aprobaciones" element={<RutaProtegidaAdmin><OperacionesAprobacion /></RutaProtegidaAdmin>} />
+          <Route path="/admin/revision-transacciones" element={<RutaProtegidaAdmin><RevisionTransacciones /></RutaProtegidaAdmin>} />
+          <Route path="/admin/historial-operaciones" element={<RutaProtegidaAdmin><HistorialOperaciones /></RutaProtegidaAdmin>} />
+          <Route path="/admin/metodos-pago" element={<RutaProtegidaAdmin><MetodosPago /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

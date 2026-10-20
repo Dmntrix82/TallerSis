@@ -9,6 +9,9 @@ const tableroRoutes = require("./routes/tableroRoutes");
 const facturaDocumentoRoutes = require("./routes/facturaDocumentoRoutes");
 const resumenVentasRoutes = require("./routes/resumenVentasRoutes");
 const monitoreoRoutes = require("./routes/monitoreoRoutes");
+const revisionRoutes = require("./routes/revisionRoutes");
+const historialCajerosRoutes = require("./routes/historialCajerosRoutes");
+const metodosPagoRoutes = require("./routes/metodosPagoRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 
@@ -30,6 +33,9 @@ app.get("/health", async (req, res) => {
 });
 
 app.use("/api/pagos/monitoreo", monitoreoRoutes); // TDSI-23/426 (antes de /api/pagos)
+app.use("/api/pagos/revision", revisionRoutes); // TDSI-27/131 (antes de /api/pagos)
+app.use("/api/pagos/historial-cajeros", historialCajerosRoutes); // TDSI-33/434 (antes de /api/pagos)
+app.use("/api/pagos/metodos", metodosPagoRoutes); // TDSI-34/438 (antes de /api/pagos)
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/pagos", pagoMixtoRoutes);
 app.use("/api/pagos", ventaOnlineRoutes);

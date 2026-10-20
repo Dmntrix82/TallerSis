@@ -19,6 +19,9 @@ function AdminNavbar() {
       <NavLink to="/admin/tablero">Tablero</NavLink>
       <NavLink to="/admin/cierre-diario">Cierre diario</NavLink>
       <NavLink to="/admin/monitoreo-cajeros">Monitoreo de cajeros</NavLink>
+      <NavLink to="/admin/revision-transacciones">Revisión de transacciones</NavLink>
+      <NavLink to="/admin/historial-operaciones">Historial de operaciones</NavLink>
+      <NavLink to="/admin/metodos-pago">Métodos de pago</NavLink>
       <NavLink to="/admin/cajas">Cajas</NavLink>
       <NavLink to="/admin/reportes">Reportes</NavLink>
       <NavLink to="/admin/recaudado">Recaudado</NavLink>
