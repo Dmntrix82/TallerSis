@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/tests/tirilla.test.js src/tests/impresora.test.js src/tests/clientes.test.js src/tests/contabilidadFacturas.test.js",
+    "test": "node --test src/tests/tirilla.test.js src/tests/impresora.test.js src/tests/clientes.test.js src/tests/contabilidadFacturas.test.js src/tests/respuestasContabilidad.test.js",
     "pubsub:prueba": "node scripts/publicarPruebaContabilidad.js",
     "contabilidad:respuestas": "node scripts/verRespuestasContabilidad.js",
     "asignar-pin": "node scripts/asignarPinSupervisor.js"

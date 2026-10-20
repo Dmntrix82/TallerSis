@@ -38,4 +38,5 @@ app.use(errorHandler);
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Facturacion ejecutandose en el puerto ${PORT}`);
   require("./jobs/reintentoEnviosContabilidad").iniciar(); // TDSI-22
+  require("./jobs/respuestasContabilidad").iniciar(); // TDSI-22: resultado_documento de Contabilidad
 });

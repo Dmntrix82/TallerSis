@@ -42,4 +42,9 @@ module.exports = {
   MAX_INTENTOS: entero("CONTABILIDAD_MAX_INTENTOS", 3, 1, 10),
   BACKOFF_BASE_SEG: entero("CONTABILIDAD_BACKOFF_BASE_SEG", 30, 1, 3600),
   INTERVALO_WORKER_SEG: entero("CONTABILIDAD_INTERVALO_WORKER_SEG", 15, 5, 3600),
+
+  // Respuestas de Contabilidad (resultado_documento): suscripcion Pull del topico del Grupo A.
+  // Vacio = no se leen.
+  RESPUESTAS_SUBSCRIPTION: String(process.env.CONTABILIDAD_RESPUESTAS_SUBSCRIPTION || "").trim() || null,
+  RESPUESTAS_INTERVALO_SEG: entero("CONTABILIDAD_RESPUESTAS_INTERVALO_SEG", 30, 10, 3600),
 };

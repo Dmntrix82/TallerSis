@@ -3,7 +3,7 @@ const { query } = require("../config/db");
 // TDSI-22: control de los envios de facturas a Contabilidad (facturacion.factura_envios_contabilidad).
 const COLUMNAS = `e.id, e.factura_id, f.numero AS factura_numero, e.tipo, e.estado, e.intentos,
                   e.ultimo_intento_en, e.ultimo_error, e.pubsub_message_id, e.proximo_intento_en,
-                  e.enviado_en, e.creado_en`;
+                  e.enviado_en, e.creado_en, e.resultado, e.numero_asiento, e.resultado_motivo, e.resultado_en`;
 
 function aEnvio(fila) {
   if (!fila) return null;
@@ -135,6 +135,22 @@ async function listar({ estado = null, tipo = null, limite = 50 } = {}) {
   return rows.map(aEnvio);
 }
 
+/**
+ * TDSI-22: guarda la respuesta de Contabilidad (resultado_documento) en el envio de esa factura.
+ * Devuelve el envio actualizado, o null si no hay un envio con ese numero y tipo.
+ */
+async function registrarResultado({ facturaNumero, tipo, resultado, numeroAsiento, motivo, messageId }) {
+  const { rows } = await query(
+    `UPDATE facturacion.factura_envios_contabilidad e
+     SET resultado = $3, numero_asiento = $4, resultado_motivo = $5, resultado_en = now(), resultado_message_id = $6
+     FROM facturacion.facturas f
+     WHERE f.id = e.factura_id AND f.numero = $1 AND e.tipo = $2
+     RETURNING e.id`,
+    [facturaNumero, tipo, resultado, numeroAsiento, motivo, messageId]
+  );
+  return rows[0] ? obtener(rows[0].id) : null;
+}
+
 /** Datos de la factura que van en el mensaje (cabecera, items y metodos de pago). */
 async function datosFactura(facturaId) {
   const { rows } = await query(`SELECT * FROM facturacion.facturas WHERE id = $1`, [facturaId]);
@@ -165,5 +181,5 @@ async function anulacionAutorizada(facturaId) {
 
 module.exports = {
   obtener, obtenerPorFactura, crear, marcarEnviado, registrarFallo, posponer, tomarPendientes,
-  prepararReenvio, listar, datosFactura, anulacionAutorizada,
+  prepararReenvio, listar, datosFactura, anulacionAutorizada, registrarResultado,
 };

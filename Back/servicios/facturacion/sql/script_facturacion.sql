@@ -199,3 +199,16 @@ ALTER TABLE facturacion.factura_envios_contabilidad
 
 CREATE INDEX IF NOT EXISTS idx_factura_envios_contabilidad_pendientes
     ON facturacion.factura_envios_contabilidad (estado, proximo_intento_en);
+
+-- ==========================================================================
+-- Migracion 003 - TDSI-22: resultado que devuelve Contabilidad por cada envio
+-- (mensaje resultado_documento en el topico del Grupo A): aceptado o rechazado,
+-- numero de asiento y motivo. Se puede correr varias veces.
+-- ==========================================================================
+
+ALTER TABLE facturacion.factura_envios_contabilidad
+    ADD COLUMN IF NOT EXISTS resultado             VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS numero_asiento        VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS resultado_motivo      VARCHAR(400),
+    ADD COLUMN IF NOT EXISTS resultado_en          TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS resultado_message_id  VARCHAR(100);
