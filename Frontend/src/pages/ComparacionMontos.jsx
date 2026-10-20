@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listarCajas, obtenerComparacionMontos } from '../api/caja.js'
 
-// TDSI-140 / TDSI-515: vista "Comparación de montos" con fecha y filtros (caja, cajero, tipo).
-// TDSI-516: tabla con colores segun CUADRA / FALTANTE / SOBRANTE.
-// TDSI-517: resumen superior (cuantos cuadran, faltantes y sobrantes).
-// TDSI-518: mensajes de "sin turnos" y de error.
-//
-// Datos: GET /api/caja/comparacion (gestion_caja). Los filtros se mandan al backend.
-// El backend no tiene una lista de cajeros, asi que las opciones del filtro de cajero salen
-// de los turnos de la fecha elegida.
-
 const ETIQUETA_TIPO = {
   CUADRA: 'Cuadra',
   FALTANTE: 'Faltante',
@@ -30,7 +21,7 @@ function ComparacionMontos() {
   const [filtroTipo, setFiltroTipo] = useState('')
 
   const [cajas, setCajas] = useState([])
-  const [cajeros, setCajeros] = useState([]) // [{ id, nombre }] de los turnos de la fecha
+  const [cajeros, setCajeros] = useState([])
   const [resumen, setResumen] = useState(null)
   const [turnos, setTurnos] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -43,7 +34,6 @@ function ComparacionMontos() {
       .catch(() => setCajas([]))
   }, [])
 
-  // Al cambiar de fecha, los cajeros de la fecha anterior ya no sirven como opciones.
   useEffect(() => {
     setCajeros([])
     setFiltroCajero('')
@@ -185,7 +175,8 @@ function ComparacionMontos() {
           </thead>
           <tbody>
             {turnos.map((t) => {
-              const tipo = t.tipo_diferencia.toLowerCase()
+              const tipoRaw = t.tipo_diferencia || 'CUADRA'; // Si viene nulo, asume cuadra
+              const tipo = tipoRaw.toLowerCase();
               return (
                 <tr key={t.turno_id} className={`comparacion-fila comparacion-fila--${tipo}`}>
                   <td>
@@ -202,7 +193,7 @@ function ComparacionMontos() {
                   </td>
                   <td>
                     <span className={`badge-estado badge-comparacion--${tipo}`}>
-                      {ETIQUETA_TIPO[t.tipo_diferencia] ?? t.tipo_diferencia}
+                      {ETIQUETA_TIPO[tipoRaw] ?? tipoRaw}
                     </span>
                   </td>
                 </tr>

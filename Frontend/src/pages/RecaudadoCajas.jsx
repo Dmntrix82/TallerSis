@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react'
 import { obtenerRecaudadoPorCaja } from '../api/caja.js'
 
-// TDSI-138 / TDSI-511: vista "Total recaudado por caja" con selector de fecha.
-// TDSI-512: una tarjeta por caja con ingresos, egresos y neto.
-// TDSI-513: desglose por metodo de pago.
-// TDSI-514: mensajes de "sin movimientos" y de error.
-//
-// Datos: GET /api/caja/recaudado?desde=...&hasta=... (gestion_caja), que trae una entrada por
-// cada caja activa. El dia elegido se manda como rango [00:00 de ese dia, 00:00 del siguiente)
-// en hora local, para que no se corra por la zona horaria.
-
 const METODOS = ['Efectivo', 'Tarjeta', 'QR']
 
 function hoyLocal() {
@@ -19,11 +10,11 @@ function hoyLocal() {
   return `${d.getFullYear()}-${mes}-${dia}`
 }
 
+// Ahora devuelve el string YYYY-MM-DD, no el ISO completo
 function rangoDelDia(fecha) {
-  const [anio, mes, dia] = fecha.split('-').map(Number)
   return {
-    desde: new Date(anio, mes - 1, dia).toISOString(),
-    hasta: new Date(anio, mes - 1, dia + 1).toISOString(),
+    desde: fecha,
+    hasta: fecha, // El backend acepta un solo día como desde y hasta
   }
 }
 
