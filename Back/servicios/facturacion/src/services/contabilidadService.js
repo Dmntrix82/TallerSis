@@ -16,18 +16,35 @@ const num = (v) => Math.round(Number(v || 0) * 100) / 100;
 // Fecha del documento en hora de Bolivia (YYYY-MM-DD): una factura de las 22:00 es de ese dia, no del siguiente.
 const fechaBolivia = (v) => new Date(v).toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
 
+const MOTIVO_MINIMO = 10; // Contabilidad rechaza anulaciones con motivo mas corto
+
 /**
- * TDSI-22: mensaje de una factura en el formato que pide el Modulo de Contabilidad (Grupo D).
- * Contabilidad lee solo el cuerpo: sistema_origen debe ser exactamente "FACTURACION" y
- * referencia_externa + tipo_operacion identifican el documento (uq_envio_factura_tipo).
- * 'venta' al emitirse y 'anulacion' al autorizarse su anulacion, con los mismos datos.
+ * TDSI-22: mensajes de factura en el formato que pide el Modulo de Contabilidad (Grupo D).
+ * Contabilidad lee solo el cuerpo y sistema_origen debe ser exactamente "FACTURACION".
+ *  - venta: referencia_externa = numero de la factura, con los datos para el asiento.
+ *  - anulacion: tipo_operacion "anulacion_factura" y referencia propia ("ANU-" + numero; si se
+ *    repitiera el numero de la venta lo tomarian como duplicado), apuntando a la venta original.
  */
-function armarMensaje({ factura, tipo }) {
+function armarMensaje({ factura, tipo, anulacion = null }) {
+  if (tipo === "anulacion") {
+    return {
+      sistema_origen: "FACTURACION",
+      referencia_externa: `ANU-${factura.numero}`,
+      tipo_operacion: "anulacion_factura",
+      fecha_documento: fechaBolivia(anulacion?.autorizado_en || new Date()),
+      datos: {
+        id_documento_original: factura.numero,
+        tipo_documento_original: "venta",
+        motivo: String(anulacion?.motivo || "").trim(),
+      },
+    };
+  }
+
   const fecha = fechaBolivia(factura.fecha);
   return {
     sistema_origen: "FACTURACION",
     referencia_externa: factura.numero,
-    tipo_operacion: tipo,
+    tipo_operacion: "venta",
     fecha_documento: fecha,
     datos: {
       fecha_documento: fecha,
@@ -44,17 +61,24 @@ function armarMensaje({ factura, tipo }) {
 
 /**
  * Un intento de publicacion; deja registrado el resultado.
- * Los atributos son informativos (Contabilidad no los lee); la anulacion lleva ahi su motivo.
+ * Contabilidad solo acepta la anulacion si la venta ya le llego: mientras la venta no este
+ * Enviado, la anulacion espera (sin gastar intentos) y el worker la vuelve a revisar.
  */
 async function intentarEnvio(envio) {
+  if (envio.tipo === "anulacion") {
+    const venta = await repo.obtenerPorFactura(envio.factura_id, "venta");
+    if (!venta || venta.estado !== "Enviado") {
+      return repo.posponer(envio.id, cfg.BACKOFF_BASE_SEG, "Esperando que la venta llegue a Contabilidad");
+    }
+  }
+
   const payload = envio.payload || (await repo.obtener(envio.id, { conPayload: true })).payload;
   const r = await publicar(payload, {
     tipo: TIPOS[envio.tipo],
-    tipo_operacion: envio.tipo,
+    tipo_operacion: payload.tipo_operacion,
     factura_id: envio.factura_id,
     referencia_externa: payload.referencia_externa,
     idempotency_key: `factura-${envio.factura_id}-${envio.tipo}`,
-    motivo_anulacion: envio.motivo_anulacion,
     origen: "facturacion",
     grupo: "A",
   });
@@ -65,6 +89,7 @@ async function intentarEnvio(envio) {
 /**
  * Registra y publica el envio 'venta' o 'anulacion' de una factura.
  * Cada factura se envia una sola vez por tipo: si ya existe se devuelve ese envio sin publicar de nuevo.
+ * Al anular una factura cuya venta nunca se envio, primero se envia la venta.
  * Sin topico configurado no registra nada (desarrollo local sin credenciales).
  */
 async function enviarFactura(facturaId, tipo) {
@@ -79,13 +104,16 @@ async function enviarFactura(facturaId, tipo) {
     anulacion = await repo.anulacionAutorizada(facturaId);
     if (factura.estado !== "Anulada" || !anulacion)
       throw err(`La factura ${factura.numero} no tiene una anulacion autorizada.`, 409);
+    if (String(anulacion.motivo || "").trim().length < MOTIVO_MINIMO)
+      throw err(`Contabilidad exige un motivo de anulacion de al menos ${MOTIVO_MINIMO} caracteres.`, 422);
+    if (!(await repo.obtenerPorFactura(factura.id, "venta"))) await enviarFactura(factura.id, "venta");
   }
 
-  const payload = armarMensaje({ factura, tipo });
+  const payload = armarMensaje({ factura, tipo, anulacion });
   const { envio, yaExiste } = await repo.crear({ facturaId: factura.id, tipo, payload });
   if (yaExiste) return yaExiste;
   // El primer intento publica el mensaje tal como se armo (JSONB reordena las claves al guardarlo).
-  return intentarEnvio({ ...envio, payload, motivo_anulacion: anulacion?.motivo });
+  return intentarEnvio({ ...envio, payload });
 }
 
 /**

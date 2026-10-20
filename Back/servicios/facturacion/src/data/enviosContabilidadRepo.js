@@ -80,6 +80,17 @@ async function registrarFallo(id, { error, reintentable }, maxIntentos, backoffB
   return obtener(id);
 }
 
+/** Deja el envio Pendiente para mas tarde sin contar un intento (p. ej. la anulacion espera a su venta). */
+async function posponer(id, segundos, motivo) {
+  await query(
+    `UPDATE facturacion.factura_envios_contabilidad
+     SET estado = 'Pendiente', ultimo_error = $3, proximo_intento_en = now() + make_interval(secs => $2::int)
+     WHERE id = $1`,
+    [id, segundos, motivo]
+  );
+  return obtener(id);
+}
+
 /** Toma los Pendientes vencidos y los reserva 2 minutos (SKIP LOCKED: dos workers nunca toman el mismo). */
 async function tomarPendientes(limite = 10, { facturaId = null } = {}) {
   const { rows } = await query(
@@ -153,6 +164,6 @@ async function anulacionAutorizada(facturaId) {
 }
 
 module.exports = {
-  obtener, obtenerPorFactura, crear, marcarEnviado, registrarFallo, tomarPendientes,
+  obtener, obtenerPorFactura, crear, marcarEnviado, registrarFallo, posponer, tomarPendientes,
   prepararReenvio, listar, datosFactura, anulacionAutorizada,
 };

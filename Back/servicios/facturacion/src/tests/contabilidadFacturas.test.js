@@ -47,13 +47,13 @@ async function nuevaFactura() {
   return f;
 }
 
-async function anularAutorizada(facturaId) {
+async function anularAutorizada(facturaId, motivo = "Error en el NIT del cliente") {
   await pool.query(`UPDATE facturacion.facturas SET estado = 'Anulada' WHERE id = $1`, [facturaId]);
   await pool.query(
     `INSERT INTO facturacion.factura_anulaciones
        (factura_id, motivo, solicitado_por, estado, autorizado_por, autorizado_nombre, autorizado_en)
-     VALUES ($1, 'Error en el monto', 'cajero1', 'Autorizada', 'SUP-1', 'Supervisor Uno', now())`,
-    [facturaId]
+     VALUES ($1, $2, 'cajero1', 'Autorizada', 'SUP-1', 'Supervisor Uno', now())`,
+    [facturaId, motivo]
   );
 }
 
@@ -115,7 +115,7 @@ test("TDSI-22: una factura se envia una sola vez por tipo (uq_envio_factura_tipo
   assert.equal(rows[0].n, 1);
 });
 
-test("TDSI-22: la anulacion autorizada se publica como 'anulacion' (motivo en los atributos)", async () => {
+test("TDSI-22: la anulacion se publica como 'anulacion_factura' con referencia propia y la venta original", async () => {
   const f = await nuevaFactura();
   await contabilidad.enviarFactura(f.id, "venta");
   await assert.rejects(contabilidad.enviarFactura(f.id, "anulacion"), { status: 409 });
@@ -123,19 +123,63 @@ test("TDSI-22: la anulacion autorizada se publica como 'anulacion' (motivo en lo
   await anularAutorizada(f.id);
   const envio = await contabilidad.enviarFactura(f.id, "anulacion");
   assert.equal(envio.estado, "Enviado");
-  assert.equal(envio.tipo, "anulacion");
+  assert.equal(envio.tipo, "anulacion"); // tipo de la tabla (CHECK venta/anulacion)
 
   const { json, attributes } = falso.publicados[1];
-  assert.equal(json.sistema_origen, "FACTURACION");
-  assert.equal(json.referencia_externa, f.numero);
-  assert.equal(json.tipo_operacion, "anulacion");
-  assert.equal(json.datos.monto, 110);
-  assert.equal(json.datos.nit_cliente, NIT);
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+  assert.deepEqual(json, {
+    sistema_origen: "FACTURACION",
+    referencia_externa: `ANU-${f.numero}`,
+    tipo_operacion: "anulacion_factura",
+    fecha_documento: hoy,
+    datos: { id_documento_original: f.numero, tipo_documento_original: "venta", motivo: "Error en el NIT del cliente" },
+  });
   assert.equal(attributes.tipo, "FACTURA_ANULACION");
-  assert.equal(attributes.motivo_anulacion, "Error en el monto");
+  assert.equal(attributes.tipo_operacion, "anulacion_factura");
   const { rows } = await pool.query(
     `SELECT tipo FROM facturacion.factura_envios_contabilidad WHERE factura_id = $1 ORDER BY tipo DESC`, [f.id]);
   assert.deepEqual(rows.map((r) => r.tipo), ["venta", "anulacion"]);
+});
+
+test("TDSI-22: la anulacion espera (sin gastar intentos) hasta que la venta llegue a Contabilidad", async () => {
+  const f = await nuevaFactura();
+  falso.fallas.push(errorGrpc(14, "14 UNAVAILABLE"));
+  const venta = await contabilidad.enviarFactura(f.id, "venta");
+  assert.equal(venta.estado, "Pendiente");
+
+  await anularAutorizada(f.id);
+  const anulacion = await contabilidad.enviarFactura(f.id, "anulacion");
+  assert.equal(anulacion.estado, "Pendiente");
+  assert.equal(anulacion.intentos, 0);
+  assert.match(anulacion.ultimo_error, /Esperando que la venta/);
+  assert.equal(falso.publicados.length, 0);
+
+  // el worker publica primero la venta y despues la anulacion
+  await vencer(venta.id);
+  await vencer(anulacion.id);
+  await procesarPendientes({ facturaId: f.id });
+  await vencer(anulacion.id);
+  await procesarPendientes({ facturaId: f.id });
+  assert.deepEqual(falso.publicados.map((m) => m.json.tipo_operacion), ["venta", "anulacion_factura"]);
+});
+
+test("TDSI-22: al anular una factura que nunca se envio, primero se envia su venta", async () => {
+  const f = await nuevaFactura();
+  await anularAutorizada(f.id);
+  const envio = await contabilidad.enviarFactura(f.id, "anulacion");
+  assert.equal(envio.estado, "Enviado");
+  assert.deepEqual(falso.publicados.map((m) => m.json.tipo_operacion), ["venta", "anulacion_factura"]);
+});
+
+test("TDSI-22: el motivo de anulacion debe tener al menos 10 caracteres", async () => {
+  const f = await nuevaFactura();
+  await assert.rejects(
+    require("../services/anulacionesService").solicitarAnulacion({ factura_numero: f.numero, motivo: "Error", solicitado_por: "cajero1" }),
+    (e) => e.status === 400 && /10 caracteres/.test(e.message)
+  );
+  await contabilidad.enviarFactura(f.id, "venta");
+  await anularAutorizada(f.id, "Corto"); // anulacion vieja con motivo corto
+  await assert.rejects(contabilidad.enviarFactura(f.id, "anulacion"), { status: 422 });
 });
 
 test("TDSI-22: si Pub/Sub no responde queda Pendiente y el worker lo publica despues", async () => {
