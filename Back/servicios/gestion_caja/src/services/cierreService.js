@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const { aCentavos, aMonto } = require("../utils/money");
 const turnosRepo = require("../data/turnosRepo");
+const diferenciasRepo = require("../data/diferenciasRepo");
 const { obtenerReporteVentas } = require("./pagosProxy");
 const { validarSupervisor } = require("./supervisorProxy");
 
@@ -161,7 +162,7 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
  * ponga su usuario + PIN (validado via supervisorProxy.js). Ya no pide el monto
  * contado en efectivo: el cierre se basa solo en lo que registro el sistema.
  */
-async function cerrarTurno(turnoId, { supervisor_id, pin } = {}) {
+async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {}) {
   const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
   if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
   if (turno.estado === "CERRADO") throw new AppError("El turno ya fue cerrado", 409, { turnoId });
@@ -170,18 +171,36 @@ async function cerrarTurno(turnoId, { supervisor_id, pin } = {}) {
     throw new AppError("Se necesita el usuario y el PIN de un supervisor de caja para cerrar la caja.", 400);
   }
 
+  // TDSI-487: el efectivo contado es opcional; si no viene, el cierre funciona como en TDSI-26.
+  const hayContado = efectivo_contado !== undefined && efectivo_contado !== null && efectivo_contado !== "";
+  if (hayContado && !Number.isFinite(Number(efectivo_contado))) {
+    throw new AppError("El efectivo contado debe ser un numero mayor o igual a 0", 400);
+  }
+
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
+  // Si viene efectivo_contado, calculamos la diferencia
+  const arqueo = hayContado ? await compararEfectivo(turnoId, Number(efectivo_contado)) : null;
+
   const turnoCerrado = await turnosRepo.marcarCerrado(turnoId, {
-    efectivoContado: null,
-    efectivoEsperado: null,
-    diferencia: null,
-    tipoDiferencia: null,
+    efectivoContado: arqueo ? arqueo.efectivoContado : null,
+    efectivoEsperado: arqueo ? arqueo.efectivoEsperado : null,
+    diferencia: arqueo ? arqueo.diferencia : null,
+    tipoDiferencia: arqueo ? arqueo.tipoDiferencia : null,
     cerradoPor: supervisor.supervisor_id,
     cerradoPorNombre: supervisor.nombre,
   });
 
-  const reporte = await generarReporteCierre(turnoId);
+  const reporte = await generarReporteCierre(turnoId, arqueo ? arqueo.efectivoContado : null);
+
+  // TDSI-487: Registrar la diferencia si el supervisor envió el efectivo contado
+  if (arqueo && arqueo.tipoDiferencia !== "CUADRA") {
+    await diferenciasRepo.insertar({
+      turno_id: turnoId,
+      monto: arqueo.diferencia,
+      tipo: arqueo.tipoDiferencia,
+    });
+  }
 
   return { turno: turnoCerrado, reporte };
 }

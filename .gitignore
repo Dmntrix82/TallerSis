@@ -10,3 +10,6 @@ credenciales*.json
 **/credenciales*.json
 *service-account*.json
 project-a96e5fe1-*.json
+.DS_Store
+*/.DS_Store
+.patch

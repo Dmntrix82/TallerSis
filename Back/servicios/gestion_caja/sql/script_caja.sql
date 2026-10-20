@@ -188,3 +188,71 @@ ALTER TABLE caja.turnos
 ALTER TABLE caja.turnos
     ADD COLUMN IF NOT EXISTS cerrado_por        VARCHAR(60),
     ADD COLUMN IF NOT EXISTS cerrado_por_nombre VARCHAR(150);
+
+-- ==========================================================================
+-- TDSI-25: ampliar caja.autorizaciones para el flujo de solicitud de apertura
+-- --------------------------------------------------------------------------
+-- El cajero solicita abrir una caja (queda PENDIENTE), y el supervisor aprueba
+-- o rechaza con su usuario + PIN. Se agregan las columnas que el servicio
+-- necesita para guardar los datos de la solicitud y la decisión.
+-- ==========================================================================
+
+ALTER TABLE caja.autorizaciones
+  ADD COLUMN IF NOT EXISTS cajero_id             VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS cajero_nombre         VARCHAR(150),
+  ADD COLUMN IF NOT EXISTS efectivo_inicial      NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS motivo_rechazo        VARCHAR(300),
+  ADD COLUMN IF NOT EXISTS autorizado_por_nombre VARCHAR(150);
+
+CREATE INDEX IF NOT EXISTS idx_autorizaciones_pendientes
+  ON caja.autorizaciones (estado, tipo)
+  WHERE estado = 'PENDIENTE';
+
+CREATE INDEX IF NOT EXISTS idx_autorizaciones_caja
+  ON caja.autorizaciones (caja_id, estado);
+
+-- ==========================================================================
+-- TDSI-32 / TDSI-141: estado de resolucion de las diferencias de caja
+-- --------------------------------------------------------------------------
+-- Idempotente: agrega la columna y su CHECK solo si todavia no existen.
+-- ==========================================================================
+ALTER TABLE caja.diferencias_resolucion
+    ADD COLUMN IF NOT EXISTS estado VARCHAR(10) NOT NULL DEFAULT 'PENDIENTE';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'diferencias_resolucion_estado_check'
+           AND conrelid = 'caja.diferencias_resolucion'::regclass
+    ) THEN
+        ALTER TABLE caja.diferencias_resolucion
+            ADD CONSTRAINT diferencias_resolucion_estado_check
+            CHECK (estado IN ('PENDIENTE','RESUELTA'));
+    END IF;
+END $$;
+
+-- ==========================================================================
+-- TDSI-26/471: efectivo que el cajero declara contado al pedir el cierre.
+-- autorizacionService.solicitarCierre lo guarda; sin esta columna el
+-- POST /api/caja/autorizaciones/solicitar-cierre falla.
+-- ==========================================================================
+ALTER TABLE caja.autorizaciones
+  ADD COLUMN IF NOT EXISTS efectivo_contado NUMERIC(14,2);
+
+-- ==========================================================================
+-- TDSI-35 / TDSI-475: operaciones que requieren aprobacion superior
+-- --------------------------------------------------------------------------
+-- El cajero registra la operacion especial (tipo, descripcion, turno) y queda
+-- PENDIENTE; el supervisor la aprueba o rechaza con su usuario + PIN, la hora
+-- (resuelto_en) y el motivo (obligatorio al rechazar). Idempotente.
+-- ==========================================================================
+ALTER TABLE caja.aprobaciones_especiales
+  ADD COLUMN IF NOT EXISTS caja_id               VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS monto                 NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS solicitado_por_nombre VARCHAR(150),
+  ADD COLUMN IF NOT EXISTS autorizado_por_nombre VARCHAR(150),
+  ADD COLUMN IF NOT EXISTS motivo                VARCHAR(300);
+
+CREATE INDEX IF NOT EXISTS idx_aprobaciones_especiales_estado
+  ON caja.aprobaciones_especiales (estado, tipo, creado_en DESC);

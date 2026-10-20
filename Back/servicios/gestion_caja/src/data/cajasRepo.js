@@ -15,5 +15,46 @@ async function listarActivas() {
   );
   return resultado.rows;
 }
+/** TDSI-24/465: lista TODAS las cajas (activas e inactivas), para el panel del supervisor */
+async function listarTodas() {
+  const resultado = await query(
+    "SELECT id, codigo, nombre, estado FROM caja.cajas ORDER BY codigo"
+  );
+  return resultado.rows;
+}
 
-module.exports = { buscarPorCodigo, listarActivas };
+/** TDSI-24/464: devuelve los caja_id que tienen turno ABIERTO ahora mismo */
+async function obtenerCajasConTurnoAbierto() {
+  const resultado = await query(
+    "SELECT DISTINCT caja_id FROM caja.turnos WHERE estado = 'ABIERTO'"
+  );
+  return resultado.rows.map((r) => r.caja_id);
+}
+
+module.exports = {
+  buscarPorCodigo,
+  listarActivas,
+  listarTodas,
+  obtenerCajasConTurnoAbierto,
+};
+/** TDSI-24/465: lista TODAS las cajas (activas e inactivas) para el panel del supervisor */
+async function listarTodas() {
+  const resultado = await query(
+    "SELECT id, codigo, nombre, estado FROM caja.cajas ORDER BY codigo"
+  );
+  return resultado.rows;
+}
+
+/** TDSI-24/464: devuelve los caja_id que tienen turno ABIERTO ahora mismo */
+async function obtenerCajasConTurnoAbierto() {
+  const resultado = await query(
+    "SELECT DISTINCT caja_id FROM caja.turnos WHERE estado = 'ABIERTO'"
+  );
+  return resultado.rows.map((r) => r.caja_id);
+}
+module.exports = {
+  buscarPorCodigo,
+  listarActivas,
+  listarTodas,
+  obtenerCajasConTurnoAbierto,
+};
