@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { registrarPago, registrarPagoMixto, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
 import { calcularVuelto, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
+import { calcularFactura } from '../api/calculoFactura.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 // TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
 const BILLETES_RAPIDOS = [10, 20, 50, 100, 200]
+const ITEM_VACIO = { cantidad: '', precioUnitario: '' }
 
 const METODOS_PAGO = [
   {
@@ -150,6 +152,15 @@ function Pagos() {
   const [errorVuelto, setErrorVuelto] = useState(null)
   const [calculandoVuelto, setCalculandoVuelto] = useState(false)
 
+  // TDSI-40: detalle de factura por ítems (cantidad x precio unitario), opcional.
+  // Cuando se usa, el monto se calcula solo y reemplaza la entrada manual.
+  const [usarDetalle, setUsarDetalle] = useState(false)
+  const [itemsDetalle, setItemsDetalle] = useState([ITEM_VACIO])
+  const [descuentoDetalle, setDescuentoDetalle] = useState('')
+  const [calculoFactura, setCalculoFactura] = useState(null)
+  const [calculandoFactura, setCalculandoFactura] = useState(false)
+  const [errorCalculoFactura, setErrorCalculoFactura] = useState(null)
+
   const esMixto = datos.metodos.length === 2
   const esQrSimple = datos.metodos.length === 1 && datos.metodos[0] === 'QR'
   const mostrarPanelMixto = esMixto && paso === 'formulario'
@@ -186,6 +197,49 @@ function Pagos() {
     const intervalo = setInterval(recalcular, 1000)
     return () => clearInterval(intervalo)
   }, [cobroQr?.expira_en, cobroQr?.estado])
+
+  // TDSI-40/537: recalcula en el backend (debounced) cada vez que cambia algun
+  // item o el descuento, y usa el total resultante como el monto de la venta.
+  useEffect(() => {
+    if (!usarDetalle) {
+      return
+    }
+
+    const itemsValidos = itemsDetalle.filter(
+      (item) => Number(item.cantidad) > 0 && Number(item.precioUnitario) > 0,
+    )
+    if (itemsValidos.length === 0) {
+      setCalculoFactura(null)
+      setErrorCalculoFactura(null)
+      actualizarCampo('monto', '')
+      return
+    }
+
+    setCalculandoFactura(true)
+    setErrorCalculoFactura(null)
+    const temporizador = setTimeout(async () => {
+      try {
+        const resultado = await calcularFactura({
+          items: itemsValidos.map((item) => ({
+            cantidad: Number(item.cantidad),
+            precio_unitario: Number(item.precioUnitario),
+          })),
+          descuento: Number(descuentoDetalle) || 0,
+        })
+        setCalculoFactura(resultado)
+        actualizarCampo('monto', String(resultado.total))
+      } catch (err) {
+        setCalculoFactura(null)
+        setErrorCalculoFactura(err.message)
+        actualizarCampo('monto', '')
+      } finally {
+        setCalculandoFactura(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(temporizador)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usarDetalle, JSON.stringify(itemsDetalle), descuentoDetalle])
 
   function actualizarCampo(campo, valor) {
     setDatos((prev) => ({ ...prev, [campo]: valor }))
@@ -244,6 +298,27 @@ function Pagos() {
       numeroDocumento: tipoDocumento === 'NINGUNO' ? '' : prev.numeroDocumento,
       razonSocial: tipoDocumento === 'NINGUNO' ? '' : prev.razonSocial,
     }))
+  }
+
+  function toggleUsarDetalle(valor) {
+    setUsarDetalle(valor)
+    setCalculoFactura(null)
+    setErrorCalculoFactura(null)
+    if (!valor) {
+      actualizarCampo('monto', '')
+    }
+  }
+
+  function agregarItemDetalle() {
+    setItemsDetalle((prev) => [...prev, ITEM_VACIO])
+  }
+
+  function quitarItemDetalle(indice) {
+    setItemsDetalle((prev) => prev.filter((_, i) => i !== indice))
+  }
+
+  function actualizarItemDetalle(indice, campo, valor) {
+    setItemsDetalle((prev) => prev.map((item, i) => (i === indice ? { ...item, [campo]: valor } : item)))
   }
 
   // Si ese NIT/CI ya se uso en un pago anterior, se autocompleta la razon social
@@ -482,6 +557,11 @@ function Pagos() {
     setPagoRegistrado(null)
     setEnvioFactura(null)
     setCobroQr(null)
+    setUsarDetalle(false)
+    setItemsDetalle([ITEM_VACIO])
+    setDescuentoDetalle('')
+    setCalculoFactura(null)
+    setErrorCalculoFactura(null)
     setPaso('formulario')
   }
 
@@ -496,8 +576,118 @@ function Pagos() {
               {/* El ID de transacción ya no lo escribe el cajero: lo genera el sistema al confirmar el cobro. */}
               <label className="campo">
                 Monto (Bs.)
-                <input type="number" step="0.01" value={datos.monto} onChange={(e) => actualizarCampo('monto', e.target.value)} />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={datos.monto}
+                  readOnly={usarDetalle}
+                  onChange={(e) => actualizarCampo('monto', e.target.value)}
+                />
               </label>
+              {usarDetalle && <p className="ayuda-detalle-factura">El monto se calcula a partir del detalle de ítems de abajo.</p>}
+
+              <div className="detalle-factura-toggle">
+                <p>¿Desea calcular el monto a partir de un detalle de ítems (cantidad × precio)?</p>
+                <div className="factura-correo-acciones">
+                  <button
+                    type="button"
+                    className={`btn${!usarDetalle ? '' : ' btn-secundario'}`}
+                    onClick={() => toggleUsarDetalle(false)}
+                  >
+                    No
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn${usarDetalle ? '' : ' btn-secundario'}`}
+                    onClick={() => toggleUsarDetalle(true)}
+                  >
+                    Sí
+                  </button>
+                </div>
+              </div>
+
+              {usarDetalle && (
+                <div className="detalle-factura">
+                  <table className="detalle-factura-tabla">
+                    <thead>
+                      <tr>
+                        <th>Ítem</th>
+                        <th>Cantidad</th>
+                        <th>Precio unit. (Bs.)</th>
+                        <th>Subtotal</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itemsDetalle.map((item, indice) => {
+                        const calculado = calculoFactura?.items?.[indice]
+                        return (
+                          <tr key={indice}>
+                            <td>{indice + 1}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={item.cantidad}
+                                onChange={(e) => actualizarItemDetalle(indice, 'cantidad', e.target.value)}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.precioUnitario}
+                                onChange={(e) => actualizarItemDetalle(indice, 'precioUnitario', e.target.value)}
+                              />
+                            </td>
+                            <td>{calculado ? `Bs. ${calculado.subtotal.toFixed(2)}` : '—'}</td>
+                            <td>
+                              {itemsDetalle.length > 1 && (
+                                <button
+                                  type="button"
+                                  className="detalle-factura-quitar"
+                                  onClick={() => quitarItemDetalle(indice)}
+                                >
+                                  Quitar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+
+                  <button type="button" className="btn btn-secundario" onClick={agregarItemDetalle}>
+                    + Agregar ítem
+                  </button>
+
+                  <label className="campo" style={{ marginTop: '1rem' }}>
+                    Descuento (Bs., opcional)
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={descuentoDetalle}
+                      onChange={(e) => setDescuentoDetalle(e.target.value)}
+                    />
+                  </label>
+
+                  {calculandoFactura && <p>Calculando...</p>}
+                  {errorCalculoFactura && <p className="error">{errorCalculoFactura}</p>}
+
+                  {calculoFactura && !calculandoFactura && (
+                    <ul className="detalle-factura-resumen">
+                      <li>Subtotal: Bs. {calculoFactura.subtotal.toFixed(2)}</li>
+                      <li>IVA (13%): Bs. {calculoFactura.impuesto.toFixed(2)}</li>
+                      {calculoFactura.descuento > 0 && <li>Descuento: -Bs. {calculoFactura.descuento.toFixed(2)}</li>}
+                      <li className="detalle-factura-total">Total: Bs. {calculoFactura.total.toFixed(2)}</li>
+                    </ul>
+                  )}
+                </div>
+              )}
 
               <fieldset className="metodo-opciones" style={{ border: 'none', padding: 0 }}>
                 <legend>Método de pago (puede elegir hasta 2 para un pago mixto)</legend>

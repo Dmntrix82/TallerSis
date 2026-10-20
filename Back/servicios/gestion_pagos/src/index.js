@@ -7,6 +7,7 @@ const ventaOnlineRoutes = require("./routes/ventaOnlineRoutes");
 const authRoutes = require("./routes/authRoutes");
 const tableroRoutes = require("./routes/tableroRoutes");
 const facturaDocumentoRoutes = require("./routes/facturaDocumentoRoutes");
+const calculoFacturaRoutes = require("./routes/calculoFacturaRoutes");
 const resumenVentasRoutes = require("./routes/resumenVentasRoutes");
 const monitoreoRoutes = require("./routes/monitoreoRoutes");
 const revisionRoutes = require("./routes/revisionRoutes");
@@ -48,6 +49,7 @@ app.use("/api/tablero", tableroRoutes); // TDSI-16
 app.use("/api/facturas", facturaDocumentoRoutes); // TDSI-108
 app.use("/api/cobros", cobrosRoutes); // TDSI-29/549
 app.use("/api/cobros", cobroQrRoutes); // TDSI-39/531
+app.use("/api/facturas", calculoFacturaRoutes); // TDSI-40/537
 
 app.use(errorHandler);
 
