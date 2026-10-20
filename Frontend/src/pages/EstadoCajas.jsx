@@ -102,7 +102,7 @@ function EstadoCajas() {
       {!cargando && !error && cajasFiltradas.length === 0 && (
         <p className="orden-mensaje orden-mensaje-pendiente cajas-mensaje">
           {hayFiltros
-            ? 'No hay cajas que coincidan con los filtros seleccionados.'
+            ? 'Sin cajas: ninguna caja coincide con los filtros seleccionados.'
             : 'Todavía no hay cajas registradas en el sistema.'}
         </p>
       )}

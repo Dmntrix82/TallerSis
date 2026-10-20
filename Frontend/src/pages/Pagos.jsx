@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 
 // TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
 const BILLETES_RAPIDOS = [10, 20, 50, 100, 200]
+const MENSAJE_MONTO_INSUFICIENTE = 'El monto recibido es insuficiente: es menor al total a cobrar.'
 const ITEM_VACIO = { cantidad: '', precioUnitario: '' }
 
 const METODOS_PAGO = [
@@ -117,7 +118,7 @@ function validarFormulario(datos) {
       return 'Ingrese cuánto dinero recibió del cliente.'
     }
     if (Number(datos.montoRecibido) < Number(datos.monto)) {
-      return 'El monto recibido es insuficiente: es menor al total a cobrar.'
+      return MENSAJE_MONTO_INSUFICIENTE
     }
   }
   if (datos.tipoDocumento !== 'NINGUNO') {
@@ -269,6 +270,8 @@ function Pagos() {
         if (!cancelado) {
           setVuelto(r.data.vuelto)
           setErrorVuelto(null)
+          // TDSI-573: el monto ya alcanza, asi que el aviso de "insuficiente" deja de aplicar
+          setErrorValidacion((actual) => (actual === MENSAJE_MONTO_INSUFICIENTE ? null : actual))
         }
       } catch (err) {
         if (!cancelado) {
@@ -733,7 +736,8 @@ function Pagos() {
                   </div>
 
                   {calculandoVuelto && <p className="ayuda-mixto">Calculando vuelto...</p>}
-                  {errorVuelto && <p className="error">{errorVuelto}</p>}
+                  {/* TDSI-573: si ya se muestra la validacion del formulario, no repetir el aviso */}
+                  {errorVuelto && !errorValidacion && <p className="error">{errorVuelto}</p>}
                   {vuelto !== null && !calculandoVuelto && (
                     <p className="vuelto-destacado">Vuelto a entregar: Bs. {vuelto.toFixed(2)}</p>
                   )}

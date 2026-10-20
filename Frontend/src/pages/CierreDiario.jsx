@@ -395,8 +395,8 @@ export default function CierreDiario() {
                         <span className={`envio-estado ${clase}`}>
                           <span aria-hidden="true" />{etiqueta}
                         </span>
-                        {clave === 'ERROR' && envio.mensaje_error && (
-                          <small className="envio-detalle-error">{envio.mensaje_error}</small>
+                        {clave === 'ERROR' && (envio.mensaje_error ?? envio.ultimo_error) && (
+                          <small className="envio-detalle-error">{envio.mensaje_error ?? envio.ultimo_error}</small>
                         )}
                       </td>
                       <td className="cierre-envios-acciones">

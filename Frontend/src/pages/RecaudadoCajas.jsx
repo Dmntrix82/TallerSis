@@ -77,7 +77,7 @@ function RecaudadoCajas() {
 
       {!cargando && !error && cajas.length > 0 && !hayMovimientos && (
         <p className="orden-mensaje orden-mensaje-pendiente cajas-mensaje">
-          Ninguna caja tuvo movimientos en esta fecha.
+          Sin movimientos: ninguna caja tuvo ingresos ni egresos en esta fecha.
         </p>
       )}
 

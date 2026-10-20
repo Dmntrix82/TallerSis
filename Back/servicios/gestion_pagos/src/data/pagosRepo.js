@@ -151,7 +151,8 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
             MAX(tipo_documento) AS tipo_documento,
             MAX(telefono) AS telefono,
             MAX(caja_id) AS caja_id,
-            bool_and(estado = 'Anulado') AS anulado
+            bool_and(estado = 'Anulado') AS anulado,
+            bool_or(estado = 'AnulacionSolicitada') AS anulacion_solicitada
        FROM pagos.transacciones
       WHERE ${condiciones.join(" AND ")}
       GROUP BY id_transaccion
@@ -169,7 +170,8 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
     tipo_documento: r.tipo_documento,
     telefono: r.telefono,
     caja_id: r.caja_id,
-    estado: r.anulado ? 'Anulado' : 'Registrado',
+    // TDSI-28: la venta con una anulacion pendiente se muestra como "Anulacion solicitada"
+    estado: r.anulado ? 'Anulado' : r.anulacion_solicitada ? 'AnulacionSolicitada' : 'Registrado',
   }));
 }
 
@@ -350,12 +352,14 @@ async function listarBitacoraModificaciones(id_transaccion) {
 /**
  * TDSI-323: reporte de ventas de una caja en un rango de tiempo (el turno actual),
  * para el cierre de caja: cuanto se gano por metodo, cuantas ventas, cuantas anuladas.
+ * TDSI-30: solo cuentan como ingreso los cobros aprobados; un cobro rechazado o
+ * pendiente no entro a la caja (igual que en monitoreo y en metodos de pago).
  */
 async function reporteTurno(caja_id, desde, hasta) {
   const { rows: porMetodo } = await query(
     `SELECT metodo, SUM(monto) AS total, COUNT(*)::int AS operaciones
        FROM pagos.transacciones
-      WHERE caja_id = $1 AND estado = 'Registrado' AND fecha >= $2 AND fecha <= $3
+      WHERE caja_id = $1 AND estado = 'Registrado' AND estado_pago = 'APROBADA' AND fecha >= $2 AND fecha <= $3
       GROUP BY metodo`,
     [caja_id, desde, hasta]
   );
@@ -364,7 +368,8 @@ async function reporteTurno(caja_id, desde, hasta) {
     `SELECT id_transaccion, SUM(monto) AS total, bool_and(estado = 'Anulado') AS anulado
        FROM pagos.transacciones
       WHERE caja_id = $1 AND fecha >= $2 AND fecha <= $3
-      GROUP BY id_transaccion`,
+      GROUP BY id_transaccion
+     HAVING bool_and(estado = 'Anulado') OR bool_and(estado_pago = 'APROBADA')`,
     [caja_id, desde, hasta]
   );
 
@@ -512,12 +517,14 @@ async function historialPorDocumento(tipo_documento, numero) {
 /**
  * TDSI-328: totales de todas las ventas del sistema (todas las cajas), para el
  * tablero del administrador -- cuanto se ha ganado en total desde el inicio.
+ * TDSI-21: tambien alimenta el Lote de Cierre Diario, asi que solo cuentan los
+ * cobros aprobados (un cobro rechazado o pendiente no es ingreso).
  */
 async function totalesGenerales(desde, hasta) {
   const { rows: porMetodo } = await query(
     `SELECT metodo, SUM(monto) AS total, COUNT(*)::int AS operaciones
        FROM pagos.transacciones
-      WHERE estado = 'Registrado' AND fecha >= $1 AND fecha <= $2
+      WHERE estado = 'Registrado' AND estado_pago = 'APROBADA' AND fecha >= $1 AND fecha <= $2
       GROUP BY metodo`,
     [desde, hasta]
   );
@@ -526,7 +533,8 @@ async function totalesGenerales(desde, hasta) {
     `SELECT id_transaccion, SUM(monto) AS total, bool_and(estado = 'Anulado') AS anulado
        FROM pagos.transacciones
       WHERE fecha >= $1 AND fecha <= $2
-      GROUP BY id_transaccion`,
+      GROUP BY id_transaccion
+     HAVING bool_and(estado = 'Anulado') OR bool_and(estado_pago = 'APROBADA')`,
     [desde, hasta]
   );
 

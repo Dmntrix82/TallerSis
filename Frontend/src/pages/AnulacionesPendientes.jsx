@@ -3,6 +3,14 @@ import { listarAnulacionesPendientes, autorizarAnulacionPendiente } from '../api
 
 const CREDENCIALES_INICIAL = { supervisor_id: '', pin: '', observacion: '' }
 
+// TDSI-565: estado de la factura en la bandeja (las resueltas se quedan con su nuevo estado
+// hasta que se recargue la pantalla, como en las bandejas de apertura y cierre).
+const ESTADOS = {
+  AnulacionSolicitada: { texto: 'Anulación solicitada', clase: 'badge-estado--solicitada' },
+  Anulado: { texto: 'Anulada', clase: '' },
+  Registrado: { texto: 'Emitida', clase: 'badge-estado--emitida' },
+}
+
 // TDSI-28/563-566: bandeja del administrador con las solicitudes de anulación
 // que quedaron en espera porque no había un supervisor presente en la caja.
 function AnulacionesPendientes() {
@@ -75,8 +83,11 @@ function AnulacionesPendientes() {
             ? `La factura ${solicitudElegida.id_transaccion} quedó Anulada.`
             : `Se rechazó la solicitud de ${solicitudElegida.id_transaccion}; la venta sigue Emitida.`,
       })
+      const elegida = solicitudElegida
+      setSolicitudes((prev) =>
+        prev.map((s) => (s.id === elegida.id ? { ...s, estado: decision === 'APROBAR' ? 'Anulado' : 'Registrado' } : s))
+      )
       cerrar()
-      await cargar()
     } catch (err) {
       // TDSI-610: PIN incorrecto -- se muestra el error y la factura no cambia de estado.
       setErrorCredenciales(err.message)
@@ -109,11 +120,15 @@ function AnulacionesPendientes() {
               <th>Motivo</th>
               <th>Solicitado por</th>
               <th>Fecha</th>
+              <th>Estado</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {solicitudes.map((s) => (
+            {solicitudes.map((s) => {
+              const estado = ESTADOS[s.estado ?? 'AnulacionSolicitada'] ?? { texto: s.estado, clase: '' }
+              const pendiente = !s.estado || s.estado === 'AnulacionSolicitada'
+              return (
               <tr key={s.id}>
                 <td>{s.id_transaccion}</td>
                 <td>{s.razon_social || 'Consumidor final'}</td>
@@ -121,16 +136,24 @@ function AnulacionesPendientes() {
                 <td style={{ maxWidth: '240px' }}>{s.motivo}</td>
                 <td>{s.solicitado_por || '-'}</td>
                 <td>{new Date(s.solicitado_en).toLocaleString()}</td>
+                <td>
+                  <span className={`badge-estado ${estado.clase}`}>{estado.texto}</span>
+                </td>
                 <td style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button type="button" className="btn" onClick={() => abrir(s, 'APROBAR')}>
-                    Aprobar
-                  </button>
-                  <button type="button" className="btn btn-secundario" onClick={() => abrir(s, 'RECHAZAR')}>
-                    Rechazar
-                  </button>
+                  {pendiente && (
+                    <>
+                      <button type="button" className="btn" onClick={() => abrir(s, 'APROBAR')}>
+                        Aprobar
+                      </button>
+                      <button type="button" className="btn btn-secundario" onClick={() => abrir(s, 'RECHAZAR')}>
+                        Rechazar
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       )}
