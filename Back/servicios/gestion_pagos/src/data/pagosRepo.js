@@ -590,11 +590,40 @@ async function obtenerPagoMixtoPorTransaccion(id_transaccion) {
   };
 }
 
+/** TDSI-38/527: trae el token de verificacion de una venta, o null si no tiene (Mixto comparte uno solo entre sus filas). */
+async function obtenerTokenVerificacion(id_transaccion) {
+  const { rows } = await query(
+    `SELECT token_verificacion FROM pagos.transacciones WHERE id_transaccion = $1 LIMIT 1`,
+    [id_transaccion]
+  );
+  return rows[0]?.token_verificacion || null;
+}
+
+/** TDSI-38/527: guarda el token (en todas las filas de la venta) solo si todavia no tenia uno. */
+async function guardarTokenVerificacion(id_transaccion, token) {
+  await query(
+    `UPDATE pagos.transacciones SET token_verificacion = $2 WHERE id_transaccion = $1 AND token_verificacion IS NULL`,
+    [id_transaccion, token]
+  );
+}
+
+/** TDSI-38/528: busca la venta por su token de verificacion (para el QR escaneado). */
+async function buscarPorTokenVerificacion(token) {
+  const { rows } = await query(
+    `SELECT * FROM pagos.transacciones WHERE token_verificacion = $1`,
+    [token]
+  );
+  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
+}
+
 module.exports = {
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
   buscarTodasTransaccionesPorIdTransaccion,
   buscarRazonSocialPorDocumento,
+  obtenerTokenVerificacion,
+  guardarTokenVerificacion,
+  buscarPorTokenVerificacion,
   listarPorCajero,
   anularTransaccion,
   crearSolicitudAnulacion,

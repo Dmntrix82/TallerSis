@@ -2,6 +2,7 @@ const { Router } = require("express");
 const { verificarToken } = require("../middlewares/verificarToken");
 const { obtenerDocumentoDeFacturacion } = require("../services/facturaDocumentoProxy");
 const { modificarVenta, listarBitacoraModificaciones } = require("../services/ventasCajeroService");
+const { obtenerFacturaPorToken } = require("../services/verificacionFacturaService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -23,6 +24,12 @@ router.put("/:numero/modificar", wrap(async (req, res) => {
 // TDSI-546: historial de modificaciones de esa venta (valor anterior y nuevo).
 router.get("/:numero/bitacora", wrap(async (req, res) => {
   const data = await listarBitacoraModificaciones(req.params.numero);
+  res.json({ ok: true, data });
+}));
+
+// TDSI-38/528: endpoint publico (sin login) al que lleva el QR impreso en la factura.
+router.get("/verificar/:token", wrap(async (req, res) => {
+  const data = await obtenerFacturaPorToken(req.params.token);
   res.json({ ok: true, data });
 }));
 

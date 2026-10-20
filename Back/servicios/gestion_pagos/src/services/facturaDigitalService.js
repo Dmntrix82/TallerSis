@@ -1,24 +1,14 @@
-const crypto = require("crypto");
 const { AppError } = require("../utils/AppError");
 const pagosRepo = require("../data/pagosRepo");
 const facturaEmailRepo = require("../data/facturaEmailRepo");
 const { enviarFacturaPorCorreo } = require("./emailService");
 const { generarFacturaPdfBuffer } = require("./facturaPdfService");
+const { obtenerOCrearToken, urlVerificacion } = require("./verificacionFacturaService");
 
 // Datos fijos del negocio para el encabezado de la factura digital.
 // NIT simulado: este proyecto es academico y no tiene integracion real con el SIN.
 const EMPRESA = { nombre: "TallerSis", direccion: "Av. Principal s/n, Bolivia", nit: "1009876015" };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Codigo cosmetico para el QR/pie de la factura (no es una validacion fiscal real, es solo de verificacion interna). */
-function generarCodigoVerificacion(id_transaccion, fecha) {
-  return crypto
-    .createHash("sha256")
-    .update(`${id_transaccion}|${fecha}`)
-    .digest("hex")
-    .slice(0, 32)
-    .toUpperCase();
-}
 
 /**
  * Extension de TDSI-107/108: en este proyecto todavia no hay catalogo de productos,
@@ -39,6 +29,10 @@ async function construirFacturaDigital(id_transaccion) {
   const primera = transacciones[0];
   const total = transacciones.reduce((acc, t) => acc + t.monto, 0);
 
+  // TDSI-38/529: token real (se guarda en la base) para el QR que lleva al
+  // cliente a verificar la factura, no el codigo cosmetico que habia antes.
+  const tokenVerificacion = await obtenerOCrearToken(id_transaccion);
+
   return {
     empresa: EMPRESA,
     comprobante: {
@@ -47,7 +41,8 @@ async function construirFacturaDigital(id_transaccion) {
       caja_id: primera.caja_id || null,
       cajero: primera.cajero || null,
       tipo_pago: primera.tipo_pago,
-      codigoVerificacion: generarCodigoVerificacion(id_transaccion, primera.fecha),
+      tokenVerificacion,
+      urlVerificacion: urlVerificacion(tokenVerificacion),
       anulada: primera.estado === "Anulado",
     },
     cliente: {
