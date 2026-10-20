@@ -17,6 +17,8 @@ function obtenerCliente() {
 /** Nombre completo de la suscripcion: acepta "projects/<p>/subscriptions/<s>" o solo "<s>". */
 function nombreSuscripcion(suscripcion = cfg.RESPUESTAS_SUBSCRIPTION) {
   if (!suscripcion) return null;
+  if (suscripcion.includes("/topics/"))
+    throw new Error("CONTABILIDAD_RESPUESTAS_SUBSCRIPTION tiene un topico; debe ser una suscripcion (projects/<p>/subscriptions/<nombre> o solo <nombre>)");
   if (suscripcion.startsWith("projects/")) return suscripcion;
   const proyecto = cfg.GOOGLE_CREDENTIALS?.project_id || (cfg.PUBSUB_TOPIC || "").split("/")[1];
   return `projects/${proyecto}/subscriptions/${suscripcion}`;

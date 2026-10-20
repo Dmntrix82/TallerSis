@@ -45,6 +45,12 @@ async function procesarRespuestas() {
 
 function iniciar() {
   if (!cfg.RESPUESTAS_SUBSCRIPTION) return;
+  try {
+    subscriber.nombreSuscripcion();
+  } catch (e) {
+    console.error(`[contabilidad] No se leen las respuestas: ${e.message}`); // configuracion invalida: el servicio sigue
+    return;
+  }
   const timer = setInterval(procesarRespuestas, cfg.RESPUESTAS_INTERVALO_SEG * 1000);
   timer.unref();
   console.log(`[contabilidad] Leyendo respuestas de ${subscriber.nombreSuscripcion()} cada ${cfg.RESPUESTAS_INTERVALO_SEG} s`);

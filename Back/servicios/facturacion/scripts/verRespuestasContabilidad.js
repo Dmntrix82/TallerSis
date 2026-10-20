@@ -42,10 +42,17 @@ async function mirar() {
     const r = interpretar(m.texto);
     if (r) {
       const detalle = r.resultado === "aceptado" ? `asiento Nº ${r.numeroAsiento}` : `motivo: ${r.motivo}`;
-      console.log(`${r.referencia} -> ${r.resultado} (${detalle})   [messageId ${m.messageId}, ${m.publicadoEn}]`);
+      console.log(`${r.referencia} -> ${r.resultado} (${detalle})`);
     } else {
-      console.log(`otro mensaje [messageId ${m.messageId}, ${m.publicadoEn}]: ${m.texto.slice(0, 300)}`);
+      console.log("otro mensaje");
     }
+    // messageId, fecha/hora (UTC y Bolivia) y cuerpo completo: sirve como evidencia del mensaje
+    const bolivia = m.publicadoEn ? new Date(m.publicadoEn).toLocaleString("es-BO", { timeZone: "America/La_Paz" }) : "";
+    console.log(`  messageId: ${m.messageId}\n  publicado: ${m.publicadoEn} (Bolivia: ${bolivia})`);
+    if (Object.keys(m.atributos).length) console.log(`  atributos: ${JSON.stringify(m.atributos)}`);
+    let cuerpo = m.texto;
+    try { cuerpo = JSON.stringify(JSON.parse(m.texto), null, 2); } catch { /* texto plano */ }
+    console.log(cuerpo.replace(/^/gm, "  ") + "\n");
   }
   await subscriber.liberar(mensajes.map((m) => m.ackId));
 }
