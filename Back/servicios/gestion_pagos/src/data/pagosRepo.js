@@ -25,6 +25,71 @@ async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tip
   return { ...rows[0], monto: num(rows[0].monto), monto_recibido: num(rows[0].monto_recibido), vuelto: num(rows[0].vuelto) };
 }
 
+// ---------- Cobro con QR (TDSI-39/155) ----------
+
+/**
+ * Crea el registro de cobro pendiente: la referencia interna se genera con
+ * el mismo correlativo de la tabla (igual que VTA-NNNNNN en transacciones),
+ * asi queda unica por construccion.
+ */
+async function crearCobroQr({ monto, minutosVencimiento, caja_id, cajero }) {
+  const { rows } = await query(
+    `WITH nuevo AS (
+       SELECT nextval(pg_get_serial_sequence('pagos.cobros_qr', 'id')) AS id
+     )
+     INSERT INTO pagos.cobros_qr
+       (id, referencia, monto, expira_en, caja_id, cajero)
+     SELECT id, 'COB-' || lpad(id::text, 6, '0'), $1, now() + ($2 || ' minutes')::interval, $3, $4
+     FROM nuevo
+     RETURNING *`,
+    [monto, minutosVencimiento, caja_id || null, cajero || null]
+  );
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
+/** TDSI-532: consultar el estado actual de un cobro pendiente (Pendiente/Pagado/Expirado). */
+async function obtenerCobroQrPorId(id) {
+  const { rows } = await query(`SELECT * FROM pagos.cobros_qr WHERE id = $1`, [id]);
+  if (!rows.length) return null;
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
+/**
+ * TDSI-533/534: el cajero confirma a mano que vio llegar el deposito. El
+ * WHERE hace que esto sea atomico por construccion: si el cobro ya estaba
+ * Pagado, Expirado, o si ya paso su expira_en (aunque nadie lo haya marcado
+ * Expirado todavia), no actualiza ninguna fila y devuelve null -- asi un
+ * cobro vencido nunca se puede confirmar, se haya "limpiado" o no.
+ */
+async function confirmarCobroQr(id, confirmado_por) {
+  const { rows } = await query(
+    `UPDATE pagos.cobros_qr
+     SET estado = 'Pagado', confirmado_en = now(), confirmado_por = $2
+     WHERE id = $1 AND estado = 'Pendiente' AND expira_en >= now()
+     RETURNING *`,
+    [id, confirmado_por]
+  );
+  if (!rows.length) return null;
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
+/**
+ * TDSI-534: pasa un cobro Pendiente vencido a Expirado. Se llama "de paso"
+ * cada vez que se consulta o se intenta confirmar un cobro -- no hace falta
+ * un cron aparte, con que se revise en esos dos puntos alcanza.
+ */
+async function expirarCobroQrSiVencido(id) {
+  const { rows } = await query(
+    `UPDATE pagos.cobros_qr
+     SET estado = 'Expirado'
+     WHERE id = $1 AND estado = 'Pendiente' AND expira_en < now()
+     RETURNING *`,
+    [id]
+  );
+  if (!rows.length) return null;
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
 /** Todas las filas de una misma venta (una sola si es pago Simple, varias si es Mixto). */
 async function buscarTransaccionesPorIdTransaccion(id_transaccion) {
   const { rows } = await query(
@@ -617,6 +682,10 @@ async function buscarPorTokenVerificacion(token) {
 }
 
 module.exports = {
+  crearCobroQr,
+  obtenerCobroQrPorId,
+  confirmarCobroQr,
+  expirarCobroQrSiVencido,
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
   buscarTodasTransaccionesPorIdTransaccion,
