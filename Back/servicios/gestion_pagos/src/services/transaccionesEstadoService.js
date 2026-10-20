@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/transaccionesEstadoRepo");
 const { esEstadoValido, puedeCambiar } = require("../constants/estadosTransaccion");
+const { emitirActualizacion } = require("../utils/tableroEvents");
 
 // TDSI-362: cache corto para consultas repetidas (polling del Sistema Cliente).
 // Se invalida al cambiar el estado, asi nunca devuelve un valor viejo.
@@ -65,7 +66,8 @@ async function actualizarEstado(id, { estado, motivo, origen } = {}) {
     { motivo: motivo?.trim() || null, origen: origen || "SISTEMA" }
   );
 
-  cache.delete(txId);
+    cache.delete(txId);
+  emitirActualizacion(); // TDSI-123: el monitoreo en vivo muestra el nuevo estado (ej. PENDIENTE -> APROBADA)
   return { ...formatear(r.transaccion), estado_anterior: r.anterior };
 }
 

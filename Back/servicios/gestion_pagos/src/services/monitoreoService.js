@@ -1,0 +1,113 @@
+const { AppError } = require("../utils/AppError");
+const repo = require("../data/monitoreoRepo");
+const { validarFechaDia } = require("../utils/fechaLocal");
+
+const LIMITE_POR_DEFECTO = 5;
+const LIMITE_MAXIMO = 20;
+
+function validarTextoOpcional(valor, campo) {
+  if (valor === undefined || valor === null) return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+  if (texto.length > 60) throw new AppError(`El campo '${campo}' admite hasta 60 caracteres.`, 400, { [campo]: valor });
+  return texto;
+}
+
+function validarLimite(valor) {
+  if (valor === undefined || valor === null || valor === "") return LIMITE_POR_DEFECTO;
+  const n = Number(valor);
+  if (!Number.isInteger(n) || n < 1 || n > LIMITE_MAXIMO) {
+    throw new AppError(`El 'limite' debe ser un entero entre 1 y ${LIMITE_MAXIMO}.`, 400, { limite: valor });
+  }
+  return n;
+}
+
+function validarFiltros({ fecha, caja_id, cajero_id }) {
+  return {
+    fecha: validarFechaDia(fecha),
+    cajaId: validarTextoOpcional(caja_id, "caja_id"),
+    cajeroId: validarTextoOpcional(cajero_id, "cajero_id"),
+  };
+}
+
+/**
+ * TDSI-424: ultimas operaciones de cada cajero (del dia), con su estado.
+ * Devuelve un elemento por cajero, con sus operaciones de la mas reciente a la mas antigua:
+ *   [{ cajero_id, cajero, caja_id, operaciones: [{ id_transaccion, fecha, hora, metodos, monto, tipo_pago, estado, caja_id }] }]
+ * caja_id del cajero = la caja de su ultima operacion.
+ */
+async function listarUltimasOperaciones({ fecha, caja_id, cajero_id, limite } = {}) {
+  const filtros = { ...validarFiltros({ fecha, caja_id, cajero_id }), limite: validarLimite(limite) };
+
+  const filas = await repo.ultimasOperacionesPorCajero(filtros);
+
+  const porCajero = new Map();
+  for (const f of filas) {
+    if (!porCajero.has(f.cajero_id)) {
+      porCajero.set(f.cajero_id, { cajero_id: f.cajero_id, cajero: f.cajero, caja_id: f.caja_id, operaciones: [] });
+    }
+    porCajero.get(f.cajero_id).operaciones.push({
+      id_transaccion: f.id_transaccion,
+      fecha: f.fecha,
+      hora: f.hora,
+      metodos: f.metodos,
+      monto: f.monto,
+      tipo_pago: f.tipo_pago,
+      estado: f.estado,
+      caja_id: f.caja_id,
+    });
+  }
+
+  return { fecha: filtros.fecha, filtros: { caja_id: filtros.cajaId, cajero_id: filtros.cajeroId, limite: filtros.limite }, cajeros: [...porCajero.values()] };
+}
+
+/**
+ * TDSI-425: resumen en vivo por cajero (del dia): cantidad de operaciones, total vendido
+ * (solo lo APROBADO) y su ultima operacion. Tambien devuelve los totales de todos los cajeros.
+ */
+async function obtenerResumenPorCajero({ fecha, caja_id, cajero_id } = {}) {
+  const filtros = validarFiltros({ fecha, caja_id, cajero_id });
+  const cajeros = await repo.resumenPorCajero(filtros);
+
+  const totalCentavos = cajeros.reduce((acc, c) => acc + Math.round(c.total * 100), 0);
+  return {
+    fecha: filtros.fecha,
+    filtros: { caja_id: filtros.cajaId, cajero_id: filtros.cajeroId },
+    totales: {
+      cajeros: cajeros.length,
+      cantidad_operaciones: cajeros.reduce((acc, c) => acc + c.cantidad_operaciones, 0),
+      total: totalCentavos / 100,
+    },
+    cajeros,
+  };
+}
+
+/**
+ * TDSI-426/123: todo lo que necesita el panel "Monitoreo de cajeros" en una sola respuesta:
+ * una tarjeta por cajero con su resumen (TDSI-425) y sus ultimas operaciones (TDSI-424).
+ * "actualizado_en" es la hora del servidor en que se armo la respuesta (el panel se refresca solo).
+ */
+async function obtenerMonitoreo({ fecha, caja_id, cajero_id, limite } = {}) {
+  const filtros = { fecha, caja_id, cajero_id };
+  const [resumen, ultimas] = await Promise.all([
+    obtenerResumenPorCajero(filtros),
+    listarUltimasOperaciones({ ...filtros, limite }),
+  ]);
+
+  const operacionesPorCajero = new Map(ultimas.cajeros.map((c) => [c.cajero_id, c.operaciones]));
+  return {
+    fecha: resumen.fecha,
+    filtros: ultimas.filtros,
+    actualizado_en: new Date().toISOString(),
+    totales: resumen.totales,
+    cajeros: resumen.cajeros.map((c) => ({ ...c, operaciones: operacionesPorCajero.get(c.cajero_id) || [] })),
+  };
+}
+
+module.exports = {
+  listarUltimasOperaciones,
+  obtenerResumenPorCajero,
+  obtenerMonitoreo,
+  LIMITE_POR_DEFECTO,
+  LIMITE_MAXIMO,
+};

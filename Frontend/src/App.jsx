@@ -12,7 +12,7 @@ import TableroIngresos from './pages/TableroIngresos.jsx'
 import CierreCaja from './pages/CierreCaja.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
-import CierreDiario from './pages/CierreDiario.jsx'
+import MonitoreoCajeros from './pages/MonitoreoCajeros'
 import './App.css'
 
 function RutaProtegida({ children }) {
@@ -42,13 +42,13 @@ function App() {
           <Route path="/pagos" element={<RutaProtegida><Pagos /></RutaProtegida>} />
           <Route path="/facturas" element={<RutaProtegida><Facturas /></RutaProtegida>} />
           <Route path="/cierre-caja" element={<RutaProtegida><CierreCaja /></RutaProtegida>} />
-
+          
           {/* Panel de Administración */}
           <Route path="/admin/cajeros" element={<RutaProtegidaAdmin><Cajeros /></RutaProtegidaAdmin>} />
           <Route path="/admin/clientes" element={<RutaProtegidaAdmin><Clientes /></RutaProtegidaAdmin>} />
           <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
-          <Route path="/admin/cierre-diario" element={<RutaProtegidaAdmin><CierreDiario /></RutaProtegidaAdmin>} />
+          <Route path="/admin/monitoreo-cajeros" element={<MonitoreoCajeros />} />
         </Routes>
       </main>
     </>
