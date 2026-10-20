@@ -16,6 +16,7 @@ function AdminNavbar() {
       <NavLink to="/admin/cajeros">Cajeros</NavLink>
       <NavLink to="/admin/clientes">Clientes</NavLink>
       <NavLink to="/admin/tablero">Tablero</NavLink>
+      <NavLink to="/admin/cierre-diario">Cierre diario</NavLink>
 
       <div className="navbar-sesion">
         <span className="navbar-cajero">{administrador?.nombre}</span>
