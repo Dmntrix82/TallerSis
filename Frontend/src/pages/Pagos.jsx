@@ -1,7 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { registrarPago, registrarPagoMixto, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { calcularVuelto, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
+import { calcularFactura } from '../api/calculoFactura.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+
+// TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
+const BILLETES_RAPIDOS = [10, 20, 50, 100, 200]
+const MENSAJE_MONTO_INSUFICIENTE = 'El monto recibido es insuficiente: es menor al total a cobrar.'
+const ITEM_VACIO = { cantidad: '', precioUnitario: '' }
 
 const METODOS_PAGO = [
   {
@@ -58,6 +65,7 @@ const ESTADO_INICIAL = {
   metodos: [], // 1 metodo = pago simple, 2 metodos = pago mixto
   montoMixto1: '',
   montoMixto2: '',
+  montoRecibido: '', // TDSI-29: solo aplica a pago simple en Efectivo
   tipoDocumento: 'NINGUNO',
   numeroDocumento: '',
   razonSocial: '',
@@ -79,6 +87,13 @@ const MENSAJE_FORMATO_DOCUMENTO = {
   CI: 'El CI debe tener entre 7 y 8 dígitos.',
 }
 
+function formatearTiempoRestante(segundos) {
+  if (segundos == null) return null
+  const minutos = Math.floor(segundos / 60)
+  const resto = segundos % 60
+  return `${minutos}:${String(resto).padStart(2, '0')}`
+}
+
 function validarFormulario(datos) {
   if (!datos.monto || Number(datos.monto) <= 0) {
     return 'Ingrese un monto válido.'
@@ -94,6 +109,16 @@ function validarFormulario(datos) {
     }
     if (Math.round((m1 + m2) * 100) !== Math.round(Number(datos.monto) * 100)) {
       return 'La suma de los montos del pago mixto debe ser igual al monto total.'
+    }
+  }
+  // TDSI-29/548: en efectivo (pago simple) hay que saber cuánto dio el cliente,
+  // y no puede ser menor al total (no se puede dar un vuelto negativo).
+  if (datos.metodos.length === 1 && datos.metodos[0] === 'Efectivo') {
+    if (!datos.montoRecibido || Number(datos.montoRecibido) <= 0) {
+      return 'Ingrese cuánto dinero recibió del cliente.'
+    }
+    if (Number(datos.montoRecibido) < Number(datos.monto)) {
+      return MENSAJE_MONTO_INSUFICIENTE
     }
   }
   if (datos.tipoDocumento !== 'NINGUNO') {
@@ -120,12 +145,153 @@ function Pagos() {
   const [pagoRegistrado, setPagoRegistrado] = useState(null)
   const [envioFactura, setEnvioFactura] = useState(null) // { ok, mensaje } | null
   const [enviandoFactura, setEnviandoFactura] = useState(false)
+  const [cobroQr, setCobroQr] = useState(null) // { id, referencia, monto, estado, expira_en } | null
+  const [segundosRestantes, setSegundosRestantes] = useState(null)
+
+  // TDSI-29: vuelto calculado por el backend (endpoint dedicado), en vivo mientras se escribe.
+  const [vuelto, setVuelto] = useState(null)
+  const [errorVuelto, setErrorVuelto] = useState(null)
+  const [calculandoVuelto, setCalculandoVuelto] = useState(false)
+
+  // TDSI-40: detalle de factura por ítems (cantidad x precio unitario), opcional.
+  // Cuando se usa, el monto se calcula solo y reemplaza la entrada manual.
+  const [usarDetalle, setUsarDetalle] = useState(false)
+  const [itemsDetalle, setItemsDetalle] = useState([ITEM_VACIO])
+  const [descuentoDetalle, setDescuentoDetalle] = useState('')
+  const [calculoFactura, setCalculoFactura] = useState(null)
+  const [calculandoFactura, setCalculandoFactura] = useState(false)
+  const [errorCalculoFactura, setErrorCalculoFactura] = useState(null)
 
   const esMixto = datos.metodos.length === 2
+  const esQrSimple = datos.metodos.length === 1 && datos.metodos[0] === 'QR'
   const mostrarPanelMixto = esMixto && paso === 'formulario'
+  const esEfectivoSimple = datos.metodos.length === 1 && datos.metodos[0] === 'Efectivo'
+
+  // TDSI-39/532: mientras se espera el pago, se consulta el estado cada 4s
+  // (el backend es quien decide si ya expiro o si se confirmo).
+  useEffect(() => {
+    if (paso !== 'esperando-qr' || !cobroQr || cobroQr.estado !== 'Pendiente') {
+      return
+    }
+    const intervalo = setInterval(async () => {
+      try {
+        const actualizado = await consultarEstadoCobroQr(cobroQr.id)
+        setCobroQr(actualizado)
+      } catch {
+        // Si falla la consulta (p.ej. problema de red) se reintenta en el siguiente ciclo.
+      }
+    }, 4000)
+    return () => clearInterval(intervalo)
+  }, [paso, cobroQr?.id, cobroQr?.estado])
+
+  // TDSI-39/533: cuenta regresiva en pantalla hasta que expira el QR (solo visual;
+  // la autoridad sobre si expiro o no la tiene el backend, via el polling de arriba).
+  useEffect(() => {
+    if (!cobroQr || cobroQr.estado !== 'Pendiente') {
+      setSegundosRestantes(null)
+      return
+    }
+    function recalcular() {
+      setSegundosRestantes(Math.max(0, Math.round((new Date(cobroQr.expira_en).getTime() - Date.now()) / 1000)))
+    }
+    recalcular()
+    const intervalo = setInterval(recalcular, 1000)
+    return () => clearInterval(intervalo)
+  }, [cobroQr?.expira_en, cobroQr?.estado])
+
+  // TDSI-40/537: recalcula en el backend (debounced) cada vez que cambia algun
+  // item o el descuento, y usa el total resultante como el monto de la venta.
+  useEffect(() => {
+    if (!usarDetalle) {
+      return
+    }
+
+    const itemsValidos = itemsDetalle.filter(
+      (item) => Number(item.cantidad) > 0 && Number(item.precioUnitario) > 0,
+    )
+    if (itemsValidos.length === 0) {
+      setCalculoFactura(null)
+      setErrorCalculoFactura(null)
+      actualizarCampo('monto', '')
+      return
+    }
+
+    setCalculandoFactura(true)
+    setErrorCalculoFactura(null)
+    const temporizador = setTimeout(async () => {
+      try {
+        const resultado = await calcularFactura({
+          items: itemsValidos.map((item) => ({
+            cantidad: Number(item.cantidad),
+            precio_unitario: Number(item.precioUnitario),
+          })),
+          descuento: Number(descuentoDetalle) || 0,
+        })
+        setCalculoFactura(resultado)
+        actualizarCampo('monto', String(resultado.total))
+      } catch (err) {
+        setCalculoFactura(null)
+        setErrorCalculoFactura(err.message)
+        actualizarCampo('monto', '')
+      } finally {
+        setCalculandoFactura(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(temporizador)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usarDetalle, JSON.stringify(itemsDetalle), descuentoDetalle])
 
   function actualizarCampo(campo, valor) {
     setDatos((prev) => ({ ...prev, [campo]: valor }))
+  }
+
+  // TDSI-29/571: apenas hay total + monto recibido validos, se consulta el
+  // vuelto al backend (nunca se calcula "de mentira" solo en el navegador).
+  useEffect(() => {
+    if (!esEfectivoSimple || !datos.monto || !datos.montoRecibido) {
+      setVuelto(null)
+      setErrorVuelto(null)
+      return
+    }
+    const total = Number(datos.monto)
+    const montoRecibido = Number(datos.montoRecibido)
+    if (!(total > 0) || !(montoRecibido > 0)) {
+      setVuelto(null)
+      setErrorVuelto(null)
+      return
+    }
+
+    let cancelado = false
+    setCalculandoVuelto(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const r = await calcularVuelto(total, montoRecibido)
+        if (!cancelado) {
+          setVuelto(r.data.vuelto)
+          setErrorVuelto(null)
+          // TDSI-573: el monto ya alcanza, asi que el aviso de "insuficiente" deja de aplicar
+          setErrorValidacion((actual) => (actual === MENSAJE_MONTO_INSUFICIENTE ? null : actual))
+        }
+      } catch (err) {
+        if (!cancelado) {
+          setVuelto(null)
+          setErrorVuelto(err.message)
+        }
+      } finally {
+        if (!cancelado) setCalculandoVuelto(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelado = true
+      clearTimeout(timeout)
+    }
+  }, [esEfectivoSimple, datos.monto, datos.montoRecibido])
+
+  // TDSI-29/572: cada click suma ese billete al monto recibido (se puede combinar varios).
+  function agregarBillete(valor) {
+    setDatos((prev) => ({ ...prev, montoRecibido: String((Number(prev.montoRecibido) || 0) + valor) }))
   }
 
   function elegirTipoDocumento(tipoDocumento) {
@@ -135,6 +301,27 @@ function Pagos() {
       numeroDocumento: tipoDocumento === 'NINGUNO' ? '' : prev.numeroDocumento,
       razonSocial: tipoDocumento === 'NINGUNO' ? '' : prev.razonSocial,
     }))
+  }
+
+  function toggleUsarDetalle(valor) {
+    setUsarDetalle(valor)
+    setCalculoFactura(null)
+    setErrorCalculoFactura(null)
+    if (!valor) {
+      actualizarCampo('monto', '')
+    }
+  }
+
+  function agregarItemDetalle() {
+    setItemsDetalle((prev) => [...prev, ITEM_VACIO])
+  }
+
+  function quitarItemDetalle(indice) {
+    setItemsDetalle((prev) => prev.filter((_, i) => i !== indice))
+  }
+
+  function actualizarItemDetalle(indice, campo, valor) {
+    setItemsDetalle((prev) => prev.map((item, i) => (i === indice ? { ...item, [campo]: valor } : item)))
   }
 
   // Si ese NIT/CI ya se uso en un pago anterior, se autocompleta la razon social
@@ -163,7 +350,7 @@ function Pagos() {
 
     if (actuales.includes(id)) {
       setErrorValidacion(null)
-      setDatos((prev) => ({ ...prev, metodos: prev.metodos.filter((m) => m !== id), montoMixto1: '', montoMixto2: '' }))
+      setDatos((prev) => ({ ...prev, metodos: prev.metodos.filter((m) => m !== id), montoMixto1: '', montoMixto2: '', montoRecibido: '' }))
       return
     }
 
@@ -180,7 +367,7 @@ function Pagos() {
     }
 
     setErrorValidacion(null)
-    setDatos((prev) => ({ ...prev, metodos: [...prev.metodos, id], montoMixto1: '', montoMixto2: '' }))
+    setDatos((prev) => ({ ...prev, metodos: [...prev.metodos, id], montoMixto1: '', montoMixto2: '', montoRecibido: '' }))
   }
 
   function continuar(event) {
@@ -201,10 +388,7 @@ function Pagos() {
     setPaso('formulario')
   }
 
-  async function confirmarCobro() {
-    setEnviando(true)
-    setErrorApi(null)
-
+  function construirDatosFacturacion() {
     const datosFacturacion = {}
     if (datos.tipoDocumento !== 'NINGUNO') {
       datosFacturacion.tipo_documento = datos.tipoDocumento
@@ -217,6 +401,36 @@ function Pagos() {
     if (datos.enviarCorreo) {
       datosFacturacion.email = datos.email.trim()
     }
+    return datosFacturacion
+  }
+
+  // El correo ya se pidió en el formulario: se envía solo, sin volver a preguntar.
+  async function enviarFacturaSiCorresponde(idTransaccion) {
+    if (!datos.enviarCorreo || !datos.email.trim()) {
+      return
+    }
+    setEnviandoFactura(true)
+    try {
+      const r = await enviarFacturaPorCorreo(idTransaccion, datos.email.trim())
+      setEnvioFactura({ ok: true, mensaje: r.mensaje })
+    } catch (err) {
+      setEnvioFactura({ ok: false, mensaje: err.message })
+    } finally {
+      setEnviandoFactura(false)
+    }
+  }
+
+  async function confirmarCobro() {
+    // El QR no se registra como venta todavia: primero hay que generarlo y
+    // esperar a que el cajero confirme que vio llegar el pago (ver abajo).
+    if (esQrSimple) {
+      await generarCobroQr()
+      return
+    }
+
+    setEnviando(true)
+    setErrorApi(null)
+    const datosFacturacion = construirDatosFacturacion()
 
     try {
       let idTransaccionRegistrada
@@ -249,25 +463,16 @@ function Pagos() {
           caja_id: cajero?.caja,
           cajero: cajero?.nombre,
         }
+        if (esEfectivoSimple && datos.montoRecibido) {
+          payload.monto_recibido = Number(datos.montoRecibido)
+        }
         const respuesta = await registrarPago(payload)
         idTransaccionRegistrada = respuesta.pago.id_transaccion
         setPagoRegistrado({ ...respuesta.pago, detalle: null })
       }
 
       setPaso('listo')
-
-      // El correo ya se pidió en el formulario: se envía solo, sin volver a preguntar.
-      if (datos.enviarCorreo && datos.email.trim()) {
-        setEnviandoFactura(true)
-        try {
-          const r = await enviarFacturaPorCorreo(idTransaccionRegistrada, datos.email.trim())
-          setEnvioFactura({ ok: true, mensaje: r.mensaje })
-        } catch (err) {
-          setEnvioFactura({ ok: false, mensaje: err.message })
-        } finally {
-          setEnviandoFactura(false)
-        }
-      }
+      await enviarFacturaSiCorresponde(idTransaccionRegistrada)
     } catch (err) {
       setErrorApi(err.message)
     } finally {
@@ -275,10 +480,91 @@ function Pagos() {
     }
   }
 
+  // TDSI-39/531: crea el cobro pendiente que se muestra junto al QR fijo de la
+  // cuenta (se usa tanto para generarlo la primera vez como para "Regenerar QR").
+  async function generarCobroQr() {
+    setEnviando(true)
+    setErrorApi(null)
+    try {
+      const cobro = await crearCobroQr({ monto: Number(datos.monto), caja_id: cajero?.caja, cajero: cajero?.nombre })
+      setCobroQr(cobro)
+      setPaso('esperando-qr')
+    } catch (err) {
+      setErrorApi(err.message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  async function registrarVentaQr() {
+    const payload = {
+      ...construirDatosFacturacion(),
+      metodo: 'QR',
+      monto: Number(datos.monto),
+      caja_id: cajero?.caja,
+      cajero: cajero?.nombre,
+    }
+    const respuesta = await registrarPago(payload)
+    setPagoRegistrado({ ...respuesta.pago, detalle: null })
+    setPaso('listo')
+    await enviarFacturaSiCorresponde(respuesta.pago.id_transaccion)
+  }
+
+  // TDSI-39/533: el cajero confirma a mano que vio llegar el deposito. Recien
+  // ahi se registra la venta real (factura, correo, PDF), igual que cualquier
+  // otro metodo de pago.
+  async function confirmarPagoQrRecibido() {
+    setEnviando(true)
+    setErrorApi(null)
+    try {
+      await confirmarCobroQr(cobroQr.id, cajero?.nombre)
+      await registrarVentaQr()
+    } catch (err) {
+      setErrorApi(err.message)
+      // Si el error fue porque el QR ya expiro (o porque el cobro quedo
+      // confirmado pero el registro de la venta falló a mitad de camino),
+      // se refresca el estado para que la pantalla ofrezca la accion correcta.
+      try {
+        setCobroQr(await consultarEstadoCobroQr(cobroQr.id))
+      } catch {
+        // Si tampoco se puede consultar el estado, se deja el error de arriba.
+      }
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  // Cubre el caso en que el cobro ya quedo "Pagado" en el servidor pero el
+  // registro de la venta fallo (p.ej. corte de red): no hay que volver a
+  // confirmar el cobro (ya esta confirmado), solo reintentar la venta.
+  async function reintentarRegistroVentaQr() {
+    setEnviando(true)
+    setErrorApi(null)
+    try {
+      await registrarVentaQr()
+    } catch (err) {
+      setErrorApi(err.message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  function cancelarCobroQr() {
+    setCobroQr(null)
+    setErrorApi(null)
+    setPaso('confirmacion')
+  }
+
   function registrarOtro() {
     setDatos(ESTADO_INICIAL)
     setPagoRegistrado(null)
     setEnvioFactura(null)
+    setCobroQr(null)
+    setUsarDetalle(false)
+    setItemsDetalle([ITEM_VACIO])
+    setDescuentoDetalle('')
+    setCalculoFactura(null)
+    setErrorCalculoFactura(null)
     setPaso('formulario')
   }
 
@@ -293,8 +579,118 @@ function Pagos() {
               {/* El ID de transacción ya no lo escribe el cajero: lo genera el sistema al confirmar el cobro. */}
               <label className="campo">
                 Monto (Bs.)
-                <input type="number" step="0.01" value={datos.monto} onChange={(e) => actualizarCampo('monto', e.target.value)} />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={datos.monto}
+                  readOnly={usarDetalle}
+                  onChange={(e) => actualizarCampo('monto', e.target.value)}
+                />
               </label>
+              {usarDetalle && <p className="ayuda-detalle-factura">El monto se calcula a partir del detalle de ítems de abajo.</p>}
+
+              <div className="detalle-factura-toggle">
+                <p>¿Desea calcular el monto a partir de un detalle de ítems (cantidad × precio)?</p>
+                <div className="factura-correo-acciones">
+                  <button
+                    type="button"
+                    className={`btn${!usarDetalle ? '' : ' btn-secundario'}`}
+                    onClick={() => toggleUsarDetalle(false)}
+                  >
+                    No
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn${usarDetalle ? '' : ' btn-secundario'}`}
+                    onClick={() => toggleUsarDetalle(true)}
+                  >
+                    Sí
+                  </button>
+                </div>
+              </div>
+
+              {usarDetalle && (
+                <div className="detalle-factura">
+                  <table className="detalle-factura-tabla">
+                    <thead>
+                      <tr>
+                        <th>Ítem</th>
+                        <th>Cantidad</th>
+                        <th>Precio unit. (Bs.)</th>
+                        <th>Subtotal</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itemsDetalle.map((item, indice) => {
+                        const calculado = calculoFactura?.items?.[indice]
+                        return (
+                          <tr key={indice}>
+                            <td>{indice + 1}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={item.cantidad}
+                                onChange={(e) => actualizarItemDetalle(indice, 'cantidad', e.target.value)}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.precioUnitario}
+                                onChange={(e) => actualizarItemDetalle(indice, 'precioUnitario', e.target.value)}
+                              />
+                            </td>
+                            <td>{calculado ? `Bs. ${calculado.subtotal.toFixed(2)}` : '—'}</td>
+                            <td>
+                              {itemsDetalle.length > 1 && (
+                                <button
+                                  type="button"
+                                  className="detalle-factura-quitar"
+                                  onClick={() => quitarItemDetalle(indice)}
+                                >
+                                  Quitar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+
+                  <button type="button" className="btn btn-secundario" onClick={agregarItemDetalle}>
+                    + Agregar ítem
+                  </button>
+
+                  <label className="campo" style={{ marginTop: '1rem' }}>
+                    Descuento (Bs., opcional)
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={descuentoDetalle}
+                      onChange={(e) => setDescuentoDetalle(e.target.value)}
+                    />
+                  </label>
+
+                  {calculandoFactura && <p>Calculando...</p>}
+                  {errorCalculoFactura && <p className="error">{errorCalculoFactura}</p>}
+
+                  {calculoFactura && !calculandoFactura && (
+                    <ul className="detalle-factura-resumen">
+                      <li>Subtotal: Bs. {calculoFactura.subtotal.toFixed(2)}</li>
+                      <li>IVA (13%): Bs. {calculoFactura.impuesto.toFixed(2)}</li>
+                      {calculoFactura.descuento > 0 && <li>Descuento: -Bs. {calculoFactura.descuento.toFixed(2)}</li>}
+                      <li className="detalle-factura-total">Total: Bs. {calculoFactura.total.toFixed(2)}</li>
+                    </ul>
+                  )}
+                </div>
+              )}
 
               <fieldset className="metodo-opciones" style={{ border: 'none', padding: 0 }}>
                 <legend>Método de pago (puede elegir hasta 2 para un pago mixto)</legend>
@@ -313,6 +709,40 @@ function Pagos() {
                 </div>
                 {esMixto && <p className="ayuda-mixto">Pago mixto: complete los montos en el panel de la derecha.</p>}
               </fieldset>
+
+              {esEfectivoSimple && (
+                <div className="cobro-efectivo">
+                  <label className="campo">
+                    Monto recibido (Bs.)
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={datos.montoRecibido}
+                      onChange={(e) => actualizarCampo('montoRecibido', e.target.value)}
+                    />
+                  </label>
+
+                  <div className="billetes-rapidos">
+                    {BILLETES_RAPIDOS.map((valor) => (
+                      <button key={valor} type="button" className="billete-rapido" onClick={() => agregarBillete(valor)}>
+                        +{valor}
+                      </button>
+                    ))}
+                    {datos.montoRecibido && (
+                      <button type="button" className="billete-rapido billete-rapido--limpiar" onClick={() => actualizarCampo('montoRecibido', '')}>
+                        Limpiar
+                      </button>
+                    )}
+                  </div>
+
+                  {calculandoVuelto && <p className="ayuda-mixto">Calculando vuelto...</p>}
+                  {/* TDSI-573: si ya se muestra la validacion del formulario, no repetir el aviso */}
+                  {errorVuelto && !errorValidacion && <p className="error">{errorVuelto}</p>}
+                  {vuelto !== null && !calculandoVuelto && (
+                    <p className="vuelto-destacado">Vuelto a entregar: Bs. {vuelto.toFixed(2)}</p>
+                  )}
+                </div>
+              )}
 
               <fieldset style={{ border: 'none', padding: 0 }}>
                 <legend>Datos de facturación</legend>
@@ -411,6 +841,12 @@ function Pagos() {
                 ) : (
                   <li>Método de pago: {datos.metodos[0]}</li>
                 )}
+                {esEfectivoSimple && (
+                  <>
+                    <li>Monto recibido: Bs. {datos.montoRecibido}</li>
+                    <li>Vuelto a entregar: Bs. {vuelto !== null ? vuelto.toFixed(2) : '-'}</li>
+                  </>
+                )}
                 <li>
                   Datos de facturación:{' '}
                   {datos.tipoDocumento === 'NINGUNO'
@@ -431,9 +867,82 @@ function Pagos() {
                   Editar
                 </button>
                 <button type="button" className="btn" onClick={confirmarCobro} disabled={enviando}>
-                  {enviando ? 'Confirmando...' : 'Confirmar cobro'}
+                  {enviando
+                    ? (esQrSimple ? 'Generando QR...' : 'Confirmando...')
+                    : (esQrSimple ? 'Generar QR' : 'Confirmar cobro')}
                 </button>
               </div>
+            </div>
+          )}
+
+          {paso === 'esperando-qr' && cobroQr && (
+            <div className="cobro-qr-espera">
+              <h2>Cobro con QR</h2>
+              <img src={urlQrCuenta()} alt="QR de la cuenta del negocio" className="cobro-qr-imagen" />
+              <p className="cobro-qr-monto">Bs. {cobroQr.monto}</p>
+              <p className="cobro-qr-referencia">Referencia: {cobroQr.referencia}</p>
+
+              {cobroQr.estado === 'Pendiente' && (
+                <>
+                  <p className="cobro-qr-estado cobro-qr-estado--pendiente">Esperando pago...</p>
+                  {segundosRestantes != null && (
+                    <p className="cobro-qr-cuenta-regresiva">
+                      {segundosRestantes > 0
+                        ? `El QR expira en ${formatearTiempoRestante(segundosRestantes)}`
+                        : 'Verificando vencimiento...'}
+                    </p>
+                  )}
+                  {errorApi && <p className="error">{errorApi}</p>}
+                  <div className="pago-acciones">
+                    <button type="button" className="btn btn-secundario" onClick={cancelarCobroQr} disabled={enviando}>
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={confirmarPagoQrRecibido}
+                      disabled={enviando || segundosRestantes === 0}
+                    >
+                      {enviando ? 'Confirmando...' : 'Confirmar pago recibido'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {cobroQr.estado === 'Pagado' && (
+                <>
+                  <p className="cobro-qr-estado cobro-qr-estado--pendiente">
+                    Pago confirmado. Terminando de registrar la venta...
+                  </p>
+                  {errorApi && (
+                    <>
+                      <p className="error">{errorApi}</p>
+                      <div className="pago-acciones">
+                        <button type="button" className="btn" onClick={reintentarRegistroVentaQr} disabled={enviando}>
+                          {enviando ? 'Reintentando...' : 'Reintentar registrar venta'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {cobroQr.estado === 'Expirado' && (
+                <>
+                  <p className="cobro-qr-estado cobro-qr-estado--expirado">
+                    El QR expiró (pasaron más de 5 minutos). Genere uno nuevo para cobrar.
+                  </p>
+                  {errorApi && <p className="error">{errorApi}</p>}
+                  <div className="pago-acciones">
+                    <button type="button" className="btn btn-secundario" onClick={cancelarCobroQr} disabled={enviando}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="btn" onClick={generarCobroQr} disabled={enviando}>
+                      {enviando ? 'Generando...' : 'Regenerar QR'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -450,6 +959,12 @@ function Pagos() {
                   <li>Método de pago: {pagoRegistrado.metodo}</li>
                 )}
                 <li>Monto: Bs. {pagoRegistrado.monto}</li>
+                {pagoRegistrado.monto_recibido != null && (
+                  <>
+                    <li>Monto recibido: Bs. {pagoRegistrado.monto_recibido}</li>
+                    <li>Vuelto entregado: Bs. {pagoRegistrado.vuelto}</li>
+                  </>
+                )}
                 <li>Estado: {pagoRegistrado.estado}</li>
                 <li>Fecha: {new Date(pagoRegistrado.fecha).toLocaleString()}</li>
               </ul>

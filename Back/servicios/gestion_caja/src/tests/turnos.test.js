@@ -5,9 +5,9 @@ const { abrirTurno } = require("../services/turnosService");
 
 const CAJA_A = "CAJA-TEST-313";
 const CAJA_B = "CAJA-TEST-313-B";
+const SUPERVISOR = { supervisor_id: "SUP-TEST", pin: "1234" };
 
 test.before(async () => {
-  // Crear cajas de prueba (idempotente)
   await query(
     `INSERT INTO caja.cajas (codigo, nombre, estado)
      VALUES ($1, 'Caja Test 313', 'ACTIVA')
@@ -21,18 +21,18 @@ test.before(async () => {
     [CAJA_B]
   );
 
-  // Limpiar turnos residuales de corridas anteriores
   await query(`DELETE FROM caja.turnos WHERE caja_id IN ($1, $2)`, [CAJA_A, CAJA_B]);
 
-  // Dejar CAJA_A ocupada con un turno abierto
   await abrirTurno({
     caja_id: CAJA_A,
     cajero_id: "CAJ-TEST-313",
     efectivo_inicial: 100,
+    ...SUPERVISOR,
   });
 });
 
 test.after(async () => {
+  await query(`DELETE FROM caja.movimientos WHERE caja_id IN ($1, $2)`, [CAJA_A, CAJA_B]);
   await query(`DELETE FROM caja.turnos WHERE caja_id IN ($1, $2)`, [CAJA_A, CAJA_B]);
   await query(`DELETE FROM caja.cajas  WHERE codigo  IN ($1, $2)`, [CAJA_A, CAJA_B]);
 });
@@ -43,6 +43,7 @@ test("TDSI-313: rechaza abrir un turno si ya hay uno abierto en la misma caja", 
       caja_id: CAJA_A,
       cajero_id: "CAJ-TEST-313-B",
       efectivo_inicial: 50,
+      ...SUPERVISOR,
     }),
     (e) => e.status === 409 && /turno abierto/i.test(e.message)
   );
@@ -54,6 +55,7 @@ test("TDSI-313: el error 409 incluye el codigo del turno abierto", async () => {
       caja_id: CAJA_A,
       cajero_id: "CAJ-TEST-313-C",
       efectivo_inicial: 50,
+      ...SUPERVISOR,
     });
     assert.fail("Debió lanzar 409");
   } catch (e) {
@@ -69,6 +71,7 @@ test("TDSI-313: permite abrir en otra caja aunque haya una ocupada", async () =>
     caja_id: CAJA_B,
     cajero_id: "CAJ-TEST-313-D",
     efectivo_inicial: 25,
+    ...SUPERVISOR,
   });
   assert.ok(t.codigo);
   assert.equal(t.estado, "ABIERTO");
@@ -78,14 +81,12 @@ test("TDSI-313: permite abrir en otra caja aunque haya una ocupada", async () =>
 test("TDSI-314: al abrir turno se registra el efectivo inicial en el historial de caja", async () => {
   const CAJA_H = "CAJA-TEST-314";
 
-  // Preparar caja
   await query(
     `INSERT INTO caja.cajas (codigo, nombre, estado)
      VALUES ($1, 'Caja Test 314', 'ACTIVA')
      ON CONFLICT (codigo) DO NOTHING`,
     [CAJA_H]
   );
-  // Limpiar turnos previos (por si quedaron)
   await query(`DELETE FROM caja.turnos WHERE caja_id = $1`, [CAJA_H]);
 
   try {
@@ -93,6 +94,7 @@ test("TDSI-314: al abrir turno se registra el efectivo inicial en el historial d
       caja_id: CAJA_H,
       cajero_id: "CAJ-TEST-314",
       efectivo_inicial: 250.75,
+      ...SUPERVISOR,
     });
 
     const { rows } = await query(
@@ -110,7 +112,6 @@ test("TDSI-314: al abrir turno se registra el efectivo inicial en el historial d
     assert.equal(mov.origen_microservicio, "LOCAL");
     assert.match(mov.descripcion, /inicial/i);
   } finally {
-    // Limpieza: el ON DELETE CASCADE borra el movimiento al borrar el turno
     await query(`DELETE FROM caja.turnos WHERE caja_id = $1`, [CAJA_H]);
     await query(`DELETE FROM caja.cajas  WHERE codigo   = $1`, [CAJA_H]);
   }

@@ -218,6 +218,135 @@ Permite consultar el detalle de un pago mixto utilizando el identificador de la 
 
 ---
 
+## 4.6. Historial de operaciones de cajeros (TDSI-33)
+
+```http
+GET /api/pagos/historial-cajeros
+```
+
+Para el **Supervisor de Caja**: lista las operaciones (ventas) de los cajeros en un rango de días, con su estado de revisión, y un resumen por cajero y por día. Un pago mixto aparece como **una sola operación** con el detalle por método.
+
+### Parámetros (query string, todos opcionales)
+
+| Parámetro         | Valores                                   | Por defecto              |
+| ----------------- | ----------------------------------------- | ------------------------ |
+| `fecha`           | `YYYY-MM-DD` (un solo día)                | —                        |
+| `desde` / `hasta` | `YYYY-MM-DD` (inclusive, máximo 92 días)  | últimos 7 días hasta hoy |
+| `cajero_id`       | email del cajero                          | todos los cajeros        |
+| `caja_id`         | identificador de la caja                  | todas las cajas          |
+| `metodo`          | `Efectivo`, `Tarjeta` o `QR`              | todos                    |
+| `estado_revision` | `PENDIENTE`, `REVISADA` u `OBSERVADA`     | todos                    |
+| `pagina`          | entero desde 1                            | `1`                      |
+| `por_pagina`      | entero de 1 a 100                         | `20`                     |
+
+Las fechas son días en **hora de Bolivia** (`America/La_Paz`). Con `metodo`, una venta mixta aparece si usó ese método, con su total completo.
+
+### Ejemplo
+
+```http
+GET /api/pagos/historial-cajeros?desde=2026-10-11&hasta=2026-10-17&cajero_id=hugo.demo@tallersis.bo&por_pagina=2
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "filtros": { "desde": "2026-10-11", "hasta": "2026-10-17", "cajero_id": "hugo.demo@tallersis.bo",
+                 "caja_id": null, "metodo": null, "estado_revision": null },
+    "paginacion": { "pagina": 1, "por_pagina": 2, "total_registros": 5, "total_paginas": 3 },
+    "resumen": {
+      "cantidad_operaciones": 5, "cantidad_anuladas": 1, "total": 262, "total_anulado": 27,
+      "por_cajero": [{ "cajero_id": "hugo.demo@tallersis.bo", "cantidad_operaciones": 5, "total": 262,
+                       "dias_con_operaciones": 5, "primera_operacion": "...", "ultima_operacion": "..." }],
+      "por_dia": [{ "fecha": "2026-10-16", "cantidad_operaciones": 1, "total": 55,
+                    "cajeros": [{ "cajero_id": "hugo.demo@tallersis.bo", "cantidad_operaciones": 1, "total": 55 }] }]
+    },
+    "operaciones": [{
+      "id_transaccion": "DEMO-HIST-012", "fecha_local": "2026-10-16", "hora": "08:45:00",
+      "cajero_id": "hugo.demo@tallersis.bo", "caja_id": "DEMO-HIST-CAJA-1", "tipo_pago": "Simple",
+      "metodos": ["Efectivo"], "detalle_metodos": [{ "metodo": "Efectivo", "monto": 55 }],
+      "total": 55, "estado": "APROBADA",
+      "revision": { "estado": "REVISADA", "nota": null, "revisado_por": "supervisor.demo", "revisado_en": "..." }
+    }]
+  }
+}
+```
+
+- `estado` de la operación: `APROBADA`, `ANULADA`, `RECHAZADA` o `PENDIENTE`.
+- `total` del resumen suma solo las **APROBADAS**; lo anulado va en `total_anulado`. `cantidad_operaciones` cuenta todas.
+- El `resumen` es de **todo lo filtrado**, no solo de la página que se muestra.
+- `por_dia` va del día más reciente al más antiguo; `cajeros` es el detalle de cada cajero ese día.
+- Si algún filtro es inválido responde **400** `{ "ok": false, "mensaje": "...", "detalle": {...} }`.
+
+### Datos de demostración
+
+`sql/seed_historial.sql` crea 14 operaciones de los últimos 6 días (cajeros `hugo.demo`, `ines.demo` y `jorge.demo`, cajas `DEMO-HIST-CAJA-1` y `DEMO-HIST-CAJA-2`) con 5 revisiones. Se puede volver a correr sin duplicar. `npm test` la carga y la quita al terminar: para una demo, vuelvan a correrla después de los tests.
+
+---
+
+## 4.7. Monitoreo por método de pago (TDSI-34)
+
+```http
+GET /api/pagos/metodos
+```
+
+Para el **Supervisor de Caja**: cuánto se cobró con cada método de pago (Efectivo, Tarjeta y QR), con la cantidad de ventas, el monto y el porcentaje del total. Los **pagos mixtos se desglosan**: cada parte suma en su método (un mixto Efectivo 30 + QR 70 suma 30 en Efectivo y 70 en QR), unidos a su cabecera por `pago_mixto_id`.
+
+### Parámetros (query string, todos opcionales)
+
+| Parámetro         | Valores                                  | Por defecto  |
+| ----------------- | ---------------------------------------- | ------------ |
+| `fecha`           | `YYYY-MM-DD` (un solo día)               | —            |
+| `desde` / `hasta` | `YYYY-MM-DD` (inclusive, máximo 92 días) | hoy          |
+| `caja_id`         | identificador de la caja                 | todas        |
+| `cajero_id`       | email del cajero                         | todos        |
+
+Las fechas son días en **hora de Bolivia** (`America/La_Paz`). La caja de un pago mixto se toma de su fila o, si no la tiene (mixtos antiguos), de su cabecera.
+
+### Ejemplo
+
+```http
+GET /api/pagos/metodos?desde=2026-10-15&hasta=2026-10-17&caja_id=DEMO-MET-CAJA-1
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "filtros": { "desde": "2026-10-15", "hasta": "2026-10-17", "caja_id": "DEMO-MET-CAJA-1", "cajero_id": null },
+    "cantidad_operaciones": 4,
+    "monto_total": 499.9,
+    "metodos": [
+      { "metodo": "Efectivo", "cantidad": 3, "monto": 200, "porcentaje": 40.01,
+        "simples": { "cantidad": 1, "monto": 120 }, "mixtos": { "cantidad": 2, "monto": 80 } },
+      { "metodo": "Tarjeta", "cantidad": 2, "monto": 249.9, "porcentaje": 49.99,
+        "simples": { "cantidad": 1, "monto": 99.9 }, "mixtos": { "cantidad": 1, "monto": 150 } },
+      { "metodo": "QR", "cantidad": 1, "monto": 50, "porcentaje": 10,
+        "simples": { "cantidad": 0, "monto": 0 }, "mixtos": { "cantidad": 1, "monto": 50 } }
+    ],
+    "pagos_mixtos": {
+      "cantidad": 2, "monto": 280,
+      "combinaciones": [
+        { "metodos": ["Efectivo", "Tarjeta"], "cantidad": 1, "monto": 180 },
+        { "metodos": ["Efectivo", "QR"], "cantidad": 1, "monto": 100 }
+      ]
+    }
+  }
+}
+```
+
+- Solo cuentan las ventas **cobradas** (`estado = 'Registrado'` y `estado_pago = 'APROBADA'`): una venta anulada, rechazada o pendiente no suma en ningún método.
+- `metodos` siempre trae los 3 métodos, en ese orden, aunque estén en 0. `porcentaje` es sobre el monto total (2 decimales).
+- `cantidad_operaciones` cuenta cada venta una vez; en `metodos[].cantidad` una venta mixta cuenta en **cada** método que usó.
+- `combinaciones` agrupa los pagos mixtos por los métodos que combinaron, de la más usada a la menos usada.
+- Si algún filtro es inválido responde **400** `{ "ok": false, "mensaje": "...", "detalle": {...} }`.
+
+### Datos de demostración
+
+`sql/seed_metodos.sql` crea 11 ventas de los últimos 3 días (cajeros `karen.demo` y `luis.demo`, cajas `DEMO-MET-CAJA-1` y `DEMO-MET-CAJA-2`): 6 pagos simples y 5 mixtos, uno de ellos anulado y uno con la caja solo en la cabecera. Totales esperados por caja en su encabezado. Se puede volver a correr sin duplicar. `npm test` la carga y la quita al terminar: para una demo, vuelvan a correrla después de los tests.
+
+---
+
 # 5. Módulo de Clientes Frecuentes
 
 El módulo de clientes frecuentes permite identificar y reutilizar los datos de clientes mediante su **NIT**, facilitando el proceso de facturación y evitando que el cajero tenga que ingresar nuevamente la información de un cliente recurrente.
@@ -444,6 +573,10 @@ Cuando el módulo sea migrado a PostgreSQL, se podrán utilizar índices especia
 | Suma no coincide con el total  | `/api/pagos/mixto/calcular` | `POST` | **422 Unprocessable** |
 | Registrar pago mixto           | `/api/pagos/mixto`          | `POST` | **201 Created**       |
 | Transacción duplicada          | `/api/pagos/mixto`          | `POST` | **409 Conflict**      |
+| Historial de cajeros           | `/api/pagos/historial-cajeros` | `GET` | **200 OK**         |
+| Filtro inválido en el historial | `/api/pagos/historial-cajeros?metodo=Cheque` | `GET` | **400 Bad Request** |
+| Monitoreo por método de pago   | `/api/pagos/metodos` | `GET` | **200 OK** |
+| Rango de fechas inválido (métodos) | `/api/pagos/metodos?desde=2026-10-18&hasta=2026-10-01` | `GET` | **400 Bad Request** |
 
 ## 6.2. Pruebas de clientes frecuentes
 
@@ -523,3 +656,5 @@ http://localhost:4005
 | `GET`  | `/api/clientes/:nit`               | Busca un cliente por NIT               |
 | `GET`  | `/api/clientes?q=texto`            | Busca sugerencias para autocompletado  |
 | `POST` | `/api/clientes`                    | Registra o actualiza un cliente        |
+| `GET`  | `/api/pagos/historial-cajeros`     | Historial de operaciones de cajeros con resumen por cajero y por día |
+| `GET`  | `/api/pagos/metodos`               | Monitoreo por método de pago (cantidad, monto, porcentaje y mixtos desglosados) |

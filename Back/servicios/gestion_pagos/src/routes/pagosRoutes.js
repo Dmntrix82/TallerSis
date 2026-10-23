@@ -2,10 +2,33 @@ const { Router } = require("express");
 const { registrarPagoSimple, obtenerHistorial, buscarClientePorDocumento } = require("../services/pagoSimpleService");
 const { construirFacturaDigital, enviarFacturaDeTransaccion } = require("../services/facturaDigitalService");
 const { generarFacturaPdfBuffer } = require("../services/facturaPdfService");
-const { listarMisFacturas, anularVenta, reporteTurno, historialCliente, totalesGenerales, listarCajeros } = require("../services/ventasCajeroService");
+const {
+  listarMisFacturas,
+  anularVenta,
+  solicitarAnulacionPendiente,
+  listarAnulacionesPendientes,
+  autorizarAnulacionPendiente,
+  reporteTurno,
+  historialCliente,
+  totalesGenerales,
+  listarCajeros,
+} = require("../services/ventasCajeroService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+
+// TDSI-539: bandeja de solicitudes de anulación en espera de un supervisor.
+router.get("/anulaciones/pendientes", wrap(async (req, res) => {
+  const r = await listarAnulacionesPendientes();
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-540/541: el supervisor aprueba o rechaza una solicitud con su PIN.
+router.post("/anulaciones/:id/autorizar", wrap(async (req, res) => {
+  const r = await autorizarAnulacionPendiente(req.params.id, req.body);
+  const mensaje = r.estado === "Autorizada" ? "Anulación aprobada: la venta quedó Anulada." : "Solicitud rechazada.";
+  res.json({ ok: true, mensaje, data: r });
+}));
 
 // TDSI-303: PDF de la factura, en formato tirilla, listo para ver/imprimir desde el navegador.
 router.get("/:id_transaccion/factura.pdf", wrap(async (req, res) => {
@@ -66,6 +89,13 @@ router.get("/mis-facturas", wrap(async (req, res) => {
 router.post("/:id_transaccion/anular", wrap(async (req, res) => {
   const r = await anularVenta({ id_transaccion: req.params.id_transaccion, ...req.body });
   res.json({ ok: true, mensaje: `La venta ${req.params.id_transaccion} fue anulada.`, data: r });
+}));
+
+// TDSI-28/133: para cuando NO hay un supervisor presente -- deja la venta en
+// espera en vez de pedir el PIN al toque.
+router.post("/:id_transaccion/solicitar-anulacion", wrap(async (req, res) => {
+  const r = await solicitarAnulacionPendiente({ id_transaccion: req.params.id_transaccion, ...req.body });
+  res.status(201).json({ ok: true, mensaje: "Solicitud de anulación registrada, queda pendiente de un supervisor.", data: r });
 }));
 
 // TDSI-323: reporte de ventas de una caja (usado por gestion_caja para el cierre de turno).

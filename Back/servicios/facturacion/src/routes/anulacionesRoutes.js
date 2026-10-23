@@ -1,8 +1,15 @@
 const { Router } = require("express");
-const { autorizarAnulacion, solicitarAnulacion } = require("../services/anulacionesService");
+const { autorizarAnulacion, solicitarAnulacion, listarPendientes } = require("../services/anulacionesService");
+const { enviarFacturaSeguro } = require("../services/contabilidadService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+
+// TDSI-539: lista de solicitudes en espera, para la pantalla del supervisor.
+router.get("/pendientes", wrap(async (req, res) => {
+  const data = await listarPendientes();
+  res.json({ ok: true, data });
+}));
 
 router.post("/", wrap(async (req, res) => {
   const data = await solicitarAnulacion(req.body);
@@ -11,10 +18,11 @@ router.post("/", wrap(async (req, res) => {
 
 router.post("/:id/autorizar", wrap(async (req, res) => {
   const data = await autorizarAnulacion(req.params.id, req.body);
-  const mensaje = data.estado === "Autorizada"
-    ? "Anulación aprobada: la factura quedó Anulada"
-    : "Anulación rechazada";
-  res.json({ ok: true, mensaje, data });
+  const aprobada = data.estado === "Autorizada";
+  const mensaje = aprobada ? "Anulación aprobada: la factura quedó Anulada" : "Anulación rechazada";
+  // TDSI-22: la anulacion aprobada se publica para Contabilidad (envio 'anulacion')
+  const contabilidad = aprobada ? await enviarFacturaSeguro(data.factura_id, "anulacion") : null;
+  res.json({ ok: true, mensaje, data, contabilidad });
 }));
 
 module.exports = router;

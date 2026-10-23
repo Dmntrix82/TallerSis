@@ -247,3 +247,160 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(255),
     ADD COLUMN IF NOT EXISTS anulado_en  TIMESTAMPTZ;
+
+
+-- ==========================================================================
+-- Migracion 002 - TDSI-23/423: monitoreo de operaciones de cajeros.
+-- Cada operacion guarda QUIEN la hizo (cajero_id) y EN QUE CAJA (caja_id),
+-- para poder agruparlas por cajero y filtrarlas por caja en el monitoreo.
+--   - cajero_id: identificador del cajero (hoy el sistema usa su email, igual
+--     que caja.turnos.cajero_id); "cajero" sigue siendo el nombre que se muestra.
+--   - caja_id ya existia en pagos simples (TDSI-376) y mixtos; se completa en
+--     los mixtos viejos que lo tenian solo en pagos.pagos_mixtos.
+-- Se puede correr varias veces.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS cajero_id VARCHAR(60),
+    ADD COLUMN IF NOT EXISTS caja_id   VARCHAR(60);
+
+-- Operaciones anteriores: el cajero ya estaba guardado en "cajero".
+UPDATE pagos.transacciones
+   SET cajero_id = cajero
+ WHERE cajero_id IS NULL AND cajero IS NOT NULL;
+
+UPDATE pagos.transacciones t
+   SET caja_id = pm.caja_id
+  FROM pagos.pagos_mixtos pm
+ WHERE t.pago_mixto_id = pm.id AND t.caja_id IS NULL AND pm.caja_id IS NOT NULL;
+
+-- El monitoreo pide "las ultimas operaciones" de un cajero o de una caja.
+CREATE INDEX IF NOT EXISTS idx_transacciones_cajero_fecha ON pagos.transacciones (cajero_id, fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_transacciones_caja_fecha   ON pagos.transacciones (caja_id, fecha DESC);
+
+
+-- ==========================================================================
+-- Migracion 003 - TDSI-27/429: revision de transacciones por el Supervisor de Caja.
+-- El supervisor marca cada venta como REVISADA (todo bien) u OBSERVADA (algo
+-- que aclarar, la nota es obligatoria). Va en una tabla aparte, una fila por
+-- venta (id_transaccion): un pago Mixto tiene varias filas en
+-- pagos.transacciones pero se revisa una sola vez. Si el supervisor cambia de
+-- opinion se actualiza la misma fila (queda quien y cuando la marco por ultima vez).
+-- Sin fila = la venta todavia no fue revisada (PENDIENTE).
+-- Se puede correr varias veces.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.revisiones_transaccion (
+    id              BIGSERIAL    PRIMARY KEY,
+    id_transaccion  VARCHAR(60)  NOT NULL UNIQUE,
+    estado          VARCHAR(20)  NOT NULL CHECK (estado IN ('REVISADA','OBSERVADA')),
+    nota            VARCHAR(300),
+    revisado_por    VARCHAR(60)  NOT NULL,
+    revisado_en     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT revision_observada_con_nota
+        CHECK (estado <> 'OBSERVADA' OR (nota IS NOT NULL AND length(trim(nota)) > 0))
+);
+CREATE INDEX IF NOT EXISTS idx_revisiones_estado ON pagos.revisiones_transaccion (estado);
+
+ALTER TABLE pagos.revisiones_transaccion ENABLE ROW LEVEL SECURITY;
+-- ==========================================================================
+-- TDSI-28/133/539-541: bandeja de "Anulaciones pendientes" para cuando el
+-- supervisor NO esta presente en la caja. Convive con la autorizacion
+-- inmediata con PIN (TDSI-306/17): el cajero elige una u otra segun si hay
+-- un supervisor a mano o no.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones DROP CONSTRAINT IF EXISTS transacciones_estado_check;
+ALTER TABLE pagos.transacciones
+    ADD CONSTRAINT transacciones_estado_check
+    CHECK (estado::text = ANY (ARRAY['Registrado','AnulacionSolicitada','Anulado']::varchar[]));
+
+CREATE TABLE IF NOT EXISTS pagos.solicitudes_anulacion (
+    id                 BIGSERIAL PRIMARY KEY,
+    id_transaccion     VARCHAR(60)  NOT NULL,
+    motivo             VARCHAR(300) NOT NULL,
+    solicitado_por     VARCHAR(100),
+    solicitado_en      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    estado             VARCHAR(20)  NOT NULL DEFAULT 'Solicitada'
+                        CHECK (estado IN ('Solicitada','Autorizada','Rechazada')),
+    autorizado_por     VARCHAR(60),
+    autorizado_nombre  VARCHAR(100),
+    autorizado_en      TIMESTAMPTZ,
+    observacion        VARCHAR(300)
+);
+CREATE INDEX IF NOT EXISTS idx_solicitudes_anulacion_pendientes
+    ON pagos.solicitudes_anulacion (id_transaccion)
+    WHERE estado = 'Solicitada';
+
+ALTER TABLE pagos.solicitudes_anulacion ENABLE ROW LEVEL SECURITY;
+-- ==========================================================================
+-- TDSI-29/135: vuelto en cobros con efectivo. monto_recibido es lo que el
+-- cliente entrega en efectivo; vuelto es lo que el cajero debe devolver.
+-- Nulos para pagos que no son en efectivo (Tarjeta/QR).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS monto_recibido NUMERIC(14,2) CHECK (monto_recibido IS NULL OR monto_recibido >= 0),
+    ADD COLUMN IF NOT EXISTS vuelto         NUMERIC(14,2) CHECK (vuelto IS NULL OR vuelto >= 0);
+
+ALTER TABLE pagos.pagos_mixtos
+    ADD COLUMN IF NOT EXISTS monto_recibido NUMERIC(14,2) CHECK (monto_recibido IS NULL OR monto_recibido >= 0),
+    ADD COLUMN IF NOT EXISTS vuelto         NUMERIC(14,2) CHECK (vuelto IS NULL OR vuelto >= 0);
+-- ==========================================================================
+-- TDSI-37/151: modificacion de una venta ya registrada (corregir datos del
+-- cliente, etc.) sin anularla ni cambiar su numero -- autorizada por un
+-- supervisor de caja, solo dentro de las 2 horas desde la emision.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS fecha_modificacion TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS modificado_por      VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS autorizado_por      VARCHAR(60);
+
+-- ==========================================================================
+-- TDSI-37/546: bitacora de que se cambio exactamente en cada modificacion
+-- de una venta (valor anterior y nuevo por cada campo tocado).
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.bitacora_modificaciones (
+    id              BIGSERIAL PRIMARY KEY,
+    id_transaccion  VARCHAR(60)  NOT NULL,
+    campo           VARCHAR(50)  NOT NULL,
+    valor_anterior  TEXT,
+    valor_nuevo     TEXT,
+    modificado_por  VARCHAR(255),
+    autorizado_por  VARCHAR(60),
+    modificado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bitacora_modificaciones_transaccion
+    ON pagos.bitacora_modificaciones (id_transaccion);
+
+ALTER TABLE pagos.bitacora_modificaciones ENABLE ROW LEVEL SECURITY;
+-- ==========================================================================
+-- TDSI-38/153: token unico de verificacion por factura, para el QR que lleva
+-- al cliente a consultarla (distinto del codigo cosmetico que ya se imprime
+-- en el PDF, ese es un hash calculado al vuelo y no se guarda en la base).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS token_verificacion VARCHAR(64);
+-- Un pago Mixto tiene varias filas con el mismo id_transaccion y todas llevan el
+-- mismo token: por eso NO puede ser UNIQUE (rompia el PDF de las ventas Mixto).
+-- Si la columna ya se habia creado con UNIQUE, se quita esa restriccion.
+ALTER TABLE pagos.transacciones DROP CONSTRAINT IF EXISTS transacciones_token_verificacion_key;
+CREATE INDEX IF NOT EXISTS idx_transacciones_token_verificacion
+    ON pagos.transacciones (token_verificacion);
+-- ==========================================================================
+-- TDSI-39/155: cobro con QR. No hay integracion con ningun banco, asi que
+-- esto NO genera un QR de pago real -- es solo el registro interno del
+-- cobro pendiente (monto + referencia + vencimiento a los 5 min) que se
+-- muestra en pantalla junto a la imagen fija del QR de la cuenta. El cajero
+-- confirma el pago a mano despues de verlo llegar a su banco (ver TDSI-533).
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
+    id             SERIAL PRIMARY KEY,
+    referencia     VARCHAR(20) NOT NULL UNIQUE,
+    monto          NUMERIC(10, 2) NOT NULL,
+    estado         VARCHAR(20) NOT NULL DEFAULT 'Pendiente'
+                   CHECK (estado IN ('Pendiente', 'Pagado', 'Expirado')),
+    creado_en      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expira_en      TIMESTAMPTZ NOT NULL,
+    caja_id        VARCHAR(50),
+    cajero         VARCHAR(255),
+    confirmado_en  TIMESTAMPTZ,
+    confirmado_por VARCHAR(255)
+);

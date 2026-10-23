@@ -107,3 +107,70 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_confirmacion_activa
 CREATE INDEX IF NOT EXISTS idx_confirmaciones_pendientes
     ON proveedores.confirmaciones_compras (proximo_intento_en)
     WHERE estado = 'PENDIENTE';
+
+-- ==========================================================================
+-- TDSI-21/417: Lote de Cierre Diario
+-- La fila del dia ya la crea TDSI-401 (flujo de egresos) mientras el dia esta en
+-- curso; generar el lote la "cierra" (EN_CURSO -> GENERADO). Una fecha solo puede
+-- tener un lote: la columna fecha ya es UNIQUE y el estado evita regenerarlo.
+-- ==========================================================================
+
+ALTER TABLE proveedores.lotes_cierre_diario
+    ADD COLUMN IF NOT EXISTS total_neto      NUMERIC(14,2) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS iva_porcentaje  NUMERIC(5,2),
+    ADD COLUMN IF NOT EXISTS modo_aislado    BOOLEAN       NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS detalle         JSONB;
+
+ALTER TABLE proveedores.lotes_cierre_diario DROP CONSTRAINT IF EXISTS lotes_cierre_diario_estado_check;
+
+-- Las filas que dejo TDSI-401 antes de este cambio nunca fueron un lote generado.
+UPDATE proveedores.lotes_cierre_diario
+   SET estado = 'EN_CURSO'
+ WHERE estado = 'GENERADO' AND generado_por IS NULL;
+
+ALTER TABLE proveedores.lotes_cierre_diario
+    ADD CONSTRAINT lotes_cierre_diario_estado_check CHECK (estado IN ('EN_CURSO','GENERADO','ENVIADO'));
+ALTER TABLE proveedores.lotes_cierre_diario ALTER COLUMN estado SET DEFAULT 'EN_CURSO';
+
+
+-- ==========================================================================
+-- Migracion 002 - TDSI-22/421: registro de envios del reporte a Contabilidad
+-- Amplia proveedores.envios_contabilidad (creada sin uso en TDSI-122) para guardar
+-- cada envio: estado, intentos, fecha del ultimo intento, ultimo error y el
+-- reporte enviado. Un lote tiene un solo envio; "Reenviar" reutiliza la misma fila.
+-- Se puede correr varias veces.
+-- ==========================================================================
+
+ALTER TABLE proveedores.envios_contabilidad
+    ADD COLUMN IF NOT EXISTS payload                  JSONB,
+    ADD COLUMN IF NOT EXISTS solicitado_por           VARCHAR(60),
+    ADD COLUMN IF NOT EXISTS ultimo_intento_en        TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS ultimo_status            INT,
+    ADD COLUMN IF NOT EXISTS ultimo_error             VARCHAR(400),
+    ADD COLUMN IF NOT EXISTS referencia_contabilidad  VARCHAR(80),
+    ADD COLUMN IF NOT EXISTS proximo_intento_en       TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS creado_en                TIMESTAMPTZ NOT NULL DEFAULT now();
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_envio_por_lote
+    ON proveedores.envios_contabilidad (lote_id);
+
+CREATE INDEX IF NOT EXISTS idx_envios_contabilidad_estado
+    ON proveedores.envios_contabilidad (estado, proximo_intento_en);
+-- ==========================================================================
+-- Migracion 003 - TDSI-656: envio del reporte por Google Pub/Sub
+-- canal: por donde salio el envio (HTTP o PUBSUB).
+-- pubsub_message_id: id que devuelve Pub/Sub al publicar el mensaje.
+-- Se puede correr varias veces.
+-- ==========================================================================
+
+ALTER TABLE proveedores.envios_contabilidad
+    ADD COLUMN IF NOT EXISTS canal              VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS pubsub_message_id  VARCHAR(100);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_envios_contabilidad_canal') THEN
+        ALTER TABLE proveedores.envios_contabilidad
+            ADD CONSTRAINT ck_envios_contabilidad_canal CHECK (canal IN ('HTTP', 'PUBSUB'));
+    END IF;
+END $$;

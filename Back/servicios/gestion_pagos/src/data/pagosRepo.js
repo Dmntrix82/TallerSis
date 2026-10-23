@@ -1,4 +1,5 @@
 const { query, withTransaction } = require("../config/db");
+const { AppError } = require("../utils/AppError");
 
 const num = (v) => (v === null || v === undefined ? v : Number(v));
 
@@ -9,18 +10,83 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * correlativo de la propia tabla (nextval de su secuencia), asi queda unico
  * por construccion, sin depender de que el cajero no repita un numero.
  */
-async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero }) {
+async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto }) {
   const { rows } = await query(
     `WITH nuevo AS (
        SELECT nextval(pg_get_serial_sequence('pagos.transacciones', 'id')) AS id
      )
      INSERT INTO pagos.transacciones
-       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero)
-     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9
+       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto)
+     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
      FROM nuevo
      RETURNING *`,
-    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null]
+    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, monto_recibido ?? null, vuelto ?? null]
   );
+  return { ...rows[0], monto: num(rows[0].monto), monto_recibido: num(rows[0].monto_recibido), vuelto: num(rows[0].vuelto) };
+}
+
+// ---------- Cobro con QR (TDSI-39/155) ----------
+
+/**
+ * Crea el registro de cobro pendiente: la referencia interna se genera con
+ * el mismo correlativo de la tabla (igual que VTA-NNNNNN en transacciones),
+ * asi queda unica por construccion.
+ */
+async function crearCobroQr({ monto, minutosVencimiento, caja_id, cajero }) {
+  const { rows } = await query(
+    `WITH nuevo AS (
+       SELECT nextval(pg_get_serial_sequence('pagos.cobros_qr', 'id')) AS id
+     )
+     INSERT INTO pagos.cobros_qr
+       (id, referencia, monto, expira_en, caja_id, cajero)
+     SELECT id, 'COB-' || lpad(id::text, 6, '0'), $1, now() + ($2 || ' minutes')::interval, $3, $4
+     FROM nuevo
+     RETURNING *`,
+    [monto, minutosVencimiento, caja_id || null, cajero || null]
+  );
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
+/** TDSI-532: consultar el estado actual de un cobro pendiente (Pendiente/Pagado/Expirado). */
+async function obtenerCobroQrPorId(id) {
+  const { rows } = await query(`SELECT * FROM pagos.cobros_qr WHERE id = $1`, [id]);
+  if (!rows.length) return null;
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
+/**
+ * TDSI-533/534: el cajero confirma a mano que vio llegar el deposito. El
+ * WHERE hace que esto sea atomico por construccion: si el cobro ya estaba
+ * Pagado, Expirado, o si ya paso su expira_en (aunque nadie lo haya marcado
+ * Expirado todavia), no actualiza ninguna fila y devuelve null -- asi un
+ * cobro vencido nunca se puede confirmar, se haya "limpiado" o no.
+ */
+async function confirmarCobroQr(id, confirmado_por) {
+  const { rows } = await query(
+    `UPDATE pagos.cobros_qr
+     SET estado = 'Pagado', confirmado_en = now(), confirmado_por = $2
+     WHERE id = $1 AND estado = 'Pendiente' AND expira_en >= now()
+     RETURNING *`,
+    [id, confirmado_por]
+  );
+  if (!rows.length) return null;
+  return { ...rows[0], monto: num(rows[0].monto) };
+}
+
+/**
+ * TDSI-534: pasa un cobro Pendiente vencido a Expirado. Se llama "de paso"
+ * cada vez que se consulta o se intenta confirmar un cobro -- no hace falta
+ * un cron aparte, con que se revise en esos dos puntos alcanza.
+ */
+async function expirarCobroQrSiVencido(id) {
+  const { rows } = await query(
+    `UPDATE pagos.cobros_qr
+     SET estado = 'Expirado'
+     WHERE id = $1 AND estado = 'Pendiente' AND expira_en < now()
+     RETURNING *`,
+    [id]
+  );
+  if (!rows.length) return null;
   return { ...rows[0], monto: num(rows[0].monto) };
 }
 
@@ -83,8 +149,10 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
             MAX(nit) AS nit,
             MAX(razon_social) AS razon_social,
             MAX(tipo_documento) AS tipo_documento,
+            MAX(telefono) AS telefono,
             MAX(caja_id) AS caja_id,
-            bool_and(estado = 'Anulado') AS anulado
+            bool_and(estado = 'Anulado') AS anulado,
+            bool_or(estado = 'AnulacionSolicitada') AS anulacion_solicitada
        FROM pagos.transacciones
       WHERE ${condiciones.join(" AND ")}
       GROUP BY id_transaccion
@@ -100,8 +168,10 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
     nit: r.nit,
     razon_social: r.razon_social,
     tipo_documento: r.tipo_documento,
+    telefono: r.telefono,
     caja_id: r.caja_id,
-    estado: r.anulado ? 'Anulado' : 'Registrado',
+    // TDSI-28: la venta con una anulacion pendiente se muestra como "Anulacion solicitada"
+    estado: r.anulado ? 'Anulado' : r.anulacion_solicitada ? 'AnulacionSolicitada' : 'Registrado',
   }));
 }
 
@@ -127,14 +197,169 @@ async function anularTransaccion(id_transaccion, { anulado_por }) {
 }
 
 /**
+ * TDSI-28/133: deja la venta "en espera" de que un supervisor la revise despues,
+ * para cuando no hay ninguno presente en la caja. Convive con anularTransaccion
+ * (autorizacion inmediata, TDSI-306): el cajero elige una u otra.
+ */
+async function crearSolicitudAnulacion({ id_transaccion, motivo, solicitado_por }, validar) {
+  return withTransaction(async (client) => {
+    const { rows: filas } = await client.query(
+      `SELECT id_transaccion, estado, cajero, fecha FROM pagos.transacciones
+        WHERE id_transaccion = $1 FOR UPDATE`,
+      [id_transaccion]
+    );
+    validar(filas);
+
+    await client.query(
+      `UPDATE pagos.transacciones SET estado = 'AnulacionSolicitada' WHERE id_transaccion = $1`,
+      [id_transaccion]
+    );
+
+    const { rows } = await client.query(
+      `INSERT INTO pagos.solicitudes_anulacion (id_transaccion, motivo, solicitado_por)
+       VALUES ($1, $2, $3)
+       RETURNING id, id_transaccion, motivo, solicitado_por, solicitado_en, estado`,
+      [id_transaccion, motivo, solicitado_por || null]
+    );
+    return rows[0];
+  });
+}
+
+/** TDSI-539: ventas con una solicitud de anulacion todavia sin resolver. */
+async function listarSolicitudesAnulacionPendientes() {
+  const { rows } = await query(
+    `SELECT sa.id, sa.id_transaccion, sa.motivo, sa.solicitado_por, sa.solicitado_en,
+            MAX(t.razon_social) AS razon_social, SUM(t.monto) AS monto
+       FROM pagos.solicitudes_anulacion sa
+       JOIN pagos.transacciones t ON t.id_transaccion = sa.id_transaccion
+      WHERE sa.estado = 'Solicitada'
+      GROUP BY sa.id, sa.id_transaccion, sa.motivo, sa.solicitado_por, sa.solicitado_en
+      ORDER BY sa.solicitado_en ASC`
+  );
+  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
+}
+
+async function buscarSolicitudAnulacion(id) {
+  const { rows } = await query(
+    `SELECT id, id_transaccion, estado FROM pagos.solicitudes_anulacion WHERE id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+/** TDSI-540/541: aprueba (-> Anulado) o rechaza (-> Registrado) la solicitud, con el PIN ya validado. */
+async function resolverSolicitudAnulacion(id, { aprobar, supervisor, observacion }, validar) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, id_transaccion, estado FROM pagos.solicitudes_anulacion WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
+    validar(rows[0] || null);
+    const idTransaccion = rows[0].id_transaccion;
+
+    await client.query(
+      `UPDATE pagos.transacciones
+          SET estado = $2, anulado_por = $3, anulado_en = CASE WHEN $4::boolean THEN now() ELSE NULL END
+        WHERE id_transaccion = $1`,
+      [idTransaccion, aprobar ? "Anulado" : "Registrado", aprobar ? supervisor.supervisor_id : null, aprobar]
+    );
+
+    if (aprobar) {
+      await client.query(
+        `UPDATE pagos.pagos_mixtos SET estado = 'Anulado' WHERE id_transaccion = $1`,
+        [idTransaccion]
+      );
+    }
+
+    const upd = await client.query(
+      `UPDATE pagos.solicitudes_anulacion
+          SET estado = $2, autorizado_por = $3, autorizado_nombre = $4, autorizado_en = now(), observacion = $5
+        WHERE id = $1
+        RETURNING id, id_transaccion, estado, autorizado_por, autorizado_nombre, autorizado_en, observacion`,
+      [id, aprobar ? "Autorizada" : "Rechazada", supervisor.supervisor_id, supervisor.nombre, observacion || null]
+    );
+    return upd.rows[0];
+  });
+}
+
+/**
+ * TDSI-37/545: corrige datos de facturacion de una venta ya registrada,
+ * manteniendo su id_transaccion. Solo actualiza las filas con estado
+ * 'Registrado' (si fuera un pago Mixto con 2 filas, corrige las dos).
+ */
+async function actualizarDatosVenta(id_transaccion, { nit, razon_social, tipo_documento, telefono, modificado_por, autorizado_por }) {
+  const columnas = { nit, razon_social, tipo_documento, telefono };
+  const camposTocados = Object.keys(columnas).filter((c) => columnas[c] !== undefined);
+
+  return withTransaction(async (client) => {
+    // TDSI-546: se lee el valor "anterior" antes de pisarlo, para la bitacora.
+    const { rows: antes } = await client.query(
+      `SELECT * FROM pagos.transacciones WHERE id_transaccion = $1 AND estado = 'Registrado' FOR UPDATE`,
+      [id_transaccion]
+    );
+    if (antes.length === 0) {
+      throw new AppError("La venta ya no se puede modificar (no existe o fue anulada justo ahora).", 409);
+    }
+
+    const sets = ["fecha_modificacion = now()", "modificado_por = $2", "autorizado_por = $3"];
+    const params = [id_transaccion, modificado_por, autorizado_por];
+    for (const columna of camposTocados) {
+      params.push(columnas[columna]);
+      sets.push(`${columna} = $${params.length}`);
+    }
+
+    const { rows: despues } = await client.query(
+      `UPDATE pagos.transacciones
+          SET ${sets.join(", ")}
+        WHERE id_transaccion = $1 AND estado = 'Registrado'
+        RETURNING *`,
+      params
+    );
+
+    // Una fila de bitacora por cada campo que de verdad cambio (si era Mixto,
+    // por cada fila de la venta: ej. 2 filas x 1 campo cambiado = 2 registros).
+    for (const filaAntes of antes) {
+      const filaDespues = despues.find((r) => r.id === filaAntes.id);
+      for (const campo of camposTocados) {
+        const valorAnterior = filaAntes[campo];
+        const valorNuevo = filaDespues[campo];
+        if (String(valorAnterior ?? "") === String(valorNuevo ?? "")) continue;
+        await client.query(
+          `INSERT INTO pagos.bitacora_modificaciones
+             (id_transaccion, campo, valor_anterior, valor_nuevo, modificado_por, autorizado_por)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id_transaccion, campo, valorAnterior, valorNuevo, modificado_por, autorizado_por]
+        );
+      }
+    }
+
+    return despues.map((r) => ({ ...r, monto: num(r.monto) }));
+  });
+}
+
+/** TDSI-546: historial de modificaciones de una venta, mas reciente primero. */
+async function listarBitacoraModificaciones(id_transaccion) {
+  const { rows } = await query(
+    `SELECT id, campo, valor_anterior, valor_nuevo, modificado_por, autorizado_por, modificado_en
+       FROM pagos.bitacora_modificaciones
+      WHERE id_transaccion = $1
+      ORDER BY modificado_en DESC`,
+    [id_transaccion]
+  );
+  return rows;
+}
+
+/**
  * TDSI-323: reporte de ventas de una caja en un rango de tiempo (el turno actual),
  * para el cierre de caja: cuanto se gano por metodo, cuantas ventas, cuantas anuladas.
+ * TDSI-30: solo cuentan como ingreso los cobros aprobados; un cobro rechazado o
+ * pendiente no entro a la caja (igual que en monitoreo y en metodos de pago).
  */
 async function reporteTurno(caja_id, desde, hasta) {
   const { rows: porMetodo } = await query(
     `SELECT metodo, SUM(monto) AS total, COUNT(*)::int AS operaciones
        FROM pagos.transacciones
-      WHERE caja_id = $1 AND estado = 'Registrado' AND fecha >= $2 AND fecha <= $3
+      WHERE caja_id = $1 AND estado = 'Registrado' AND estado_pago = 'APROBADA' AND fecha >= $2 AND fecha <= $3
       GROUP BY metodo`,
     [caja_id, desde, hasta]
   );
@@ -143,7 +368,8 @@ async function reporteTurno(caja_id, desde, hasta) {
     `SELECT id_transaccion, SUM(monto) AS total, bool_and(estado = 'Anulado') AS anulado
        FROM pagos.transacciones
       WHERE caja_id = $1 AND fecha >= $2 AND fecha <= $3
-      GROUP BY id_transaccion`,
+      GROUP BY id_transaccion
+     HAVING bool_and(estado = 'Anulado') OR bool_and(estado_pago = 'APROBADA')`,
     [caja_id, desde, hasta]
   );
 
@@ -291,12 +517,14 @@ async function historialPorDocumento(tipo_documento, numero) {
 /**
  * TDSI-328: totales de todas las ventas del sistema (todas las cajas), para el
  * tablero del administrador -- cuanto se ha ganado en total desde el inicio.
+ * TDSI-21: tambien alimenta el Lote de Cierre Diario, asi que solo cuentan los
+ * cobros aprobados (un cobro rechazado o pendiente no es ingreso).
  */
 async function totalesGenerales(desde, hasta) {
   const { rows: porMetodo } = await query(
     `SELECT metodo, SUM(monto) AS total, COUNT(*)::int AS operaciones
        FROM pagos.transacciones
-      WHERE estado = 'Registrado' AND fecha >= $1 AND fecha <= $2
+      WHERE estado = 'Registrado' AND estado_pago = 'APROBADA' AND fecha >= $1 AND fecha <= $2
       GROUP BY metodo`,
     [desde, hasta]
   );
@@ -305,7 +533,8 @@ async function totalesGenerales(desde, hasta) {
     `SELECT id_transaccion, SUM(monto) AS total, bool_and(estado = 'Anulado') AS anulado
        FROM pagos.transacciones
       WHERE fecha >= $1 AND fecha <= $2
-      GROUP BY id_transaccion`,
+      GROUP BY id_transaccion
+     HAVING bool_and(estado = 'Anulado') OR bool_and(estado_pago = 'APROBADA')`,
     [desde, hasta]
   );
 
@@ -366,7 +595,7 @@ async function existePagoMixto(id_transaccion) {
  * Si no se pasa id_transaccion (caso normal desde la pantalla de Pagos), se genera aqui
  * con el mismo correlativo VTA-000NNN que usa el pago simple, asi queda unico por construccion.
  */
-async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, total, metodos, nit, razon_social, tipo_documento, telefono, cajero }) {
+async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, total, metodos, nit, razon_social, tipo_documento, telefono, cajero, cajeroId }) {
   return withTransaction(async (client) => {
     let idTransaccion = id_transaccion;
     if (!idTransaccion) {
@@ -398,10 +627,10 @@ async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, tot
     const transacciones = [];
     for (const d of detalle) {
       const { rows } = await client.query(
-        `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, pago_mixto_id, nit, razon_social, tipo_documento, telefono, cajero, caja_id)
-         VALUES ($1, $2, $3, 'Mixto', $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, pago_mixto_id, nit, razon_social, tipo_documento, telefono, cajero, caja_id, cajero_id)
+         VALUES ($1, $2, $3, 'Mixto', $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
-        [pago.id_transaccion, d.metodo, d.monto, pago.id, nit || null, razon_social || null, tipo_documento || null, telefono || null, cajero || null, cajaId || null]
+        [pago.id_transaccion, d.metodo, d.monto, pago.id, nit || null, razon_social || null, tipo_documento || null, telefono || null, cajero || null, cajaId || null, cajeroId || null]
       );
       transacciones.push(rows[0]);
     }
@@ -434,13 +663,52 @@ async function obtenerPagoMixtoPorTransaccion(id_transaccion) {
   };
 }
 
+/** TDSI-38/527: trae el token de verificacion de una venta, o null si no tiene (Mixto comparte uno solo entre sus filas). */
+async function obtenerTokenVerificacion(id_transaccion) {
+  const { rows } = await query(
+    `SELECT token_verificacion FROM pagos.transacciones WHERE id_transaccion = $1 LIMIT 1`,
+    [id_transaccion]
+  );
+  return rows[0]?.token_verificacion || null;
+}
+
+/** TDSI-38/527: guarda el token (en todas las filas de la venta) solo si todavia no tenia uno. */
+async function guardarTokenVerificacion(id_transaccion, token) {
+  await query(
+    `UPDATE pagos.transacciones SET token_verificacion = $2 WHERE id_transaccion = $1 AND token_verificacion IS NULL`,
+    [id_transaccion, token]
+  );
+}
+
+/** TDSI-38/528: busca la venta por su token de verificacion (para el QR escaneado). */
+async function buscarPorTokenVerificacion(token) {
+  const { rows } = await query(
+    `SELECT * FROM pagos.transacciones WHERE token_verificacion = $1`,
+    [token]
+  );
+  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
+}
+
 module.exports = {
+  crearCobroQr,
+  obtenerCobroQrPorId,
+  confirmarCobroQr,
+  expirarCobroQrSiVencido,
   insertarTransaccionSimple,
   buscarTransaccionesPorIdTransaccion,
   buscarTodasTransaccionesPorIdTransaccion,
   buscarRazonSocialPorDocumento,
+  obtenerTokenVerificacion,
+  guardarTokenVerificacion,
+  buscarPorTokenVerificacion,
   listarPorCajero,
   anularTransaccion,
+  crearSolicitudAnulacion,
+  listarSolicitudesAnulacionPendientes,
+  buscarSolicitudAnulacion,
+  resolverSolicitudAnulacion,
+  actualizarDatosVenta,
+  listarBitacoraModificaciones,
   reporteTurno,
   listarCajeros,
   rankingCajas,

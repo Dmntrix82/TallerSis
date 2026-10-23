@@ -5,6 +5,8 @@ const { query } = require("./config/db");
 const { errorHandler } = require("./middlewares/errorHandler");
 const egresosRoutes = require("./routes/egresosRoutes");
 const confirmacionesRoutes = require("./routes/confirmacionesRoutes");
+const lotesCierreRoutes = require("./routes/loteCierreRoutes");
+const enviosContabilidadRoutes = require("./routes/enviosContabilidadRoutes");
 
 const app = express();
 
@@ -31,6 +33,8 @@ app.use("/api/egresos", egresosRoutes);
 app.use("/api/proveedores", require("./routes/ordenPagoRoutes"));
 app.use("/api/proveedores/notificaciones", require("./routes/notificacionRoutes"));
 app.use("/ordenes-pago", confirmacionesRoutes);
+app.use("/api/lotes-cierre", lotesCierreRoutes); // TDSI-21/418
+app.use("/api/envios-contabilidad", enviosContabilidadRoutes); // TDSI-22/122
 
 app.use(errorHandler);
 
@@ -38,4 +42,7 @@ const PORT = process.env.PORT || 4006;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[PagosProveedores] Servidor corriendo en puerto ${PORT}`);
   require("./jobs/reintentoConfirmaciones").iniciar();
+  require("./jobs/reintentoEnviosContabilidad").iniciar(); // TDSI-422
+  const integ = require("./config/integraciones");
+  console.log(`[contabilidad] Canal de envio: ${integ.PUBSUB_TOPIC ? `Pub/Sub (${integ.PUBSUB_TOPIC})` : "HTTP"}`); // TDSI-656
 });

@@ -34,3 +34,80 @@ export function urlReporteCierrePdf(turnoId) {
   const base = import.meta.env.VITE_API_BASE_URL ?? ''
   return `${base}/api/caja/turnos/${turnoId}/cierre/pdf`
 }
+// TDSI-126/465: estado de todas las cajas. Cada caja trae { codigo, nombre, estado, activa },
+// con estado = ABIERTA | CERRADA | INACTIVA (INACTIVA gana sobre las otras dos).
+export function obtenerEstadoCajas() {
+  return apiFetch('/api/caja/estado')
+}
+
+// TDSI-149/494: reporte de operaciones de una caja en un rango de dias (YYYY-MM-DD, hora de Bolivia).
+// caja_id es obligatorio; el rango no puede superar 92 dias. Responde data:
+// { caja_id, caja_nombre, desde, hasta, resumen, totales_por_metodo, turnos, diferencias }.
+export function obtenerReporteCaja({ caja_id, desde, hasta }) {
+  const params = new URLSearchParams({ caja_id, desde, hasta })
+  return apiFetch(`/api/caja/reportes?${params.toString()}`)
+}
+
+// TDSI-493: el mismo reporte en CSV. Se pide con fetch (y no con un link) para poder mostrar
+// el mensaje de error del backend si falla. Devuelve el Blob del archivo.
+export async function descargarReporteCajaCsv({ caja_id, desde, hasta }) {
+  const base = import.meta.env.VITE_API_BASE_URL ?? ''
+  const params = new URLSearchParams({ caja_id, desde, hasta, formato: 'csv' })
+  const response = await fetch(`${base}/api/caja/reportes?${params.toString()}`)
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.mensaje ?? `Error ${response.status}: ${response.statusText}`)
+  }
+  return response.blob()
+}
+// TDSI-320 / TDSI-503: compara el efectivo contado con el esperado del turno (no cierra nada).
+// Responde data: { efectivoEsperado, efectivoContado, diferencia, tipoDiferencia: CUADRA | SOBRANTE | FALTANTE }.
+export function compararEfectivo(turnoId, efectivoContado) {
+  return apiFetch(`/api/caja/turnos/${turnoId}/comparar-efectivo`, {
+    method: 'POST',
+    body: JSON.stringify({ efectivoContado }),
+  })
+}
+
+// TDSI-137/482: total recaudado de cada caja activa en un rango de fechas (por defecto, hoy).
+// Cada caja trae { caja_id, caja_nombre, totalIngresos, totalEgresos, totalRecaudado, operaciones,
+// porMetodo: { Efectivo, Tarjeta, QR } } y cada metodo { ingresos, egresos, neto, operaciones }.
+export function obtenerRecaudadoPorCaja({ desde, hasta } = {}) {
+  const params = new URLSearchParams()
+  if (desde) params.set('desde', desde)
+  if (hasta) params.set('hasta', hasta)
+  const qs = params.toString()
+  return apiFetch(`/api/caja/recaudado${qs ? `?${qs}` : ''}`)
+}
+
+// TDSI-139/485: comparacion del monto registrado (esperado) vs el disponible (contado) de los
+// turnos de una fecha (YYYY-MM-DD, obligatoria), con filtros opcionales por caja, cajero y tipo
+// (CUADRA | FALTANTE | SOBRANTE). Responde data: { resumen: { total, cuadran, faltantes, sobrantes }, turnos }.
+export function obtenerComparacionMontos({ fecha, caja_id, cajero_id, tipo }) {
+  const params = new URLSearchParams({ fecha })
+  if (caja_id) params.set('caja_id', caja_id)
+  if (cajero_id) params.set('cajero_id', cajero_id)
+  if (tipo) params.set('tipo', tipo)
+  return apiFetch(`/api/caja/comparacion?${params.toString()}`)
+}
+
+// TDSI-141/489: diferencias de caja (faltantes/sobrantes) registradas al cerrar turnos.
+// Filtros opcionales: estado (PENDIENTE | RESUELTA), tipo (FALTANTE | SOBRANTE) y caja_id.
+// Cada diferencia trae { id, turno_id, caja_id, monto, tipo, estado, justificacion, resuelta_por, resuelta_en };
+// el monto de un FALTANTE viene en negativo.
+export function listarDiferencias({ estado, tipo, caja_id } = {}) {
+  const params = new URLSearchParams()
+  if (estado) params.set('estado', estado)
+  if (tipo) params.set('tipo', tipo)
+  if (caja_id) params.set('caja_id', caja_id)
+  const qs = params.toString()
+  return apiFetch(`/api/caja/diferencias${qs ? `?${qs}` : ''}`)
+}
+
+// TDSI-488: resuelve una diferencia; justificacion y resuelta_por son obligatorios (la fecha la pone el backend).
+export function resolverDiferencia(id, { justificacion, resuelta_por }) {
+  return apiFetch(`/api/caja/diferencias/${id}/resolver`, {
+    method: 'POST',
+    body: JSON.stringify({ justificacion, resuelta_por }),
+  })
+}

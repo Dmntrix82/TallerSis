@@ -22,6 +22,9 @@ async function solicitarAnulacion({ factura_numero, motivo, solicitado_por } = {
 
   if (typeof motivo !== "string" || !motivo.trim())
     throw err("El motivo de la anulación es obligatorio");
+  // TDSI-22: Contabilidad rechaza anulaciones con un motivo de menos de 10 caracteres
+  if (motivo.trim().length < 10)
+    throw err("El motivo de la anulación debe tener al menos 10 caracteres");
   if (motivo.trim().length > 300)
     throw err("El motivo debe tener máximo 300 caracteres");
 
@@ -101,4 +104,9 @@ async function autorizarAnulacion(id, { supervisor_id, pin, decision, observacio
   };
 }
 
-module.exports = { solicitarAnulacion, autorizarAnulacion };
+/** TDSI-539: lista para la pantalla del supervisor -- solicitudes que todavia no se resolvieron */
+async function listarPendientes() {
+  return repo.listarPendientes();
+}
+
+module.exports = { solicitarAnulacion, autorizarAnulacion, listarPendientes };

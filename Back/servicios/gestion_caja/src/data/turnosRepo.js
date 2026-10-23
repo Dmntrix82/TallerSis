@@ -90,10 +90,60 @@ async function marcarCerrado(turnoId, { efectivoContado, efectivoEsperado, difer
   return rows[0];
 }
 
+/**
+ * TDSI-483: lista los turnos de una fecha (con filtros opcionales por caja/cajero).
+ * La fecha se compara contra `abierto_en` en zona horaria America/La_Paz.
+ */
+async function listarTurnosPorFecha({ fecha, caja_id, cajero_id }) {
+  const condiciones = [];
+  const params = [];
+
+  if (fecha) {
+    params.push(fecha);
+    condiciones.push(`(abierto_en AT TIME ZONE 'America/La_Paz')::date = $${params.length}::date`);
+  }
+  if (caja_id) {
+    params.push(caja_id);
+    condiciones.push(`caja_id = $${params.length}`);
+  }
+  if (cajero_id) {
+    params.push(cajero_id);
+    condiciones.push(`cajero_id = $${params.length}`);
+  }
+
+  const where = condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : "";
+  const { rows } = await query(
+    `SELECT id::int AS id, codigo, caja_id, cajero_id, cajero_nombre,
+            efectivo_inicial, efectivo_contado, efectivo_esperado, diferencia, tipo_diferencia,
+            estado, abierto_en, cerrado_en
+       FROM caja.turnos
+       ${where}
+       ORDER BY abierto_en DESC`,
+    params
+  );
+  return rows;
+}
+
+/** TDSI-491: turnos de una caja abiertos entre dos instantes (rango de dias de Bolivia), del mas antiguo al mas reciente. */
+async function listarTurnosPorCajaYRango({ caja_id, inicio, fin }) {
+  const { rows } = await query(
+    `SELECT id::int AS id, codigo, caja_id, cajero_id, cajero_nombre,
+            efectivo_inicial, efectivo_contado, efectivo_esperado, diferencia, tipo_diferencia,
+            estado, abierto_en, cerrado_en
+       FROM caja.turnos
+      WHERE caja_id = $1 AND abierto_en >= $2 AND abierto_en <= $3
+      ORDER BY abierto_en, id`,
+    [caja_id, inicio, fin]
+  );
+  return rows;
+}
+
 module.exports = {
+  listarTurnosPorCajaYRango,
   buscarCajaPorCodigo,
   crearTurno,
   buscarTurnoAbiertoPorCaja,
   obtenerTurnoPorId,
   marcarCerrado,
+  listarTurnosPorFecha,
 };
