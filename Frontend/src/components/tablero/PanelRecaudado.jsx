@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { obtenerRecaudadoPorCaja } from '../api/caja.js'
+import { obtenerRecaudadoPorCaja } from '../../api/caja.js'
 
 const METODOS = ['Efectivo', 'Tarjeta', 'QR']
 
@@ -18,7 +18,7 @@ function rangoDelDia(fecha) {
   }
 }
 
-function RecaudadoCajas() {
+function PanelRecaudado() {
   const [fecha, setFecha] = useState(hoyLocal)
   const [cajas, setCajas] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -43,7 +43,7 @@ function RecaudadoCajas() {
 
   return (
     <section>
-      <h1>Total recaudado por caja</h1>
+      <h2>Total recaudado por caja</h2>
       <p className="resumen-turno-actual">
         Lo que recaudó cada caja activa en el día elegido: ingresos, egresos, neto y desglose por método de pago.
       </p>
@@ -131,4 +131,4 @@ function RecaudadoCajas() {
   )
 }
 
-export default RecaudadoCajas
+export default PanelRecaudado

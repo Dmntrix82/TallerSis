@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import '../App.css'
+import '../../App.css'
 
 const BASE_URL = import.meta.env.VITE_GESTION_PAGOS_API_BASE_URL || 'http://localhost:4005'
-const CAJEROS_URL = `${BASE_URL}/api/pagos/revision/cajeros` 
+const CAJEROS_URL = `${BASE_URL}/api/pagos/revision/cajeros`
 const METODOS_URL = `${BASE_URL}/api/pagos/metodos`
 
 const COLORES = ['#2f5d31', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6', '#ec4899']
@@ -119,15 +119,15 @@ function Donut({ segmentos, activo, setActivo, centroTitulo, centroValor }) {
   )
 }
 
-export default function MetodosPago() {
+export default function PanelMetodosPago() {
   const [cajeros, setCajeros] = useState([])
   const [errorCajeros, setErrorCajeros] = useState('')
-  
+
   const [desde, setDesde] = useState(hace30Dias)
   const [hasta, setHasta] = useState(fechaHoy)
   const [cajeroId, setCajeroId] = useState('')
   const [cajaId, setCajaId] = useState('') // Agregado para cumplir TDSI-623
-  const [criterio, setCriterio] = useState('monto') 
+  const [criterio, setCriterio] = useState('monto')
 
   const [datos, setDatos] = useState([])
   const [cargando, setCargando] = useState(false)
@@ -165,7 +165,7 @@ export default function MetodosPago() {
       const params = new URLSearchParams({ desde, hasta })
       if (cajeroId) params.set('cajero_id', cajeroId)
       if (cajaId) params.set('caja_id', cajaId) // Enviando la caja al backend
-      
+
       const res = await requestJson(`${METODOS_URL}?${params}`)
       if (actual !== peticion.current) return
       const lista = res?.data ?? res
@@ -211,7 +211,7 @@ export default function MetodosPago() {
         <div className="mp-icono" aria-hidden="true">◔</div>
         <div>
           <p className="mp-eyebrow">SUPERVISIÓN / CAJA</p>
-          <h1>Métodos de pago utilizados</h1>
+          <h2>Métodos de pago utilizados</h2>
           <p className="mp-descripcion">Distribución de las operaciones por efectivo, QR, tarjeta y otros medios.</p>
         </div>
       </header>

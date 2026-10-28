@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { listarCajas, obtenerComparacionMontos } from '../api/caja.js'
+import { listarCajas, obtenerComparacionMontos } from '../../api/caja.js'
 
 const ETIQUETA_TIPO = {
   CUADRA: 'Cuadra',
   FALTANTE: 'Faltante',
   SOBRANTE: 'Sobrante',
+  SIN_ARQUEO: 'Sin arqueo',
 }
 
 function hoyLocal() {
@@ -14,7 +15,10 @@ function hoyLocal() {
   return `${d.getFullYear()}-${mes}-${dia}`
 }
 
-function ComparacionMontos() {
+// El turno puede no tener arqueo todavia (SIN_ARQUEO): esos valores vienen null.
+const bs = (v) => (v == null ? '—' : v.toFixed(2))
+
+function PanelComparacion() {
   const [fecha, setFecha] = useState(hoyLocal)
   const [filtroCaja, setFiltroCaja] = useState('')
   const [filtroCajero, setFiltroCajero] = useState('')
@@ -74,7 +78,7 @@ function ComparacionMontos() {
 
   return (
     <section>
-      <h1>Comparación de montos</h1>
+      <h2>Comparación de montos</h2>
       <p className="resumen-turno-actual">
         Monto registrado por el sistema contra el efectivo disponible en caja, por turno.
       </p>
@@ -185,11 +189,11 @@ function ComparacionMontos() {
                   </td>
                   <td>{t.caja_id}</td>
                   <td>{t.cajero_nombre || t.cajero_id}</td>
-                  <td>{t.efectivo_esperado.toFixed(2)}</td>
-                  <td>{t.efectivo_contado.toFixed(2)}</td>
+                  <td>{bs(t.efectivo_esperado)}</td>
+                  <td>{bs(t.efectivo_contado)}</td>
                   <td className={`comparacion-diferencia--${tipo}`}>
                     {t.diferencia > 0 ? '+' : ''}
-                    {t.diferencia.toFixed(2)}
+                    {bs(t.diferencia)}
                   </td>
                   <td>
                     <span className={`badge-estado badge-comparacion--${tipo}`}>
@@ -206,4 +210,4 @@ function ComparacionMontos() {
   )
 }
 
-export default ComparacionMontos
+export default PanelComparacion

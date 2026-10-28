@@ -82,36 +82,6 @@ export function anularVenta(id_transaccion, { cajero, supervisor_id, pin }) {
   )
 }
 
-// TDSI-28/133: solicita la anulacion de una venta SIN pedir el PIN al toque, para
-// cuando no hay un supervisor presente -- queda en espera (bandeja del administrador).
-export function solicitarAnulacionPendiente(id_transaccion, { cajero, motivo }) {
-  return apiFetch(
-    `/api/pagos/${encodeURIComponent(id_transaccion)}/solicitar-anulacion`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ cajero, motivo }),
-    },
-    GESTION_PAGOS_API_BASE_URL,
-  )
-}
-
-// TDSI-539: bandeja de solicitudes de anulacion pendientes, para el administrador.
-export function listarAnulacionesPendientes() {
-  return apiFetch('/api/pagos/anulaciones/pendientes', {}, GESTION_PAGOS_API_BASE_URL)
-}
-
-// TDSI-540/541: el supervisor aprueba o rechaza una solicitud con su usuario + PIN.
-export function autorizarAnulacionPendiente(id, { supervisor_id, pin, decision, observacion }) {
-  return apiFetch(
-    `/api/pagos/anulaciones/${id}/autorizar`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ supervisor_id, pin, decision, observacion }),
-    },
-    GESTION_PAGOS_API_BASE_URL,
-  )
-}
-
 // TDSI-37/545: corrige datos de facturacion de una venta ya registrada (ej. NIT mal
 // escrito), autorizado por un supervisor, dentro de las 2 horas desde la emision.
 export function modificarVenta(id_transaccion, { supervisor_id, pin, modificado_por, ...cambios }) {

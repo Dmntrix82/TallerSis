@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import '../App.css'
+import '../../App.css'
 
 const BASE_URL = import.meta.env.VITE_GESTION_PAGOS_API_BASE_URL || 'http://localhost:4005'
 const REVISION_BASE_URL = `${BASE_URL}/api/pagos/revision`
@@ -71,7 +71,7 @@ async function requestJson(url, options = {}) {
   return data
 }
 
-export default function RevisionTransacciones() {
+export default function PanelRevisionTransacciones() {
   const [cajeros, setCajeros] = useState([])
   const [cargandoCajeros, setCargandoCajeros] = useState(true)
   const [errorCajeros, setErrorCajeros] = useState('')
@@ -207,7 +207,7 @@ export default function RevisionTransacciones() {
         body: JSON.stringify({ estado: estadoNuevo, nota: notaLimpia || null, revisado_por: 'admin' }),
       })
       const actualizado = res?.data ?? res
-      
+
       // Actualizamos la fila en la tabla sin recargar la página
       setTransacciones((previas) =>
         previas.map((t) =>
@@ -233,8 +233,8 @@ export default function RevisionTransacciones() {
         <div className="rt-icono" aria-hidden="true">✓</div>
         <div>
           <p className="rt-eyebrow">AUDITORÍA / CAJA</p>
-          <h1>Revisión de transacciones</h1>
-          <p className="rt-descripcion">Audita las operaciones de cada cajero y marca las que requieran observación.</p>
+          <h2>Transacciones por cajero</h2>
+          <p className="rt-descripcion">Mira lo que hizo cada cajero, cualquier día, y marca lo que necesite una nota.</p>
         </div>
       </header>
 
@@ -267,111 +267,128 @@ export default function RevisionTransacciones() {
         {errorCajeros && <p className="rt-error-linea" role="alert">No se pudieron cargar los cajeros: {errorCajeros}</p>}
       </section>
 
-      {exito && (
-        <div className="rt-alerta rt-alerta-exito" role="status">
-          <span aria-hidden="true">✓</span><strong>{exito}</strong>
-        </div>
-      )}
-
-      {error && (
-        <div className="rt-alerta rt-alerta-error" role="alert">
-          <span aria-hidden="true">!</span>
-          <div>
-            <strong>No se pudieron cargar las transacciones</strong>
-            <p>{error}</p>
-          </div>
-          <button className="btn btn-secundario btn-pequeno" type="button" onClick={cargarTransacciones}>Reintentar</button>
-        </div>
-      )}
-
-      {!cajeroId && !error && (
+      {!cajeroId && (
         <div className="rt-vacio">
           <strong>Selecciona un cajero</strong>
-          <p>Elige un cajero y una fecha para revisar sus transacciones.</p>
+          <p>Elige un cajero y una fecha para ver sus transacciones en una ventana emergente.</p>
         </div>
       )}
 
-      {cajeroId && cargando && (
-        <div aria-live="polite" aria-label="Cargando transacciones">
-          {[1, 2, 3, 4].map((i) => <div className="rt-skeleton" key={i} />)}
-        </div>
-      )}
+      {/* Al elegir un cajero, sus transacciones se muestran en una ventana emergente
+          (antes quedaban mas abajo en la pagina y habia que bajar a verlas). */}
+      {cajeroId && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={`Transacciones de ${nombreCajero || 'cajero'}`}>
+          <div className="rt-modal-facturas">
+            <button
+              type="button"
+              className="rt-modal-cerrar"
+              onClick={() => cambiarCajero('')}
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
 
-      {cajeroId && !cargando && !error && (
-        <>
-          <section className="rt-resumen" aria-label="Resumen del cajero">
-            <div className="rt-resumen-item rt-resumen-principal">
-              <span>{nombreCajero || 'Cajero'} · {fecha}</span>
-              <strong>{formatearMoneda(resumen?.total)}</strong>
-              <small>{resumen?.cantidad_transacciones || 0} {(resumen?.cantidad_transacciones === 1) ? 'transacción' : 'transacciones'}</small>
-            </div>
-            <div className="rt-resumen-item"><span>Sin revisar</span><strong>{resumen?.revision?.sin_revisar || 0}</strong></div>
-            <div className="rt-resumen-item"><span>Revisadas</span><strong>{resumen?.revision?.revisadas || 0}</strong></div>
-            <div className="rt-resumen-item"><span>Observadas</span><strong>{resumen?.revision?.observadas || 0}</strong></div>
-          </section>
-
-          {transacciones.length === 0 ? (
-            <div className="rt-vacio">
-              <strong>Sin transacciones</strong>
-              <p>
-                {metodo
-                  ? `No hay transacciones con el método "${metodo}" para esta fecha.`
-                  : 'Este cajero no registró transacciones en la fecha seleccionada.'}
-              </p>
-            </div>
-          ) : (
-            <section className="rt-panel">
-              <div className="rt-tabla-contenedor">
-                <table className="rt-tabla">
-                  <thead>
-                    <tr>
-                      <th>Hora</th>
-                      <th>Método</th>
-                      <th className="rt-derecha">Monto</th>
-                      <th>Estado de revisión</th>
-                      <th aria-label="Acciones" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transacciones.map((t) => {
-                      const clave = estadoTx(t)
-                      const { etiqueta, clase } = ESTADOS[clave]
-                      const notaActual = notaTx(t)
-                      return (
-                        <tr key={idTx(t)}>
-                          <td className="rt-hora">{formatearHora(t.hora ?? t.fecha)}</td>
-                          <td className="rt-metodo">{Array.isArray(t.metodos) ? t.metodos.join(', ') : t.metodos}</td>
-                          <td className="rt-derecha rt-monto">{formatearMoneda(t.total)}</td>
-                          <td>
-                            <span className={`rt-estado ${clase}`}><span aria-hidden="true" />{etiqueta}</span>
-                            {clave === 'OBSERVADA' && notaActual && <small className="rt-nota">{notaActual}</small>}
-                          </td>
-                          <td className="rt-acciones">
-                            <button className="btn btn-secundario btn-pequeno" type="button" onClick={() => abrirRevision(t)}>
-                              {clave === 'PENDIENTE' ? 'Revisar' : 'Cambiar'}
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+            {exito && (
+              <div className="rt-alerta rt-alerta-exito" role="status">
+                <span aria-hidden="true">✓</span><strong>{exito}</strong>
               </div>
+            )}
 
-              <nav className="rt-paginacion" aria-label="Paginación">
-                <span>
-                  {paginacion.total_registros === 0 ? 0 : (paginacion.pagina - 1) * paginacion.por_pagina + 1}–
-                  {Math.min(paginacion.pagina * paginacion.por_pagina, paginacion.total_registros)} de {paginacion.total_registros}
-                </span>
+            {error && (
+              <div className="rt-alerta rt-alerta-error" role="alert">
+                <span aria-hidden="true">!</span>
                 <div>
-                  <button className="btn btn-secundario btn-pequeno" type="button" onClick={() => setPagina(paginacion.pagina - 1)} disabled={paginacion.pagina <= 1}>Anterior</button>
-                  <span className="rt-pagina">Página {paginacion.pagina} de {paginacion.total_paginas}</span>
-                  <button className="btn btn-secundario btn-pequeno" type="button" onClick={() => setPagina(paginacion.pagina + 1)} disabled={paginacion.pagina >= paginacion.total_paginas}>Siguiente</button>
+                  <strong>No se pudieron cargar las transacciones</strong>
+                  <p>{error}</p>
                 </div>
-              </nav>
-            </section>
-          )}
-        </>
+                <button className="btn btn-secundario btn-pequeno" type="button" onClick={cargarTransacciones}>Reintentar</button>
+              </div>
+            )}
+
+            {cargando && (
+              <div aria-live="polite" aria-label="Cargando transacciones">
+                {[1, 2, 3, 4].map((i) => <div className="rt-skeleton" key={i} />)}
+              </div>
+            )}
+
+            {!cargando && !error && (
+              <>
+                <section className="rt-resumen" aria-label="Resumen del cajero">
+                  <div className="rt-resumen-item rt-resumen-principal">
+                    <span>{nombreCajero || 'Cajero'} · {fecha}</span>
+                    <strong>{formatearMoneda(resumen?.total)}</strong>
+                    <small>{resumen?.cantidad_transacciones || 0} {(resumen?.cantidad_transacciones === 1) ? 'transacción' : 'transacciones'}</small>
+                  </div>
+                  <div className="rt-resumen-item"><span>Sin revisar</span><strong>{resumen?.revision?.sin_revisar || 0}</strong></div>
+                  <div className="rt-resumen-item"><span>Revisadas</span><strong>{resumen?.revision?.revisadas || 0}</strong></div>
+                  <div className="rt-resumen-item"><span>Observadas</span><strong>{resumen?.revision?.observadas || 0}</strong></div>
+                </section>
+
+                {transacciones.length === 0 ? (
+                  <div className="rt-vacio">
+                    <strong>Sin transacciones</strong>
+                    <p>
+                      {metodo
+                        ? `No hay transacciones con el método "${metodo}" para esta fecha.`
+                        : 'Este cajero no registró transacciones en la fecha seleccionada.'}
+                    </p>
+                  </div>
+                ) : (
+                  <section className="rt-panel">
+                    <div className="rt-tabla-contenedor">
+                      <table className="rt-tabla">
+                        <thead>
+                          <tr>
+                            <th>Hora</th>
+                            <th>Método</th>
+                            <th className="rt-derecha">Monto</th>
+                            <th>Estado de revisión</th>
+                            <th aria-label="Acciones" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {transacciones.map((t) => {
+                            const clave = estadoTx(t)
+                            const { etiqueta, clase } = ESTADOS[clave]
+                            const notaActual = notaTx(t)
+                            return (
+                              <tr key={idTx(t)}>
+                                <td className="rt-hora">{formatearHora(t.hora ?? t.fecha)}</td>
+                                <td className="rt-metodo">{Array.isArray(t.metodos) ? t.metodos.join(', ') : t.metodos}</td>
+                                <td className="rt-derecha rt-monto">{formatearMoneda(t.total)}</td>
+                                <td>
+                                  <span className={`rt-estado ${clase}`}><span aria-hidden="true" />{etiqueta}</span>
+                                  {clave === 'OBSERVADA' && notaActual && <small className="rt-nota">{notaActual}</small>}
+                                </td>
+                                <td className="rt-acciones">
+                                  <button className="btn btn-secundario btn-pequeno" type="button" onClick={() => abrirRevision(t)}>
+                                    {clave === 'PENDIENTE' ? 'Agregar nota' : 'Cambiar'}
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <nav className="rt-paginacion" aria-label="Paginación">
+                      <span>
+                        {paginacion.total_registros === 0 ? 0 : (paginacion.pagina - 1) * paginacion.por_pagina + 1}–
+                        {Math.min(paginacion.pagina * paginacion.por_pagina, paginacion.total_registros)} de {paginacion.total_registros}
+                      </span>
+                      <div>
+                        <button className="btn btn-secundario btn-pequeno" type="button" onClick={() => setPagina(paginacion.pagina - 1)} disabled={paginacion.pagina <= 1}>Anterior</button>
+                        <span className="rt-pagina">Página {paginacion.pagina} de {paginacion.total_paginas}</span>
+                        <button className="btn btn-secundario btn-pequeno" type="button" onClick={() => setPagina(paginacion.pagina + 1)} disabled={paginacion.pagina >= paginacion.total_paginas}>Siguiente</button>
+                      </div>
+                    </nav>
+                  </section>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {seleccion && (

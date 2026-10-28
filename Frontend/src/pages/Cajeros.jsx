@@ -85,8 +85,18 @@ function Cajeros() {
       )}
 
       {cajeroSeleccionado && (
-        <div style={{ marginTop: '2rem' }}>
-          <h2>Facturas de {cajeroSeleccionado}</h2>
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={`Facturas de ${cajeroSeleccionado}`}>
+          <div className="rt-modal-facturas">
+            <button
+              type="button"
+              className="rt-modal-cerrar"
+              onClick={() => setCajeroSeleccionado(null)}
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+
+            <h2>Facturas de {cajeroSeleccionado}</h2>
 
           <div className="filtro-fechas">
             <label className="campo">
@@ -163,6 +173,7 @@ function Cajeros() {
               </tbody>
             </table>
           )}
+          </div>
         </div>
       )}
     </section>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { obtenerEstadoCajas } from '../api/caja.js'
+import { obtenerEstadoCajas } from '../../api/caja.js'
 
-// TDSI-126: vista del administrador con el estado de cada caja (terminal).
+// TDSI-126: estado de cada caja (terminal).
 // TDSI-495: una tarjeta por caja.
 // TDSI-496: insignias de estado (Abierta/Cerrada y Activa/Inactiva) con colores.
 // TDSI-497: filtros por estado operativo y por actividad.
@@ -23,7 +23,7 @@ const OPCIONES_ACTIVIDAD = [
   { valor: 'INACTIVA', etiqueta: 'Inactivas' },
 ]
 
-function EstadoCajas() {
+function PanelCajas() {
   const [cajas, setCajas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
@@ -52,7 +52,7 @@ function EstadoCajas() {
 
   return (
     <section>
-      <h1>Estado de cajas</h1>
+      <h2>Estado de cajas</h2>
       <p className="resumen-turno-actual">
         Cajas registradas en la sucursal: si tienen un turno abierto ahora mismo y si están habilitadas.
       </p>
@@ -147,4 +147,4 @@ function EstadoCajas() {
   )
 }
 
-export default EstadoCajas
+export default PanelCajas

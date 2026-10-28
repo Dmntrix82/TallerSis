@@ -16,23 +16,27 @@ export function calcularTotalRecaudado(turnoId) {
   return apiFetch(`/api/caja/turnos/${turnoId}/recaudado`)
 }
 
-export function generarReporteCierre(turnoId) {
-  return apiFetch(`/api/caja/turnos/${turnoId}/cierre/reporte`)
+// efectivoContado es opcional: si se manda, el reporte incluye el arqueo (esperado vs contado).
+export function generarReporteCierre(turnoId, efectivoContado) {
+  const params = efectivoContado != null ? `?efectivoContado=${encodeURIComponent(efectivoContado)}` : ''
+  return apiFetch(`/api/caja/turnos/${turnoId}/cierre/reporte${params}`)
 }
 
-// TDSI-325/326: cerrar caja necesita el usuario + PIN de un supervisor de caja
-// (ya no se pide el monto contado en efectivo: el cierre se basa en lo registrado).
-export function cerrarTurno(turnoId, { supervisor_id, pin } = {}) {
+// Cerrar caja necesita el usuario + PIN de un supervisor de caja, ingresados en persona
+// ahi mismo. El efectivo contado tambien se declara en ese momento: con eso el cierre
+// guarda el arqueo (esperado vs contado) y, si hay diferencia, queda registrada.
+export function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {}) {
   return apiFetch(`/api/caja/turnos/${turnoId}/cerrar`, {
     method: 'POST',
-    body: JSON.stringify({ supervisor_id, pin }),
+    body: JSON.stringify({ supervisor_id, pin, efectivo_contado }),
   })
 }
 
 // TDSI-324: PDF del reporte de cierre (con firma del cajero), para ver/imprimir/guardar.
-export function urlReporteCierrePdf(turnoId) {
+export function urlReporteCierrePdf(turnoId, efectivoContado) {
   const base = import.meta.env.VITE_API_BASE_URL ?? ''
-  return `${base}/api/caja/turnos/${turnoId}/cierre/pdf`
+  const params = efectivoContado != null ? `?efectivoContado=${encodeURIComponent(efectivoContado)}` : ''
+  return `${base}/api/caja/turnos/${turnoId}/cierre/pdf${params}`
 }
 // TDSI-126/465: estado de todas las cajas. Cada caja trae { codigo, nombre, estado, activa },
 // con estado = ABIERTA | CERRADA | INACTIVA (INACTIVA gana sobre las otras dos).

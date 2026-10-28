@@ -15,22 +15,8 @@ function AdminNavbar() {
       <span className="navbar-brand">TallerSis · Administración</span>
       <NavLink to="/admin/cajeros">Cajeros</NavLink>
       <NavLink to="/admin/clientes">Clientes</NavLink>
-      <NavLink to="/admin/ventas-online">Ventas online</NavLink>
       <NavLink to="/admin/tablero">Tablero</NavLink>
       <NavLink to="/admin/cierre-diario">Cierre diario</NavLink>
-      <NavLink to="/admin/monitoreo-cajeros">Monitoreo de cajeros</NavLink>
-      <NavLink to="/admin/revision-transacciones">Revisión de transacciones</NavLink>
-      <NavLink to="/admin/historial-operaciones">Historial de operaciones</NavLink>
-      <NavLink to="/admin/metodos-pago">Métodos de pago</NavLink>
-      <NavLink to="/admin/cajas">Cajas</NavLink>
-      <NavLink to="/admin/reportes">Reportes</NavLink>
-      <NavLink to="/admin/recaudado">Recaudado</NavLink>
-      <NavLink to="/admin/comparacion">Comparación</NavLink>
-      <NavLink to="/admin/diferencias">Diferencias</NavLink>
-      <NavLink to="/admin/solicitudes-apertura">Solicitudes de apertura</NavLink>
-      <NavLink to="/admin/solicitudes-cierre">Solicitudes de cierre</NavLink>
-      <NavLink to="/admin/aprobaciones">Aprobaciones</NavLink>
-      <NavLink to="/admin/anulaciones-pendientes">Anulaciones pendientes</NavLink>
 
       <div className="navbar-sesion">
         <span className="navbar-cajero">{administrador?.nombre}</span>

@@ -197,92 +197,6 @@ async function anularTransaccion(id_transaccion, { anulado_por }) {
 }
 
 /**
- * TDSI-28/133: deja la venta "en espera" de que un supervisor la revise despues,
- * para cuando no hay ninguno presente en la caja. Convive con anularTransaccion
- * (autorizacion inmediata, TDSI-306): el cajero elige una u otra.
- */
-async function crearSolicitudAnulacion({ id_transaccion, motivo, solicitado_por }, validar) {
-  return withTransaction(async (client) => {
-    const { rows: filas } = await client.query(
-      `SELECT id_transaccion, estado, cajero, fecha FROM pagos.transacciones
-        WHERE id_transaccion = $1 FOR UPDATE`,
-      [id_transaccion]
-    );
-    validar(filas);
-
-    await client.query(
-      `UPDATE pagos.transacciones SET estado = 'AnulacionSolicitada' WHERE id_transaccion = $1`,
-      [id_transaccion]
-    );
-
-    const { rows } = await client.query(
-      `INSERT INTO pagos.solicitudes_anulacion (id_transaccion, motivo, solicitado_por)
-       VALUES ($1, $2, $3)
-       RETURNING id, id_transaccion, motivo, solicitado_por, solicitado_en, estado`,
-      [id_transaccion, motivo, solicitado_por || null]
-    );
-    return rows[0];
-  });
-}
-
-/** TDSI-539: ventas con una solicitud de anulacion todavia sin resolver. */
-async function listarSolicitudesAnulacionPendientes() {
-  const { rows } = await query(
-    `SELECT sa.id, sa.id_transaccion, sa.motivo, sa.solicitado_por, sa.solicitado_en,
-            MAX(t.razon_social) AS razon_social, SUM(t.monto) AS monto
-       FROM pagos.solicitudes_anulacion sa
-       JOIN pagos.transacciones t ON t.id_transaccion = sa.id_transaccion
-      WHERE sa.estado = 'Solicitada'
-      GROUP BY sa.id, sa.id_transaccion, sa.motivo, sa.solicitado_por, sa.solicitado_en
-      ORDER BY sa.solicitado_en ASC`
-  );
-  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
-}
-
-async function buscarSolicitudAnulacion(id) {
-  const { rows } = await query(
-    `SELECT id, id_transaccion, estado FROM pagos.solicitudes_anulacion WHERE id = $1`,
-    [id]
-  );
-  return rows[0] || null;
-}
-
-/** TDSI-540/541: aprueba (-> Anulado) o rechaza (-> Registrado) la solicitud, con el PIN ya validado. */
-async function resolverSolicitudAnulacion(id, { aprobar, supervisor, observacion }, validar) {
-  return withTransaction(async (client) => {
-    const { rows } = await client.query(
-      `SELECT id, id_transaccion, estado FROM pagos.solicitudes_anulacion WHERE id = $1 FOR UPDATE`,
-      [id]
-    );
-    validar(rows[0] || null);
-    const idTransaccion = rows[0].id_transaccion;
-
-    await client.query(
-      `UPDATE pagos.transacciones
-          SET estado = $2, anulado_por = $3, anulado_en = CASE WHEN $4::boolean THEN now() ELSE NULL END
-        WHERE id_transaccion = $1`,
-      [idTransaccion, aprobar ? "Anulado" : "Registrado", aprobar ? supervisor.supervisor_id : null, aprobar]
-    );
-
-    if (aprobar) {
-      await client.query(
-        `UPDATE pagos.pagos_mixtos SET estado = 'Anulado' WHERE id_transaccion = $1`,
-        [idTransaccion]
-      );
-    }
-
-    const upd = await client.query(
-      `UPDATE pagos.solicitudes_anulacion
-          SET estado = $2, autorizado_por = $3, autorizado_nombre = $4, autorizado_en = now(), observacion = $5
-        WHERE id = $1
-        RETURNING id, id_transaccion, estado, autorizado_por, autorizado_nombre, autorizado_en, observacion`,
-      [id, aprobar ? "Autorizada" : "Rechazada", supervisor.supervisor_id, supervisor.nombre, observacion || null]
-    );
-    return upd.rows[0];
-  });
-}
-
-/**
  * TDSI-37/545: corrige datos de facturacion de una venta ya registrada,
  * manteniendo su id_transaccion. Solo actualiza las filas con estado
  * 'Registrado' (si fuera un pago Mixto con 2 filas, corrige las dos).
@@ -703,10 +617,6 @@ module.exports = {
   buscarPorTokenVerificacion,
   listarPorCajero,
   anularTransaccion,
-  crearSolicitudAnulacion,
-  listarSolicitudesAnulacionPendientes,
-  buscarSolicitudAnulacion,
-  resolverSolicitudAnulacion,
   actualizarDatosVenta,
   listarBitacoraModificaciones,
   reporteTurno,

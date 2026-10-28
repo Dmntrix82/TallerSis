@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { listarCajas, obtenerReporteCaja, descargarReporteCajaCsv } from '../api/caja.js'
+import { listarCajas, obtenerReporteCaja, descargarReporteCajaCsv } from '../../api/caja.js'
 
-// TDSI-150 / TDSI-523: vista "Reportes de caja" con rango de fechas y caja.
+// TDSI-150 / TDSI-523: "Reportes de caja" con rango de fechas y caja.
 // TDSI-524: reporte en pantalla (totales por metodo, turnos y diferencias).
 // TDSI-525: boton "Descargar CSV".
 // TDSI-526: mensajes de "sin datos" y de error.
@@ -28,7 +28,7 @@ function diasEntre(desde, hasta) {
 const bs = (v) => (v === null || v === undefined ? '—' : Number(v).toFixed(2))
 const fechaHora = (f) => (f ? new Date(f).toLocaleString() : '—')
 
-function ReportesCaja() {
+function PanelReportes() {
   const [cajas, setCajas] = useState([])
   const [cajaId, setCajaId] = useState('')
   const [desde, setDesde] = useState(hoyLocal)
@@ -101,7 +101,7 @@ function ReportesCaja() {
 
   return (
     <section>
-      <h1>Reportes de caja</h1>
+      <h2>Reportes de caja</h2>
       <p className="resumen-turno-actual">
         Operaciones de una caja en un rango de fechas: totales por método de pago, turnos y diferencias.
       </p>
@@ -170,10 +170,10 @@ function ReportesCaja() {
         <>
           <div className="reporte-encabezado">
             <div>
-              <h2>
+              <h3>
                 {reporte.caja_id}
                 {reporte.caja_nombre && ` · ${reporte.caja_nombre}`}
-              </h2>
+              </h3>
               <p className="tablero-sucursal">
                 {reporte.desde === reporte.hasta ? reporte.desde : `${reporte.desde} a ${reporte.hasta}`}
               </p>
@@ -220,7 +220,7 @@ function ReportesCaja() {
                 </div>
               </div>
 
-              <h2 className="reporte-seccion">Totales por método</h2>
+              <h3 className="reporte-seccion">Totales por método</h3>
               <div className="resumen-cards">
                 {reporte.totales_por_metodo.map((m) => (
                   <div key={m.metodo} className="resumen-card">
@@ -233,7 +233,7 @@ function ReportesCaja() {
                 ))}
               </div>
 
-              <h2 className="reporte-seccion">Turnos</h2>
+              <h3 className="reporte-seccion">Turnos</h3>
               <div className="reporte-tabla">
                 <table className="tabla-facturas">
                   <thead>
@@ -289,7 +289,7 @@ function ReportesCaja() {
                 </table>
               </div>
 
-              <h2 className="reporte-seccion">Diferencias</h2>
+              <h3 className="reporte-seccion">Diferencias</h3>
               {reporte.diferencias.length === 0 ? (
                 <p className="resumen-turno-actual">No se registraron diferencias en este rango.</p>
               ) : (
@@ -335,4 +335,4 @@ function ReportesCaja() {
   )
 }
 
-export default ReportesCaja
+export default PanelReportes

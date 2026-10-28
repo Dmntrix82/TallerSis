@@ -32,18 +32,15 @@ function validarTexto(valor, campo, max) {
 /**
  * TDSI-311 + TDSI-312: registrar monto inicial y guardar fecha, hora y cajero.
  * El terminal no se habilita solo: un supervisor de caja tiene que autorizarlo
- * con su usuario + PIN (mismo registro de supervisores que usa facturacion
- * para las anulaciones, validado via supervisorProxy.js).
+ * con su usuario + PIN, en persona, ahi mismo (mismo registro de supervisores
+ * que usa facturacion para las anulaciones, validado via supervisorProxy.js).
  */
-async function abrirTurno({ caja_id, cajero_id, efectivo_inicial, supervisor_id, pin, autorizadoPor } = {}) {
+async function abrirTurno({ caja_id, cajero_id, efectivo_inicial, supervisor_id, pin } = {}) {
   const cajaId = validarTexto(caja_id, "caja_id", 20);
   const cajeroId = validarTexto(cajero_id, "cajero_id", 60);
   const monto = validarEfectivoInicial(efectivo_inicial);
 
-  // TDSI-25: si viene del flujo de autorizaciones, el supervisor ya fue validado.
-  let supervisor = (autorizadoPor && autorizadoPor.supervisor_id) ? autorizadoPor : null;
-
-  if (!supervisor && (!supervisor_id || !pin)) {
+  if (!supervisor_id || !pin) {
     throw new AppError("Se necesita el usuario y el PIN de un supervisor para habilitar la caja.", 400);
   }
 
@@ -59,10 +56,7 @@ async function abrirTurno({ caja_id, cajero_id, efectivo_inicial, supervisor_id,
       { caja_id: cajaId, turno_abierto: turnoAbierto.codigo }
     );
 
-  // TDSI-25: si ya viene validado desde autorizacionService, no se vuelve a llamar.
-  if (!supervisor) {
-    supervisor = await validarSupervisor({ supervisor_id, pin });
-  }
+  const supervisor = await validarSupervisor({ supervisor_id, pin });
 
   const turno = await repo.crearTurno({
     caja_id: cajaId,

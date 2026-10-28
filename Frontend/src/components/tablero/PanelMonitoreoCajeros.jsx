@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import '../App.css'
+import '../../App.css'
 
 const BASE_URL = import.meta.env.VITE_GESTION_PAGOS_API_BASE_URL || 'http://localhost:4005'
 const MONITOREO_URL = `${BASE_URL}/api/pagos/monitoreo`
@@ -53,7 +53,7 @@ async function requestJson(url, options = {}) {
   return data
 }
 
-export default function MonitoreoCajeros() {
+export default function PanelMonitoreoCajeros() {
   const [cajeros, setCajeros] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -91,7 +91,7 @@ export default function MonitoreoCajeros() {
         <div className="mc-icono" aria-hidden="true">◎</div>
         <div className="mc-header-texto">
           <p className="mc-eyebrow">SUPERVISIÓN DE CAJA</p>
-          <h1>Monitoreo de cajeros</h1>
+          <h2>Monitoreo de cajeros</h2>
           <p className="mc-descripcion">Actividad en tiempo real de cada punto de venta activo.</p>
         </div>
         <div className="mc-vivo" aria-live="polite">
@@ -143,9 +143,9 @@ export default function MonitoreoCajeros() {
               cajero.total_acumulado ??
               cajero.total ??
               operaciones.reduce((suma, op) => suma + (Number(op.monto) || 0), 0)
-            
+
             const ultima = cajero.ultima_operacion?.hora ?? operaciones[0]?.hora
-            
+
             const nombre = cajero.cajero ?? cajero.nombre ?? `Cajero ${cajero.id ?? cajero.cajero_id ?? indice + 1}`
 
             return (
@@ -170,9 +170,9 @@ export default function MonitoreoCajeros() {
                   ) : (
                     <ul>
                       {operaciones.slice(0, MAX_OPERACIONES).map((op, i) => {
-                        
+
                         const textoMetodos = Array.isArray(op.metodos)
-                          ? op.metodos.join(', ') 
+                          ? op.metodos.join(', ')
                           : (op.metodo ?? op.metodo_pago ?? '—')
 
                         return (
