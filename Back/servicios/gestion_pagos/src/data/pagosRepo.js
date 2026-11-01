@@ -126,6 +126,13 @@ async function buscarRazonSocialPorDocumento(tipo_documento, numero) {
 /** Escapa %, _ y \ para que el texto del buscador se tome literal dentro de un LIKE. */
 const escaparLike = (texto) => texto.replace(/[\\%_]/g, "\\$&");
 
+// TDSI-864: el buscador no distingue mayusculas ni tildes ("jose perez" encuentra a "José Pérez").
+// Las mayusculas con tilde tambien van en la lista por si la BD usa un locale que no las baja con lower().
+const CON_TILDE = "ÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑáàäâéèëêíìïîóòöôúùüûñ";
+const SIN_TILDE = "aaaaeeeeiiiioooouuuunaaaaeeeeiiiioooouuuun";
+const sinTildesSql = (columna) => `translate(lower(${columna}), '${CON_TILDE}', '${SIN_TILDE}')`;
+const sinTildes = (texto) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 /**
  * TDSI-169: condicion del buscador de "Facturas".
  * - Solo digitos, hasta 6 (ej. "54" o "000054"): N° de factura -> VTA-000054 exacto.
@@ -140,9 +147,9 @@ function agregarBusqueda(q, condiciones, params) {
     params.push(`${q}%`);
     condiciones.push(`nit LIKE $${params.length}`);
   } else {
-    params.push(`%${escaparLike(q)}%`);
+    params.push(`%${escaparLike(sinTildes(q))}%`);
     const i = params.length;
-    condiciones.push(`(id_transaccion LIKE $${i} OR razon_social LIKE $${i})`);
+    condiciones.push(`(lower(id_transaccion) LIKE $${i} OR ${sinTildesSql("razon_social")} LIKE $${i})`);
   }
 }
 
