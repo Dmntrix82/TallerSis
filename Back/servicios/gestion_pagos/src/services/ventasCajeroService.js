@@ -9,6 +9,8 @@ const { validarFechaDia } = require("../utils/fechaLocal");
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000;
 // TDSI-169: largo maximo del texto del buscador de "Facturas".
 const BUSQUEDA_MAX = 100;
+// TDSI-866: mismo largo que la columna pagos.transacciones.cajero.
+const CAJERO_MAX = 255;
 
 function dentroDelPlazo(fecha) {
   return Date.now() - new Date(fecha).getTime() <= PLAZO_ANULACION_MS;
@@ -21,10 +23,21 @@ function dentroDelPlazo(fecha) {
  * TDSI-169: q (opcional) busca por N° de factura, NIT/CI o nombre del cliente.
  * TDSI-865: la busqueda se combina con el rango de fechas (las dos condiciones a la vez),
  * y los dias se cuentan en hora de Bolivia aunque el servidor este en otro huso.
+ * TDSI-866: los resultados (con o sin busqueda) son solo los del cajero de la sesion.
  */
 async function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
+  // Un parametro repetido (?cajero=a&cajero=b) llega como arreglo: se rechaza en vez de
+  // convertirlo en texto y buscar con un cajero que no es el de la sesion.
+  if (Array.isArray(cajero) || Array.isArray(q)) {
+    throw new AppError("Los parametros 'cajero' y 'q' deben enviarse una sola vez.", 400);
+  }
   if (!cajero || !String(cajero).trim()) {
     throw new AppError("Falta identificar al cajero para listar sus facturas.", 400);
+  }
+  // El cajero de la sesion es su correo: se compara sin importar mayusculas ni espacios.
+  const cajeroSesion = String(cajero).trim().toLowerCase();
+  if (cajeroSesion.length > CAJERO_MAX) {
+    throw new AppError(`El cajero admite hasta ${CAJERO_MAX} caracteres.`, 400);
   }
 
   const busqueda = q === undefined || q === null ? "" : String(q).trim();
@@ -38,7 +51,7 @@ async function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
     throw new AppError('La fecha "desde" no puede ser posterior a "hasta".', 400, { desde: desdeDia, hasta: hastaDia });
   }
 
-  return repo.listarPorCajero(String(cajero).trim(), { desde: desdeDia, hasta: hastaDia, q: busqueda || null });
+  return repo.listarPorCajero(cajeroSesion, { desde: desdeDia, hasta: hastaDia, q: busqueda || null });
 }
 
 /**

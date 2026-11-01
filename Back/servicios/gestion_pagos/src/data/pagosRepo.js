@@ -159,9 +159,11 @@ function agregarBusqueda(q, condiciones, params) {
  * TDSI-307/865: desde/hasta ("YYYY-MM-DD") filtran por dia de emision en hora de Bolivia,
  * "hasta" inclusive.
  * TDSI-169: q (opcional) agrega la condicion del buscador; se combina con las fechas.
+ * TDSI-866: cajero llega en minusculas. Todas las condiciones van unidas con AND, asi
+ * la busqueda solo achica la lista: nunca devuelve ventas de otro cajero.
  */
 async function listarPorCajero(cajero, { desde, hasta, q } = {}) {
-  const condiciones = ["cajero = $1"];
+  const condiciones = ["lower(trim(cajero)) = $1"];
   const params = [cajero];
   if (desde) {
     params.push(desde);
