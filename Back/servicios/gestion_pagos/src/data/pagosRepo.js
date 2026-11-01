@@ -156,19 +156,20 @@ function agregarBusqueda(q, condiciones, params) {
 /**
  * TDSI-306: lista "una fila por venta" (agrupa por id_transaccion, asi un pago
  * mixto con 2 metodos aparece una sola vez) de las ventas de un cajero.
- * TDSI-307: desde/hasta (objetos Date) filtran por rango de fecha de emision.
- * TDSI-169: q (opcional) agrega la condicion del buscador.
+ * TDSI-307/865: desde/hasta ("YYYY-MM-DD") filtran por dia de emision en hora de Bolivia,
+ * "hasta" inclusive.
+ * TDSI-169: q (opcional) agrega la condicion del buscador; se combina con las fechas.
  */
 async function listarPorCajero(cajero, { desde, hasta, q } = {}) {
   const condiciones = ["cajero = $1"];
   const params = [cajero];
   if (desde) {
     params.push(desde);
-    condiciones.push(`fecha >= $${params.length}`);
+    condiciones.push(`fecha >= ($${params.length}::date)::timestamp AT TIME ZONE 'America/La_Paz'`);
   }
   if (hasta) {
     params.push(hasta);
-    condiciones.push(`fecha <= $${params.length}`);
+    condiciones.push(`fecha < ($${params.length}::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'`);
   }
   if (q) agregarBusqueda(q, condiciones, params);
 

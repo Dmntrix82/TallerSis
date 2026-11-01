@@ -3,6 +3,7 @@ const repo = require("../data/pagosRepo");
 const { validarSupervisor } = require("./supervisorProxy");
 const { emitirActualizacion } = require("../utils/tableroEvents");
 const { validarFormatoDocumento } = require("../utils/documento");
+const { validarFechaDia } = require("../utils/fechaLocal");
 
 // TDSI-306: mismo plazo de 2 horas que la anulacion de facturas en facturacion.
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000;
@@ -18,6 +19,8 @@ function dentroDelPlazo(fecha) {
  * TDSI-307: desde/hasta (strings "YYYY-MM-DD") filtran por fecha de emision;
  * "hasta" incluye el dia completo (hasta las 23:59:59.999).
  * TDSI-169: q (opcional) busca por N° de factura, NIT/CI o nombre del cliente.
+ * TDSI-865: la busqueda se combina con el rango de fechas (las dos condiciones a la vez),
+ * y los dias se cuentan en hora de Bolivia aunque el servidor este en otro huso.
  */
 async function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
   if (!cajero || !String(cajero).trim()) {
@@ -29,16 +32,13 @@ async function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
     throw new AppError(`La busqueda admite hasta ${BUSQUEDA_MAX} caracteres.`, 400, { q: busqueda.slice(0, 20) });
   }
 
-  const desdeFecha = desde ? new Date(`${desde}T00:00:00`) : null;
-  const hastaFecha = hasta ? new Date(`${hasta}T23:59:59.999`) : null;
-  if (desde && Number.isNaN(desdeFecha.getTime())) {
-    throw new AppError('El parametro "desde" no es una fecha valida.', 400);
-  }
-  if (hasta && Number.isNaN(hastaFecha.getTime())) {
-    throw new AppError('El parametro "hasta" no es una fecha valida.', 400);
+  const desdeDia = desde ? validarFechaDia(desde, "desde") : null;
+  const hastaDia = hasta ? validarFechaDia(hasta, "hasta") : null;
+  if (desdeDia && hastaDia && desdeDia > hastaDia) {
+    throw new AppError('La fecha "desde" no puede ser posterior a "hasta".', 400, { desde: desdeDia, hasta: hastaDia });
   }
 
-  return repo.listarPorCajero(String(cajero).trim(), { desde: desdeFecha, hasta: hastaFecha, q: busqueda || null });
+  return repo.listarPorCajero(String(cajero).trim(), { desde: desdeDia, hasta: hastaDia, q: busqueda || null });
 }
 
 /**
