@@ -123,12 +123,36 @@ async function buscarRazonSocialPorDocumento(tipo_documento, numero) {
   return rows[0]?.razon_social || null;
 }
 
+/** Escapa %, _ y \ para que el texto del buscador se tome literal dentro de un LIKE. */
+const escaparLike = (texto) => texto.replace(/[\\%_]/g, "\\$&");
+
+/**
+ * TDSI-169: condicion del buscador de "Facturas".
+ * - Solo digitos, hasta 6 (ej. "54" o "000054"): N° de factura -> VTA-000054 exacto.
+ * - Solo digitos, 7 o mas: NIT (10 digitos) o CI (7-8), por prefijo.
+ * - Cualquier otro texto: parte del N° de factura ("VTA-0000") o del nombre del cliente.
+ */
+function agregarBusqueda(q, condiciones, params) {
+  if (/^\d{1,6}$/.test(q)) {
+    params.push(Number(q));
+    condiciones.push(`substring(id_transaccion from '(\\d+)$')::bigint = $${params.length}`);
+  } else if (/^\d{7,}$/.test(q)) {
+    params.push(`${q}%`);
+    condiciones.push(`nit LIKE $${params.length}`);
+  } else {
+    params.push(`%${escaparLike(q)}%`);
+    const i = params.length;
+    condiciones.push(`(id_transaccion LIKE $${i} OR razon_social LIKE $${i})`);
+  }
+}
+
 /**
  * TDSI-306: lista "una fila por venta" (agrupa por id_transaccion, asi un pago
  * mixto con 2 metodos aparece una sola vez) de las ventas de un cajero.
  * TDSI-307: desde/hasta (objetos Date) filtran por rango de fecha de emision.
+ * TDSI-169: q (opcional) agrega la condicion del buscador.
  */
-async function listarPorCajero(cajero, { desde, hasta } = {}) {
+async function listarPorCajero(cajero, { desde, hasta, q } = {}) {
   const condiciones = ["cajero = $1"];
   const params = [cajero];
   if (desde) {
@@ -139,6 +163,7 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
     params.push(hasta);
     condiciones.push(`fecha <= $${params.length}`);
   }
+  if (q) agregarBusqueda(q, condiciones, params);
 
   const { rows } = await query(
     `SELECT id_transaccion,

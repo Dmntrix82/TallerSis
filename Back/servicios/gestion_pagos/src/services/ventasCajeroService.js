@@ -6,6 +6,8 @@ const { validarFormatoDocumento } = require("../utils/documento");
 
 // TDSI-306: mismo plazo de 2 horas que la anulacion de facturas en facturacion.
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000;
+// TDSI-169: largo maximo del texto del buscador de "Facturas".
+const BUSQUEDA_MAX = 100;
 
 function dentroDelPlazo(fecha) {
   return Date.now() - new Date(fecha).getTime() <= PLAZO_ANULACION_MS;
@@ -15,10 +17,16 @@ function dentroDelPlazo(fecha) {
  * El cajero ve unicamente sus propias ventas en la pantalla de Facturas.
  * TDSI-307: desde/hasta (strings "YYYY-MM-DD") filtran por fecha de emision;
  * "hasta" incluye el dia completo (hasta las 23:59:59.999).
+ * TDSI-169: q (opcional) busca por N° de factura, NIT/CI o nombre del cliente.
  */
-async function listarMisFacturas(cajero, { desde, hasta } = {}) {
+async function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
   if (!cajero || !String(cajero).trim()) {
     throw new AppError("Falta identificar al cajero para listar sus facturas.", 400);
+  }
+
+  const busqueda = q === undefined || q === null ? "" : String(q).trim();
+  if (busqueda.length > BUSQUEDA_MAX) {
+    throw new AppError(`La busqueda admite hasta ${BUSQUEDA_MAX} caracteres.`, 400, { q: busqueda.slice(0, 20) });
   }
 
   const desdeFecha = desde ? new Date(`${desde}T00:00:00`) : null;
@@ -30,7 +38,7 @@ async function listarMisFacturas(cajero, { desde, hasta } = {}) {
     throw new AppError('El parametro "hasta" no es una fecha valida.', 400);
   }
 
-  return repo.listarPorCajero(String(cajero).trim(), { desde: desdeFecha, hasta: hastaFecha });
+  return repo.listarPorCajero(String(cajero).trim(), { desde: desdeFecha, hasta: hastaFecha, q: busqueda || null });
 }
 
 /**

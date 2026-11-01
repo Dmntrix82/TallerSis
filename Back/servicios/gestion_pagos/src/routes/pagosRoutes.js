@@ -79,8 +79,10 @@ router.get("/cliente-por-documento", wrap(async (req, res) => {
 
 // TDSI-306/307: pantalla "Facturas" del cajero -- solo sus propias ventas,
 // con filtro opcional de rango de fechas (?desde=YYYY-MM-DD&hasta=YYYY-MM-DD).
+// TDSI-169: ?q= busca por N° de factura, NIT/CI o nombre del cliente.
 router.get("/mis-facturas", wrap(async (req, res) => {
-  const r = await listarMisFacturas(req.query.cajero, { desde: req.query.desde, hasta: req.query.hasta });
+  const { cajero, desde, hasta, q } = req.query;
+  const r = await listarMisFacturas(cajero, { desde, hasta, q });
   res.json({ ok: true, data: r });
 }));
 
