@@ -3,6 +3,7 @@ const { aCentavos, aMonto } = require("../utils/money");
 const { validarFormatoDocumento } = require("../utils/documento");
 const { emitirActualizacion } = require("../utils/tableroEvents");
 const { emitirFactura } = require("./facturacionProxy");
+const { avisarFacturaEmitida } = require("./avisoMarketplaceService");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
@@ -89,7 +90,14 @@ async function recibirVenta(json) {
     await repo.guardarErrorFactura(venta.id, facturaError);
   }
 
-  return { ordenId: venta.orden_id, duplicada: false, venta, numeroFactura, facturaError };
+  // TDSI-51/684: sin factura no hay nada que avisar todavia -- se avisa cuando
+  // la factura SI se pudo emitir.
+  let aviso = null;
+  if (numeroFactura) {
+    aviso = await avisarFacturaEmitida({ id: venta.id, orden_id: venta.orden_id, numero_factura: numeroFactura });
+  }
+
+  return { ordenId: venta.orden_id, duplicada: false, venta, numeroFactura, facturaError, aviso };
 }
 
 module.exports = { recibirVenta };

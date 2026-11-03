@@ -435,3 +435,16 @@ CREATE TABLE IF NOT EXISTS pagos.marketplace_mensajes_error (
 ALTER TABLE pagos.ventas_online
     ADD COLUMN IF NOT EXISTS numero_factura VARCHAR(20),
     ADD COLUMN IF NOT EXISTS factura_error  VARCHAR(500);
+
+-- ==========================================================================
+-- TDSI-51/684: aviso al Marketplace (topico "pagos-facturas-emitidas") con el
+-- N de orden, el N de factura y el enlace publico "Verificar Factura" -- el
+-- mismo mecanismo de token+QR que ya usan las ventas de mostrador (TDSI-38/527),
+-- aplicado aca a ventas_online. aviso_marketplace_estado queda NULL mientras
+-- no se haya intentado avisar (p.ej. todavia no se pudo emitir la factura).
+-- ==========================================================================
+ALTER TABLE pagos.ventas_online
+    ADD COLUMN IF NOT EXISTS token_verificacion     VARCHAR(48) UNIQUE,
+    ADD COLUMN IF NOT EXISTS aviso_marketplace_estado VARCHAR(20)
+        CHECK (aviso_marketplace_estado IN ('Enviado', 'Error')),
+    ADD COLUMN IF NOT EXISTS aviso_marketplace_error  VARCHAR(500);

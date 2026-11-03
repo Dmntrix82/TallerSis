@@ -1,14 +1,17 @@
-// TDSI-51/179/683: suscripcion al topico "marketplace-ventas", con Pub/Sub simulado.
+// TDSI-51/179/683/684: suscripcion al topico "marketplace-ventas", con Pub/Sub simulado.
 // Usa la base real + facturacion (FACTURACION_URL) para emitir la factura de verdad;
 // lo que se guarda se borra al final.
 process.env.MARKETPLACE_VENTAS_SUBSCRIPTION = "projects/proyecto-prueba/subscriptions/sub-marketplace";
+process.env.MARKETPLACE_FACTURAS_TOPIC = "projects/proyecto-prueba/topics/pagos-facturas-emitidas";
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query, pool } = require("../config/db");
 const subscriber = require("../clients/pubsubSubscriber");
+const publisher = require("../clients/pubsubPublisher");
 const { procesarVentas } = require("../jobs/marketplaceVentas");
 const { recibirVenta } = require("../services/ventaOnlineService");
+const { obtenerFacturaPorToken } = require("../services/verificacionFacturaService");
 
 const PREFIJO = `MKT-${Date.now()}`;
 // CI de 7 digitos, unico por corrida -- evita chocar con el NIT de otras pruebas.
@@ -40,8 +43,17 @@ function suscripcionFalsa(textos) {
   return falsa;
 }
 
+// Topico de salida simulado: por defecto publica bien (como si Pub/Sub respondiera ok).
+const topicoQuePublicaBien = () => ({ topic: () => ({ publishMessage: async () => "pub-1" }) });
+const topicoQueFalla = (motivo) => ({ topic: () => ({ publishMessage: async () => { throw new Error(motivo); } }) });
+
+test.before(() => {
+  publisher.usarClienteDePrueba(topicoQuePublicaBien());
+});
+
 test.after(async () => {
   subscriber.usarClienteDePrueba(null);
+  publisher.usarClienteDePrueba(null);
   await query(`DELETE FROM pagos.ventas_online WHERE orden_id LIKE $1`, [`${PREFIJO}%`]);
   await query(`DELETE FROM pagos.marketplace_mensajes_error WHERE message_id LIKE $1`, [`${PREFIJO}%`]);
   // TDSI-683: las facturas se emiten de verdad en facturacion (ON DELETE CASCADE se
@@ -63,7 +75,7 @@ test("TDSI-179: valida items + total (misma logica que el pago en mostrador) y e
   );
 });
 
-test("TDSI-179/683: una venta valida del topico se guarda con sus items y emite su factura", async () => {
+test("TDSI-179/683/684: una venta valida del topico se guarda, emite su factura y avisa al Marketplace", async () => {
   const orden = `${PREFIJO}-1`;
   subscriber.usarClienteDePrueba(suscripcionFalsa([ventaMsg(orden)]));
 
@@ -73,17 +85,24 @@ test("TDSI-179/683: una venta valida del topico se guarda con sus items y emite 
   assert.equal(resultados[0].duplicada, false);
   assert.match(resultados[0].numeroFactura, /^F-\d{6}$/);
   assert.equal(resultados[0].facturaError, null);
+  assert.deepEqual(resultados[0].aviso.publicado, true);
+  assert.ok(resultados[0].aviso.messageId);
 
   const { rows } = await query(
     `SELECT v.orden_id, v.total, v.metodo_pago, v.nit, v.tipo_documento, v.estado, v.numero_factura, v.factura_error,
+            v.aviso_marketplace_estado, v.aviso_marketplace_error, v.token_verificacion,
             (SELECT COUNT(*) FROM pagos.venta_online_items WHERE venta_id = v.id)::int AS cantidad_items
        FROM pagos.ventas_online v WHERE v.orden_id = $1`,
     [orden]
   );
-  assert.deepEqual(rows[0], {
-    orden_id: orden, total: "50.00", metodo_pago: "QR", nit: NIT_PRUEBA, tipo_documento: "CI", estado: "Pagado",
-    numero_factura: resultados[0].numeroFactura, factura_error: null, cantidad_items: 1,
-  });
+  assert.deepEqual(
+    { ...rows[0], token_verificacion: rows[0].token_verificacion ? "presente" : null },
+    {
+      orden_id: orden, total: "50.00", metodo_pago: "QR", nit: NIT_PRUEBA, tipo_documento: "CI", estado: "Pagado",
+      numero_factura: resultados[0].numeroFactura, factura_error: null, cantidad_items: 1,
+      aviso_marketplace_estado: "Enviado", aviso_marketplace_error: null, token_verificacion: "presente",
+    }
+  );
 
   // La factura que de verdad quedo en facturacion coincide con lo que se guardo aca.
   const { rows: factura } = await query(
@@ -92,6 +111,50 @@ test("TDSI-179/683: una venta valida del topico se guarda con sus items y emite 
   );
   assert.equal(factura[0].cliente_nit, NIT_PRUEBA);
   assert.equal(Number(factura[0].total), 50);
+
+  // TDSI-51/684: el enlace "Verificar Factura" publicado tiene que funcionar de verdad.
+  const verificada = await obtenerFacturaPorToken(rows[0].token_verificacion);
+  assert.equal(verificada.id_transaccion, resultados[0].numeroFactura);
+  assert.equal(verificada.total, 50);
+  assert.equal(verificada.nit, NIT_PRUEBA);
+});
+
+test("TDSI-684: si Pub/Sub no responde al publicar el aviso, queda Error pero la venta y su factura no se pierden", async () => {
+  const orden = `${PREFIJO}-4`;
+  publisher.usarClienteDePrueba(topicoQueFalla("el topico no existe"));
+  try {
+    subscriber.usarClienteDePrueba(suscripcionFalsa([ventaMsg(orden)]));
+    const resultados = await procesarVentas();
+    assert.equal(resultados[0].aviso.publicado, false);
+    assert.match(resultados[0].aviso.error, /el topico no existe/);
+    assert.match(resultados[0].numeroFactura, /^F-\d{6}$/); // la factura SI se emitio
+
+    const { rows } = await query(
+      `SELECT numero_factura, aviso_marketplace_estado, aviso_marketplace_error FROM pagos.ventas_online WHERE orden_id = $1`,
+      [orden]
+    );
+    assert.match(rows[0].numero_factura, /^F-\d{6}$/);
+    assert.equal(rows[0].aviso_marketplace_estado, "Error");
+    assert.match(rows[0].aviso_marketplace_error, /el topico no existe/);
+  } finally {
+    publisher.usarClienteDePrueba(topicoQuePublicaBien());
+  }
+});
+
+test("TDSI-684: si la factura no se pudo emitir, no se intenta avisar al Marketplace", async () => {
+  const orden = `${PREFIJO}-5`;
+  subscriber.usarClienteDePrueba(suscripcionFalsa([ventaMsg(orden, { cliente: undefined })]));
+
+  const resultados = await procesarVentas();
+  assert.equal(resultados[0].numeroFactura, null);
+  assert.equal(resultados[0].aviso, null);
+
+  const { rows } = await query(
+    `SELECT aviso_marketplace_estado, token_verificacion FROM pagos.ventas_online WHERE orden_id = $1`,
+    [orden]
+  );
+  assert.equal(rows[0].aviso_marketplace_estado, null);
+  assert.equal(rows[0].token_verificacion, null);
 });
 
 test("TDSI-683: si facturacion no puede emitir la factura, la venta queda guardada igual, con el error y sin numero", async () => {

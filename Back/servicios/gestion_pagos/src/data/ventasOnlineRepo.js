@@ -54,4 +54,48 @@ async function guardarErrorFactura(ventaId, error) {
   await query(`UPDATE pagos.ventas_online SET factura_error = $2 WHERE id = $1`, [ventaId, error]);
 }
 
-module.exports = { existeOrden, guardarVenta, registrarMensajeInvalido, guardarNumeroFactura, guardarErrorFactura };
+/** TDSI-51/684: mismo mecanismo de token que las ventas de mostrador (TDSI-38/527), aplicado a ventas_online. */
+async function obtenerTokenVerificacion(ventaId) {
+  const { rows } = await query(`SELECT token_verificacion FROM pagos.ventas_online WHERE id = $1`, [ventaId]);
+  return rows[0]?.token_verificacion || null;
+}
+
+async function guardarTokenVerificacion(ventaId, token) {
+  await query(
+    `UPDATE pagos.ventas_online SET token_verificacion = $2 WHERE id = $1 AND token_verificacion IS NULL`,
+    [ventaId, token]
+  );
+}
+
+/** TDSI-51/684: lo que ve el comprador al abrir el enlace "Verificar Factura" de una venta online. */
+async function buscarPorTokenVerificacion(token) {
+  const { rows } = await query(`SELECT * FROM pagos.ventas_online WHERE token_verificacion = $1`, [token]);
+  const venta = rows[0];
+  if (!venta) return null;
+
+  const { rows: items } = await query(
+    `SELECT sku, descripcion, cantidad, precio_unitario, subtotal FROM pagos.venta_online_items WHERE venta_id = $1 ORDER BY id`,
+    [venta.id]
+  );
+  return { ...venta, total: num(venta.total), items: items.map((i) => ({ ...i, cantidad: num(i.cantidad), precio_unitario: num(i.precio_unitario), subtotal: num(i.subtotal) })) };
+}
+
+/** TDSI-51/684: resultado del aviso al Marketplace (topico "pagos-facturas-emitidas"). */
+async function guardarAvisoMarketplace(ventaId, { estado, error }) {
+  await query(
+    `UPDATE pagos.ventas_online SET aviso_marketplace_estado = $2, aviso_marketplace_error = $3 WHERE id = $1`,
+    [ventaId, estado, error || null]
+  );
+}
+
+module.exports = {
+  existeOrden,
+  guardarVenta,
+  registrarMensajeInvalido,
+  guardarNumeroFactura,
+  guardarErrorFactura,
+  obtenerTokenVerificacion,
+  guardarTokenVerificacion,
+  buscarPorTokenVerificacion,
+  guardarAvisoMarketplace,
+};

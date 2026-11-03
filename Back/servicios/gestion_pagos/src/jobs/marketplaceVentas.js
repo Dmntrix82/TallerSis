@@ -29,7 +29,11 @@ async function procesarVentas() {
         const json = JSON.parse(m.texto);
         const r = await recibirVenta(json);
         resultados.push(r);
-        const estado = r.duplicada ? "ya estaba registrada" : r.numeroFactura ? `venta guardada, factura ${r.numeroFactura}` : `venta guardada, SIN factura (${r.facturaError})`;
+        const estado = r.duplicada
+          ? "ya estaba registrada"
+          : r.numeroFactura
+            ? `venta guardada, factura ${r.numeroFactura}, aviso al Marketplace ${r.aviso?.publicado ? "enviado" : "con error"}`
+            : `venta guardada, SIN factura (${r.facturaError})`;
         console.log(`[marketplace] ${r.ordenId} -> ${estado}`);
       } catch (e) {
         await ventasOnlineRepo.registrarMensajeInvalido({ messageId: m.messageId, error: e.message, payload: m.texto });

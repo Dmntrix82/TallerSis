@@ -1,10 +1,19 @@
-// TDSI-51/179: suscripcion (Pull) al topico "marketplace-ventas" del Marketplace.
-// Sin MARKETPLACE_VENTAS_SUBSCRIPTION no se lee nada (desarrollo local sin credenciales).
+// TDSI-51/179/684: integracion Pub/Sub con el Marketplace -- suscripcion (Pull) a
+// "marketplace-ventas" (ellos -> nosotros) y topico de salida "pagos-facturas-emitidas"
+// (nosotros -> ellos). Sin las variables correspondientes no se lee ni se publica nada
+// (desarrollo local sin credenciales).
 function entero(nombre, defecto, min, max) {
   const v = Number(process.env[nombre] ?? defecto);
   if (!Number.isInteger(v) || v < min || v > max)
     throw new Error(`${nombre} debe ser un entero entre ${min} y ${max}`);
   return v;
+}
+
+function topico(nombre) {
+  const v = String(process.env[nombre] || "").trim();
+  if (v && !/^(projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/topics\/)?[A-Za-z][\w.~+%-]{2,254}$/.test(v))
+    throw new Error(`${nombre} debe tener la forma projects/<proyecto>/topics/<topico>`);
+  return v || null;
 }
 
 // La llave de la cuenta de servicio pegada en el .env (JSON en una linea o base64).
@@ -35,4 +44,7 @@ module.exports = {
   // Suscripcion Pull del topico "marketplace-ventas". Vacio = no se leen mensajes.
   VENTAS_SUBSCRIPTION: String(process.env.MARKETPLACE_VENTAS_SUBSCRIPTION || "").trim() || null,
   VENTAS_INTERVALO_SEG: entero("MARKETPLACE_VENTAS_INTERVALO_SEG", 15, 5, 3600),
+
+  // TDSI-51/684: topico de salida "pagos-facturas-emitidas". Vacio = no se publica nada.
+  FACTURAS_TOPIC: topico("MARKETPLACE_FACTURAS_TOPIC"),
 };
