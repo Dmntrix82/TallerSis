@@ -1,5 +1,6 @@
-// TDSI-51/179: suscripcion al topico "marketplace-ventas", con Pub/Sub simulado.
-// Usa la base real; lo que se guarda se borra al final.
+// TDSI-51/179/683: suscripcion al topico "marketplace-ventas", con Pub/Sub simulado.
+// Usa la base real + facturacion (FACTURACION_URL) para emitir la factura de verdad;
+// lo que se guarda se borra al final.
 process.env.MARKETPLACE_VENTAS_SUBSCRIPTION = "projects/proyecto-prueba/subscriptions/sub-marketplace";
 
 const test = require("node:test");
@@ -10,12 +11,14 @@ const { procesarVentas } = require("../jobs/marketplaceVentas");
 const { recibirVenta } = require("../services/ventaOnlineService");
 
 const PREFIJO = `MKT-${Date.now()}`;
+// CI de 7 digitos, unico por corrida -- evita chocar con el NIT de otras pruebas.
+const NIT_PRUEBA = String(Date.now()).slice(-7);
 
 const ventaMsg = (ordenId, extra = {}) =>
   JSON.stringify({
     ordenId,
     cliente: "Cliente Marketplace",
-    nit: "1234567",
+    nit: NIT_PRUEBA,
     tipoDocumento: "CI",
     items: [{ sku: "ABC-1", descripcion: "Producto", cantidad: 2, precioUnitario: 25 }],
     total: 50,
@@ -41,6 +44,11 @@ test.after(async () => {
   subscriber.usarClienteDePrueba(null);
   await query(`DELETE FROM pagos.ventas_online WHERE orden_id LIKE $1`, [`${PREFIJO}%`]);
   await query(`DELETE FROM pagos.marketplace_mensajes_error WHERE message_id LIKE $1`, [`${PREFIJO}%`]);
+  // TDSI-683: las facturas se emiten de verdad en facturacion (ON DELETE CASCADE se
+  // encarga de sus items y su envio a Contabilidad). Por NIT, no por numero: cualquier
+  // venta valida del topico (incluida la primera de una orden repetida) emite la suya.
+  await query(`DELETE FROM facturacion.facturas WHERE cliente_nit = $1`, [NIT_PRUEBA]);
+  await query(`DELETE FROM facturacion.clientes_frecuentes WHERE nit = $1`, [NIT_PRUEBA]);
   await pool.end();
 });
 
@@ -55,7 +63,7 @@ test("TDSI-179: valida items + total (misma logica que el pago en mostrador) y e
   );
 });
 
-test("TDSI-179: una venta valida del topico se guarda con sus items", async () => {
+test("TDSI-179/683: una venta valida del topico se guarda con sus items y emite su factura", async () => {
   const orden = `${PREFIJO}-1`;
   subscriber.usarClienteDePrueba(suscripcionFalsa([ventaMsg(orden)]));
 
@@ -63,16 +71,47 @@ test("TDSI-179: una venta valida del topico se guarda con sus items", async () =
   assert.equal(resultados.length, 1);
   assert.equal(resultados[0].ordenId, orden);
   assert.equal(resultados[0].duplicada, false);
+  assert.match(resultados[0].numeroFactura, /^F-\d{6}$/);
+  assert.equal(resultados[0].facturaError, null);
 
   const { rows } = await query(
-    `SELECT v.orden_id, v.total, v.metodo_pago, v.nit, v.tipo_documento, v.estado,
+    `SELECT v.orden_id, v.total, v.metodo_pago, v.nit, v.tipo_documento, v.estado, v.numero_factura, v.factura_error,
             (SELECT COUNT(*) FROM pagos.venta_online_items WHERE venta_id = v.id)::int AS cantidad_items
        FROM pagos.ventas_online v WHERE v.orden_id = $1`,
     [orden]
   );
   assert.deepEqual(rows[0], {
-    orden_id: orden, total: "50.00", metodo_pago: "QR", nit: "1234567", tipo_documento: "CI", estado: "Pagado", cantidad_items: 1,
+    orden_id: orden, total: "50.00", metodo_pago: "QR", nit: NIT_PRUEBA, tipo_documento: "CI", estado: "Pagado",
+    numero_factura: resultados[0].numeroFactura, factura_error: null, cantidad_items: 1,
   });
+
+  // La factura que de verdad quedo en facturacion coincide con lo que se guardo aca.
+  const { rows: factura } = await query(
+    `SELECT cliente_nit, total FROM facturacion.facturas WHERE numero = $1`,
+    [resultados[0].numeroFactura]
+  );
+  assert.equal(factura[0].cliente_nit, NIT_PRUEBA);
+  assert.equal(Number(factura[0].total), 50);
+});
+
+test("TDSI-683: si facturacion no puede emitir la factura, la venta queda guardada igual, con el error y sin numero", async () => {
+  const orden = `${PREFIJO}-3`;
+  // Sin 'cliente' ni 'razonSocial': nuestra validacion no los exige, pero facturacion
+  // si exige razon_social para crear la factura -- falla ahi, no al guardar la venta.
+  subscriber.usarClienteDePrueba(suscripcionFalsa([ventaMsg(orden, { cliente: undefined })]));
+
+  const resultados = await procesarVentas();
+  assert.equal(resultados.length, 1);
+  assert.equal(resultados[0].duplicada, false);
+  assert.equal(resultados[0].numeroFactura, null);
+  assert.match(resultados[0].facturaError, /razón social|razon_social/i);
+
+  const { rows } = await query(
+    `SELECT numero_factura, factura_error FROM pagos.ventas_online WHERE orden_id = $1`,
+    [orden]
+  );
+  assert.equal(rows[0].numero_factura, null);
+  assert.ok(rows[0].factura_error);
 });
 
 test("TDSI-179: la misma orden que llega dos veces no se duplica", async () => {

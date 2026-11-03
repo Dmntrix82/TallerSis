@@ -7,11 +7,14 @@ let enCurso = false;
 let ultimoError = null;
 
 /**
- * TDSI-51/179: lee la suscripcion de "marketplace-ventas" y pasa cada mensaje a la
- * validacion de venta online. El topico es nuestro (nadie mas lo lee), asi que TODO
- * mensaje se confirma (ack) despues de procesarlo -- los validos porque ya quedaron
- * guardados (o eran un duplicado, TDSI-51), y los invalidos porque nunca van a poder
- * procesarse (se guarda el error para revisarlo, no tiene sentido reintentarlos).
+ * TDSI-51/179/683: lee la suscripcion de "marketplace-ventas" y pasa cada mensaje a la
+ * validacion de venta online, que ya deja la venta guardada y su factura emitida
+ * (recibirVenta se encarga de ambas cosas). El topico es nuestro (nadie mas lo lee),
+ * asi que TODO mensaje se confirma (ack) despues de procesarlo -- los validos porque ya
+ * quedaron guardados (o eran un duplicado, TDSI-51), y los invalidos porque nunca van a
+ * poder procesarse (se guarda el error para revisarlo, no tiene sentido reintentarlos).
+ * Si la venta se guardo bien pero facturacion no respondio, el mensaje IGUAL se confirma
+ * -- no es un mensaje invalido, es un error de facturacion que queda en la propia venta.
  */
 async function procesarVentas() {
   if (enCurso || !cfg.VENTAS_SUBSCRIPTION) return [];
@@ -26,7 +29,8 @@ async function procesarVentas() {
         const json = JSON.parse(m.texto);
         const r = await recibirVenta(json);
         resultados.push(r);
-        console.log(`[marketplace] ${r.ordenId} -> ${r.duplicada ? "ya estaba registrada" : "venta guardada"}`);
+        const estado = r.duplicada ? "ya estaba registrada" : r.numeroFactura ? `venta guardada, factura ${r.numeroFactura}` : `venta guardada, SIN factura (${r.facturaError})`;
+        console.log(`[marketplace] ${r.ordenId} -> ${estado}`);
       } catch (e) {
         await ventasOnlineRepo.registrarMensajeInvalido({ messageId: m.messageId, error: e.message, payload: m.texto });
         console.error(`[marketplace] Mensaje ${m.messageId} invalido, se guardo el error:`, e.message);

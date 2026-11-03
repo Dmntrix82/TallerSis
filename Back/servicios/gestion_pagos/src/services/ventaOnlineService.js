@@ -2,6 +2,7 @@ const repo = require("../data/ventasOnlineRepo");
 const { aCentavos, aMonto } = require("../utils/money");
 const { validarFormatoDocumento } = require("../utils/documento");
 const { emitirActualizacion } = require("../utils/tableroEvents");
+const { emitirFactura } = require("./facturacionProxy");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
@@ -69,7 +70,26 @@ async function recibirVenta(json) {
   if (!venta) return { ordenId: json.ordenId, duplicada: true };
 
   emitirActualizacion();
-  return { ordenId: venta.orden_id, duplicada: false, venta };
+
+  // TDSI-51/683: la venta ya quedo guardada (lo de arriba, TDSI-179) -- si facturacion
+  // no responde, la venta NO se pierde ni se reprocesa: el error queda en la propia fila
+  // para poder revisarlo, en vez de tratar esto como si el mensaje del topico fuera invalido.
+  let numeroFactura = null;
+  let facturaError = null;
+  try {
+    const factura = await emitirFactura({
+      nit: venta.nit,
+      razon_social: venta.razon_social || venta.cliente_id,
+      items: itemsProcesados.map((it) => ({ descripcion: it.descripcion, cantidad: it.cantidad, precio_unitario: it.precioUnitario })),
+    });
+    numeroFactura = factura.numero;
+    await repo.guardarNumeroFactura(venta.id, numeroFactura);
+  } catch (e) {
+    facturaError = e.message;
+    await repo.guardarErrorFactura(venta.id, facturaError);
+  }
+
+  return { ordenId: venta.orden_id, duplicada: false, venta, numeroFactura, facturaError };
 }
 
 module.exports = { recibirVenta };

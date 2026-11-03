@@ -41,4 +41,17 @@ async function registrarMensajeInvalido({ messageId, error, payload }) {
   );
 }
 
-module.exports = { existeOrden, guardarVenta, registrarMensajeInvalido };
+/** TDSI-51/683: la factura se emitio bien -- se guarda su numero y se limpia cualquier error anterior. */
+async function guardarNumeroFactura(ventaId, numeroFactura) {
+  await query(
+    `UPDATE pagos.ventas_online SET numero_factura = $2, factura_error = NULL WHERE id = $1`,
+    [ventaId, numeroFactura]
+  );
+}
+
+/** TDSI-51/683: facturacion no pudo emitir la factura -- la venta ya quedo guardada (TDSI-179), se deja el motivo para revisar. */
+async function guardarErrorFactura(ventaId, error) {
+  await query(`UPDATE pagos.ventas_online SET factura_error = $2 WHERE id = $1`, [ventaId, error]);
+}
+
+module.exports = { existeOrden, guardarVenta, registrarMensajeInvalido, guardarNumeroFactura, guardarErrorFactura };

@@ -424,3 +424,14 @@ CREATE TABLE IF NOT EXISTS pagos.marketplace_mensajes_error (
     payload      TEXT,
     recibido_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ==========================================================================
+-- TDSI-51/683: cada venta online recibida emite su factura automaticamente
+-- (via el microservicio facturacion, que es el dueno de la numeracion oficial
+-- F-NNNNNN -- NO se reinventa un numerado propio aca). factura_error queda
+-- NULL mientras no haya fallado; si facturacion no responde, la venta se
+-- guarda igual (ya paso TDSI-179) y el error queda aca para poder revisarlo.
+-- ==========================================================================
+ALTER TABLE pagos.ventas_online
+    ADD COLUMN IF NOT EXISTS numero_factura VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS factura_error  VARCHAR(500);
