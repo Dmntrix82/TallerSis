@@ -88,6 +88,55 @@ async function guardarAvisoMarketplace(ventaId, { estado, error }) {
   );
 }
 
+/**
+ * TDSI-51/686: listado real para la pantalla "Ventas Online" del Administrador --
+ * N de orden, cliente, total, metodo, N de factura, estado del aviso al Marketplace,
+ * fecha, y el detalle de items de cada orden (json_agg, una sola consulta).
+ */
+async function listarVentas({ desde, hasta, estado } = {}) {
+  const condiciones = [];
+  const params = [];
+  if (desde) {
+    params.push(desde);
+    condiciones.push(`v.recibida_en >= $${params.length}`);
+  }
+  if (hasta) {
+    params.push(hasta);
+    condiciones.push(`v.recibida_en <= $${params.length}`);
+  }
+  if (estado) {
+    params.push(estado);
+    condiciones.push(`v.estado = $${params.length}`);
+  }
+  const where = condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : "";
+
+  const { rows } = await query(
+    `SELECT v.id, v.orden_id, v.cliente_id, v.nit, v.tipo_documento, v.razon_social,
+            v.total, v.metodo_pago, v.estado, v.numero_factura, v.factura_error,
+            v.aviso_marketplace_estado, v.aviso_marketplace_error, v.recibida_en,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'sku', i.sku, 'descripcion', i.descripcion, 'cantidad', i.cantidad,
+                  'precio_unitario', i.precio_unitario, 'subtotal', i.subtotal
+                ) ORDER BY i.id
+              ) FILTER (WHERE i.id IS NOT NULL),
+              '[]'
+            ) AS items
+       FROM pagos.ventas_online v
+       LEFT JOIN pagos.venta_online_items i ON i.venta_id = v.id
+       ${where}
+      GROUP BY v.id
+      ORDER BY v.recibida_en DESC`,
+    params
+  );
+  return rows.map((r) => ({
+    ...r,
+    total: num(r.total),
+    items: r.items.map((i) => ({ ...i, cantidad: num(i.cantidad), precio_unitario: num(i.precio_unitario), subtotal: num(i.subtotal) })),
+  }));
+}
+
 module.exports = {
   existeOrden,
   guardarVenta,
@@ -98,4 +147,5 @@ module.exports = {
   guardarTokenVerificacion,
   buscarPorTokenVerificacion,
   guardarAvisoMarketplace,
+  listarVentas,
 };
