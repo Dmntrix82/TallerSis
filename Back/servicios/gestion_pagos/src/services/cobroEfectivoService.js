@@ -8,7 +8,36 @@ const { AppError } = require("../utils/AppError");
 function calcularVuelto(total, montoRecibido) {
   return Math.round((montoRecibido - total) * 100) / 100;
 }
+/**
+ * TDSI-159: Divide un monto de vuelto en la menor cantidad posible de
+ * billetes y monedas de Bolivia.
+ * Retorna un array de objetos: [{ denominacion: 100, cantidad: 1 }, ...]
+ */
+function calcularDesgloseVuelto(vuelto) {
+  if (!vuelto || vuelto <= 0) return [];
 
+  // Las denominaciones permitidas (billetes y monedas)
+  const denominaciones = [200, 100, 50, 20, 10, 5, 2, 1, 0.50, 0.20, 0.10];
+  
+  // Convertimos el vuelto a centavos para evitar problemas de punto flotante
+  let restanteCentavos = Math.round(vuelto * 100);
+  const desglose = [];
+
+  for (const denom of denominaciones) {
+    const denomCentavos = Math.round(denom * 100);
+    const cantidad = Math.floor(restanteCentavos / denomCentavos);
+
+    if (cantidad > 0) {
+      desglose.push({
+        denominacion: denom,
+        cantidad: cantidad
+      });
+      restanteCentavos -= cantidad * denomCentavos;
+    }
+  }
+
+  return desglose;
+}
 /**
  * TDSI-548: el efectivo que entrega el cliente no puede ser menor al total
  * a cobrar (no se puede dar un vuelto negativo).
@@ -29,4 +58,4 @@ function validarMontoRecibido(total, montoRecibido) {
   }
 }
 
-module.exports = { calcularVuelto, validarMontoRecibido };
+module.exports = { calcularVuelto, validarMontoRecibido, calcularDesgloseVuelto };
