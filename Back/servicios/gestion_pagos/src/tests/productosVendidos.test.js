@@ -1,13 +1,18 @@
-// TDSI-54/185: agrupa los items de venta online por producto (sku), sin contar las
-// anuladas. BD real; limpia lo que crea.
+// TDSI-54/185/682: agrupa los items de venta online por producto (sku), sin contar las
+// anuladas, y publica el reporte en "pagos-productos-vendidos" (Pub/Sub simulado).
+// BD real; limpia lo que crea.
+process.env.COMPRAS_PUBSUB_TOPIC = "projects/proyecto-prueba/topics/pagos-productos-vendidos";
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query, pool } = require("../config/db");
-const { obtenerProductosVendidos } = require("../services/productosVendidosService");
+const { obtenerProductosVendidos, publicarProductosVendidos } = require("../services/productosVendidosService");
+const publisher = require("../clients/pubsubPublisher");
 
 const PREFIJO = `PV-${Date.now()}`;
 const FECHA = "2021-10-12";
 const OTRO_DIA = "2021-10-13";
+const DIA_PUBLICAR = "2021-10-14";
 
 async function venta({ ordenId, dia, estado = "Pagado", hora = "10:00", items }) {
   const { rows } = await query(
@@ -28,6 +33,7 @@ async function venta({ ordenId, dia, estado = "Pagado", hora = "10:00", items })
 }
 
 test.after(async () => {
+  publisher.usarClienteDePrueba(null);
   await query(`DELETE FROM pagos.ventas_online WHERE orden_id LIKE $1`, [`${PREFIJO}%`]);
   await pool.end();
 });
@@ -81,4 +87,40 @@ test("TDSI-185: un dia sin ventas trae la lista vacia (no es un error)", async (
 test("TDSI-185: exige la fecha y valida que sea una fecha real", async () => {
   await assert.rejects(() => obtenerProductosVendidos(), (e) => e.status === 400);
   await assert.rejects(() => obtenerProductosVendidos("no-es-fecha"), (e) => e.status === 400);
+});
+
+test("TDSI-682: publica el reporte con un identificador unico por fecha", async () => {
+  await venta({
+    ordenId: `${PREFIJO}-5`, dia: DIA_PUBLICAR, hora: "11:00",
+    items: [{ sku: "PAN-05", descripcion: "Pan de molde", cantidad: 4, precioUnitario: 8 }],
+  });
+  publisher.usarClienteDePrueba({ topic: () => ({ publishMessage: async () => "pub-1" }) });
+
+  const { mensaje, resultado } = await publicarProductosVendidos(DIA_PUBLICAR);
+
+  assert.equal(mensaje.reporte_id, `PV-${DIA_PUBLICAR}`);
+  assert.equal(mensaje.fecha, DIA_PUBLICAR);
+  assert.equal(mensaje.origen, "gestion_pagos");
+  assert.ok(mensaje.productos.some((p) => p.sku === "PAN-05"));
+  assert.ok(mensaje.generado_en);
+  assert.equal(resultado.ok, true);
+  assert.equal(resultado.messageId, "pub-1");
+});
+
+test("TDSI-682: el mismo identificador siempre sale igual para la misma fecha (lo que publica Compras puede deduplicar)", async () => {
+  publisher.usarClienteDePrueba({ topic: () => ({ publishMessage: async () => "pub-2" }) });
+  const { mensaje: m1 } = await publicarProductosVendidos(DIA_PUBLICAR);
+  const { mensaje: m2 } = await publicarProductosVendidos(DIA_PUBLICAR);
+  assert.equal(m1.reporte_id, m2.reporte_id);
+});
+
+test("TDSI-682: si no hubo ventas ese dia, no se puede enviar", async () => {
+  await assert.rejects(() => publicarProductosVendidos("2021-01-02"), (e) => e.status === 409);
+});
+
+test("TDSI-682: si Pub/Sub no responde, se informa el error (no lanza)", async () => {
+  publisher.usarClienteDePrueba({ topic: () => ({ publishMessage: async () => { throw new Error("el topico no existe"); } }) });
+  const { resultado } = await publicarProductosVendidos(DIA_PUBLICAR);
+  assert.equal(resultado.ok, false);
+  assert.match(resultado.error, /el topico no existe/);
 });
