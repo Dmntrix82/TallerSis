@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const { aCentavos, aMonto } = require("../utils/money");
 const { ZONA } = require("../utils/fechas");
+const { publicar } = require("../clients/pubsubPublisher");
 
 // Fecha del turno en hora de Bolivia (YYYY-MM-DD) -- un cierre de las 22:00 es de ese
 // dia, no del siguiente. Mismo criterio que fechaBolivia() en facturacion/contabilidadService.js.
@@ -46,4 +47,21 @@ function armarMensajeDiferencia({ diferencia, turno }) {
   };
 }
 
-module.exports = { armarMensajeDiferencia };
+/**
+ * TDSI-698: publica el mensaje "diferencia_caja" en el topico de Contabilidad,
+ * reutilizando el publicador Pub/Sub (mismo cliente/patron que facturacion). No lanza
+ * si Pub/Sub falla -- devuelve { ok:false, ... } para que el llamador decida (la
+ * diferencia ya quedo resuelta en nuestro sistema de todos modos, ver diferenciasService.js).
+ */
+async function publicarDiferencia(mensaje) {
+  return publicar(mensaje, {
+    tipo: "DIFERENCIA_CAJA",
+    tipo_operacion: mensaje.tipo_operacion,
+    referencia_externa: mensaje.referencia_externa,
+    idempotency_key: mensaje.referencia_externa,
+    origen: "gestion_caja",
+    grupo: "A",
+  });
+}
+
+module.exports = { armarMensajeDiferencia, publicarDiferencia };
