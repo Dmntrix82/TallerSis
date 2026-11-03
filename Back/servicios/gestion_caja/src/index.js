@@ -59,4 +59,5 @@ setInterval(async () => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Gestión de Caja ejecutándose en el puerto ${PORT}`);
+  require("./jobs/respuestasContabilidad").iniciar(); // TDSI-52/700
 });

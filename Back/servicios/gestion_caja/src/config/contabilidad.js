@@ -40,4 +40,11 @@ module.exports = {
   PUBSUB_TOPIC: topico("CONTABILIDAD_PUBSUB_TOPIC"),
   GOOGLE_CREDENTIALS: credencialesGoogle("GOOGLE_CREDENTIALS_JSON"),
   PUBSUB_TIMEOUT_MS: entero("PUBSUB_TIMEOUT_MS", 10000, 1000, 60000),
+
+  // TDSI-52/700: respuestas de Contabilidad (resultado_documento) para las referencias
+  // DIF-<id>: suscripcion Pull del topico del Grupo A (el mismo que ya lee facturacion
+  // para sus propias respuestas F-NNNNNN -- cada servicio filtra lo que es suyo y libera
+  // el resto). Vacio = no se leen.
+  RESPUESTAS_SUBSCRIPTION: String(process.env.CONTABILIDAD_RESPUESTAS_SUBSCRIPTION || "").trim() || null,
+  RESPUESTAS_INTERVALO_SEG: entero("CONTABILIDAD_RESPUESTAS_INTERVALO_SEG", 30, 10, 3600),
 };

@@ -69,11 +69,15 @@ test("TDSI-698: resuelve la diferencia y publica el aviso a Contabilidad", async
   assert.equal(r.diferencia.justificacion, "Faltó contar un billete");
   assert.equal(r.diferencia.resuelta_por, "admin@tallersis.bo");
   assert.ok(r.diferencia.resuelta_en);
-  assert.deepEqual(r.contabilidad, { publicado: true, messageId: "pub-698-1" });
+  assert.deepEqual(r.contabilidad, { publicado: true, messageId: "pub-698-1", estado: "Enviado" });
 
   const { rows } = await query(`SELECT estado, justificacion FROM caja.diferencias_resolucion WHERE id = $1`, [id]);
   assert.equal(rows[0].estado, "RESUELTA");
   assert.equal(rows[0].justificacion, "Faltó contar un billete");
+
+  // TDSI-699: el intento de aviso quedo registrado en la tabla de envios.
+  const { rows: envio } = await query(`SELECT estado, pubsub_message_id, intentos FROM caja.diferencias_envios_contabilidad WHERE diferencia_id = $1`, [id]);
+  assert.deepEqual(envio[0], { estado: "Enviado", pubsub_message_id: "pub-698-1", intentos: 1 });
 });
 
 test("TDSI-698: exige justificacion", async () => {
