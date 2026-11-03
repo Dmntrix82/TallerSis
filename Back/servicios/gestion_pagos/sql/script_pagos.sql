@@ -404,3 +404,23 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
     confirmado_en  TIMESTAMPTZ,
     confirmado_por VARCHAR(255)
 );
+
+-- ==========================================================================
+-- TDSI-51/179: suscripcion al topico "marketplace-ventas". pagos.ventas_online
+-- y pagos.venta_online_items ya existian (TDSI-105/106) pero les faltaba el
+-- NIT/CI del comprador -- necesario para poder facturar la venta despues
+-- (eso lo hace un subtask aparte, aqui solo se recibe y se guarda).
+-- ==========================================================================
+ALTER TABLE pagos.ventas_online
+    ADD COLUMN IF NOT EXISTS nit            VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS tipo_documento VARCHAR(10) CHECK (tipo_documento IN ('NIT', 'CI')),
+    ADD COLUMN IF NOT EXISTS razon_social   VARCHAR(255);
+
+-- TDSI-51/179: "si el mensaje viene mal, no se registra y se guarda el error para revisarlo".
+CREATE TABLE IF NOT EXISTS pagos.marketplace_mensajes_error (
+    id           BIGSERIAL PRIMARY KEY,
+    message_id   VARCHAR(100),
+    error        VARCHAR(500) NOT NULL,
+    payload      TEXT,
+    recibido_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

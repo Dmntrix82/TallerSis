@@ -53,4 +53,5 @@ app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`Microservicio de Pagos corriendo en el puerto ${port}`);
+  require("./jobs/marketplaceVentas").iniciar(); // TDSI-51/179
 });
