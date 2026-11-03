@@ -67,4 +67,39 @@ async function resolver(id, { justificacion, resuelta_por }) {
   return normalizar(rows[0]);
 }
 
-module.exports = { listarPorTurnos, insertar, obtenerConTurno, resolver };
+/**
+ * TDSI-52/701: "Diferencias de caja" del Administrador, con el estado del aviso a
+ * Contabilidad (null si todavia no se resolvio -- no hay envio hasta que se resuelve).
+ */
+async function listar({ estado } = {}) {
+  const { rows } = await query(
+    `SELECT d.id, d.turno_id, d.monto, d.tipo, d.estado, d.justificacion, d.resuelta_por, d.resuelta_en,
+            t.caja_id, t.cajero_nombre, t.cajero_id, t.cerrado_en,
+            e.estado AS envio_estado, e.motivo_rechazo AS envio_motivo_rechazo,
+            e.intentos AS envio_intentos, e.ultimo_error AS envio_ultimo_error
+       FROM caja.diferencias_resolucion d
+       JOIN caja.turnos t ON t.id = d.turno_id
+       LEFT JOIN caja.diferencias_envios_contabilidad e ON e.diferencia_id = d.id
+      WHERE ($1::varchar IS NULL OR d.estado = $1)
+      ORDER BY d.id DESC`,
+    [estado || null]
+  );
+  return rows.map((r) => ({
+    id: num(r.id),
+    turno_id: num(r.turno_id),
+    caja_id: r.caja_id,
+    cajero: r.cajero_nombre || r.cajero_id,
+    tipo: r.tipo,
+    monto: num(r.monto),
+    estado: r.estado,
+    justificacion: r.justificacion,
+    resuelta_por: r.resuelta_por,
+    resuelta_en: r.resuelta_en,
+    cerrado_en: r.cerrado_en,
+    contabilidad: r.envio_estado
+      ? { estado: r.envio_estado, motivo_rechazo: r.envio_motivo_rechazo, intentos: r.envio_intentos, ultimo_error: r.envio_ultimo_error }
+      : null,
+  }));
+}
+
+module.exports = { listarPorTurnos, insertar, obtenerConTurno, resolver, listar };

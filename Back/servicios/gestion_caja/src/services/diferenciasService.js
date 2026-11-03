@@ -41,4 +41,37 @@ async function resolverDiferencia(id, { justificacion, resuelta_por } = {}) {
   };
 }
 
-module.exports = { resolverDiferencia };
+/** TDSI-52/701: "Diferencias de caja" con el estado del aviso a Contabilidad (columna "Contabilidad" del Front). */
+async function listarDiferencias({ estado } = {}) {
+  if (estado && !["PENDIENTE", "RESUELTA"].includes(estado)) {
+    throw new AppError("El estado debe ser PENDIENTE o RESUELTA.", 400, { estado });
+  }
+  return diferenciasRepo.listar({ estado });
+}
+
+/**
+ * TDSI-52/701: boton "Reenviar" -- solo tiene sentido si el envio anterior no llego a
+ * buen puerto (nunca se pudo publicar, o Contabilidad lo rechazo). Reusa el mismo
+ * mensaje ya armado (el turno/caja/cajero de una diferencia no cambian despues de
+ * resuelta), asi que no hace falta reconstruirlo.
+ */
+async function reenviarContabilidad(id) {
+  const envio = await diferenciasEnviosRepo.obtenerPorDiferencia(id);
+  if (!envio) throw new AppError("Esta diferencia todavía no tiene un envío a Contabilidad (resuélvela primero).", 404, { id });
+  if (!["Pendiente", "Rechazado"].includes(envio.estado)) {
+    throw new AppError(`Solo se pueden reenviar envíos con estado Pendiente o Rechazado (este está ${envio.estado}).`, 409, { id, estado: envio.estado });
+  }
+
+  const resultado = await publicarDiferencia(envio.payload);
+  const actualizado = resultado.ok
+    ? await diferenciasEnviosRepo.marcarEnviado(id, resultado.messageId)
+    : await diferenciasEnviosRepo.marcarError(id, resultado.error);
+
+  return {
+    publicado: resultado.ok,
+    ...(resultado.ok ? { messageId: resultado.messageId } : { error: resultado.error }),
+    contabilidad: actualizado,
+  };
+}
+
+module.exports = { resolverDiferencia, listarDiferencias, reenviarContabilidad };
