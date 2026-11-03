@@ -603,7 +603,35 @@ async function buscarPorTokenVerificacion(token) {
   return rows.map((r) => ({ ...r, monto: num(r.monto) }));
 }
 
+/**
+ * TDSI-50/177: una fila por factura (no por metodo de pago) para el Libro de
+ * Ventas del mes -- una venta Mixto tiene varias filas en pagos.transacciones
+ * (una por metodo) que comparten id_transaccion, asi que se agrupan y se suma
+ * el monto. El mes/anio se evalua en hora de Bolivia, igual que el resto del
+ * sistema (ver utils/fechaLocal.js).
+ */
+async function listarFacturasDelMes(mes, anio) {
+  const { rows } = await query(
+    `SELECT
+       id_transaccion,
+       MIN(fecha) AS fecha,
+       nit,
+       razon_social,
+       tipo_documento,
+       estado,
+       SUM(monto) AS total
+     FROM pagos.transacciones
+     WHERE date_part('month', fecha AT TIME ZONE 'America/La_Paz') = $1
+       AND date_part('year',  fecha AT TIME ZONE 'America/La_Paz') = $2
+     GROUP BY id_transaccion, nit, razon_social, tipo_documento, estado
+     ORDER BY MIN(fecha), id_transaccion`,
+    [mes, anio]
+  );
+  return rows.map((r) => ({ ...r, total: num(r.total) }));
+}
+
 module.exports = {
+  listarFacturasDelMes,
   crearCobroQr,
   obtenerCobroQrPorId,
   confirmarCobroQr,
