@@ -42,4 +42,9 @@ module.exports = {
   PUBSUB_TOPIC: topico("COMPRAS_PUBSUB_TOPIC"),
   GOOGLE_CREDENTIALS: credencialesGoogle("GOOGLE_CREDENTIALS_JSON"),
   PUBSUB_TIMEOUT_MS: entero("PUBSUB_TIMEOUT_MS", 10000, 1000, 60000),
+
+  // TDSI-54/697: acuses de Compras ("compras-acuses") que marcan un envio como
+  // Recibido: suscripcion Pull. Vacio = no se leen.
+  ACUSES_SUBSCRIPTION: String(process.env.COMPRAS_ACUSES_SUBSCRIPTION || "").trim() || null,
+  ACUSES_INTERVALO_SEG: entero("COMPRAS_ACUSES_INTERVALO_SEG", 30, 10, 3600),
 };

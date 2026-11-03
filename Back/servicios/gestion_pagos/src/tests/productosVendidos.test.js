@@ -35,6 +35,7 @@ async function venta({ ordenId, dia, estado = "Pagado", hora = "10:00", items })
 test.after(async () => {
   publisher.usarClienteDePrueba(null);
   await query(`DELETE FROM pagos.ventas_online WHERE orden_id LIKE $1`, [`${PREFIJO}%`]);
+  await query(`DELETE FROM pagos.envios_compras WHERE fecha = $1`, [DIA_PUBLICAR]);
   await pool.end();
 });
 
@@ -96,7 +97,7 @@ test("TDSI-682: publica el reporte con un identificador unico por fecha", async 
   });
   publisher.usarClienteDePrueba({ topic: () => ({ publishMessage: async () => "pub-1" }) });
 
-  const { mensaje, resultado } = await publicarProductosVendidos(DIA_PUBLICAR);
+  const { mensaje, resultado, envio } = await publicarProductosVendidos(DIA_PUBLICAR);
 
   assert.equal(mensaje.reporte_id, `PV-${DIA_PUBLICAR}`);
   assert.equal(mensaje.fecha, DIA_PUBLICAR);
@@ -105,6 +106,11 @@ test("TDSI-682: publica el reporte con un identificador unico por fecha", async 
   assert.ok(mensaje.generado_en);
   assert.equal(resultado.ok, true);
   assert.equal(resultado.messageId, "pub-1");
+
+  // TDSI-697: el intento quedo registrado en pagos.envios_compras.
+  assert.equal(envio.estado, "Enviado");
+  assert.equal(envio.pubsub_message_id, "pub-1");
+  assert.equal(envio.reporte_id, `PV-${DIA_PUBLICAR}`);
 });
 
 test("TDSI-682: el mismo identificador siempre sale igual para la misma fecha (lo que publica Compras puede deduplicar)", async () => {
@@ -118,9 +124,11 @@ test("TDSI-682: si no hubo ventas ese dia, no se puede enviar", async () => {
   await assert.rejects(() => publicarProductosVendidos("2021-01-02"), (e) => e.status === 409);
 });
 
-test("TDSI-682: si Pub/Sub no responde, se informa el error (no lanza)", async () => {
+test("TDSI-682: si Pub/Sub no responde, se informa el error (no lanza) y queda Error en envios_compras", async () => {
   publisher.usarClienteDePrueba({ topic: () => ({ publishMessage: async () => { throw new Error("el topico no existe"); } }) });
-  const { resultado } = await publicarProductosVendidos(DIA_PUBLICAR);
+  const { resultado, envio } = await publicarProductosVendidos(DIA_PUBLICAR);
   assert.equal(resultado.ok, false);
+  assert.equal(envio.estado, "Error");
+  assert.match(envio.ultimo_error, /el topico no existe/);
   assert.match(resultado.error, /el topico no existe/);
 });

@@ -1,5 +1,6 @@
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/productosVendidosRepo");
+const enviosRepo = require("../data/enviosComprasRepo");
 const { publicar } = require("../clients/pubsubPublisher");
 
 /**
@@ -21,11 +22,13 @@ async function obtenerProductosVendidos(fecha) {
 }
 
 /**
- * TDSI-54/682: arma y publica el reporte del dia en "pagos-productos-vendidos", con un
- * identificador unico por fecha ("PV-<fecha>") para que Compras lo pueda tratar como
- * idempotente. "Si no hubo ventas ese dia, no se puede enviar" (regla del ticket) -- el
- * resto de las reglas (una vez por dia salvo Error, tabla de envios, acuse) son
- * subtasks aparte que todavia no existen.
+ * TDSI-54/682/697: arma y publica el reporte del dia en "pagos-productos-vendidos", con
+ * un identificador unico por fecha ("PV-<fecha>") para que Compras lo pueda tratar como
+ * idempotente, y deja el intento registrado en pagos.envios_compras (TDSI-687) --
+ * Enviado o Error -- para que la lectura del acuse (TDSI-697) sepa que marcar como
+ * Recibido. "Si no hubo ventas ese dia, no se puede enviar" (regla del ticket). La
+ * regla de "una vez por dia salvo Error" la aplica el endpoint que llama a esto (subtask
+ * aparte: TDSI-702), no esta funcion.
  */
 async function publicarProductosVendidos(fecha) {
   const { productos } = await obtenerProductosVendidos(fecha);
@@ -50,7 +53,11 @@ async function publicarProductosVendidos(fecha) {
     origen: "gestion_pagos",
   });
 
-  return { mensaje, resultado };
+  const envio = resultado.ok
+    ? await enviosRepo.registrarEnviado(fecha, { reporteId, payload: mensaje, messageId: resultado.messageId })
+    : await enviosRepo.registrarError(fecha, { reporteId, payload: mensaje, error: resultado.error });
+
+  return { mensaje, resultado, envio };
 }
 
 module.exports = { obtenerProductosVendidos, publicarProductosVendidos };
