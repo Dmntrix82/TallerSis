@@ -1,0 +1,84 @@
+// TDSI-54/185: agrupa los items de venta online por producto (sku), sin contar las
+// anuladas. BD real; limpia lo que crea.
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { query, pool } = require("../config/db");
+const { obtenerProductosVendidos } = require("../services/productosVendidosService");
+
+const PREFIJO = `PV-${Date.now()}`;
+const FECHA = "2021-10-12";
+const OTRO_DIA = "2021-10-13";
+
+async function venta({ ordenId, dia, estado = "Pagado", hora = "10:00", items }) {
+  const { rows } = await query(
+    `INSERT INTO pagos.ventas_online (orden_id, cliente_id, total, metodo_pago, estado, codigo_confirmacion, recibida_en)
+     VALUES ($1, 'Cliente', $2, 'QR', $3, 'CNF-TEST', ($4 || ' ' || $5)::timestamp AT TIME ZONE 'America/La_Paz')
+     RETURNING id`,
+    [ordenId, items.reduce((acc, it) => acc + it.cantidad * it.precioUnitario, 0), estado, dia, hora]
+  );
+  const ventaId = rows[0].id;
+  for (const it of items) {
+    await query(
+      `INSERT INTO pagos.venta_online_items (venta_id, sku, descripcion, cantidad, precio_unitario, subtotal)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [ventaId, it.sku, it.descripcion, it.cantidad, it.precioUnitario, it.cantidad * it.precioUnitario]
+    );
+  }
+  return ventaId;
+}
+
+test.after(async () => {
+  await query(`DELETE FROM pagos.ventas_online WHERE orden_id LIKE $1`, [`${PREFIJO}%`]);
+  await pool.end();
+});
+
+test("TDSI-185: agrupa por sku, suma cantidad y monto, y ordena de mas a menos vendido", async () => {
+  await venta({
+    ordenId: `${PREFIJO}-1`, dia: FECHA, hora: "09:00",
+    items: [{ sku: "ARR-01", descripcion: "Arroz 1kg", cantidad: 2, precioUnitario: 10 }, { sku: "ACE-02", descripcion: "Aceite 900ml", cantidad: 1, precioUnitario: 15 }],
+  });
+  await venta({
+    ordenId: `${PREFIJO}-2`, dia: FECHA, hora: "14:00",
+    items: [{ sku: "ARR-01", descripcion: "Arroz 1kg", cantidad: 5, precioUnitario: 10 }],
+  });
+
+  const r = await obtenerProductosVendidos(FECHA);
+  const propios = r.productos.filter((p) => ["ARR-01", "ACE-02"].includes(p.sku));
+  assert.deepEqual(propios, [
+    { sku: "ARR-01", descripcion: "Arroz 1kg", cantidad: 7, monto: 70 },
+    { sku: "ACE-02", descripcion: "Aceite 900ml", cantidad: 1, monto: 15 },
+  ]);
+});
+
+test("TDSI-185: no cuenta las ventas anuladas", async () => {
+  await venta({
+    ordenId: `${PREFIJO}-3`, dia: FECHA, hora: "16:00", estado: "Anulado",
+    items: [{ sku: "LEC-03", descripcion: "Leche 1L", cantidad: 10, precioUnitario: 7 }],
+  });
+
+  const r = await obtenerProductosVendidos(FECHA);
+  assert.equal(r.productos.some((p) => p.sku === "LEC-03"), false);
+});
+
+test("TDSI-185: no mezcla ventas de otro dia", async () => {
+  await venta({
+    ordenId: `${PREFIJO}-4`, dia: OTRO_DIA, hora: "10:00",
+    items: [{ sku: "QUE-04", descripcion: "Queso 500g", cantidad: 3, precioUnitario: 20 }],
+  });
+
+  const delDia = await obtenerProductosVendidos(FECHA);
+  assert.equal(delDia.productos.some((p) => p.sku === "QUE-04"), false);
+
+  const delOtroDia = await obtenerProductosVendidos(OTRO_DIA);
+  assert.deepEqual(delOtroDia.productos.find((p) => p.sku === "QUE-04"), { sku: "QUE-04", descripcion: "Queso 500g", cantidad: 3, monto: 60 });
+});
+
+test("TDSI-185: un dia sin ventas trae la lista vacia (no es un error)", async () => {
+  const r = await obtenerProductosVendidos("2021-01-01");
+  assert.deepEqual(r, { fecha: "2021-01-01", productos: [] });
+});
+
+test("TDSI-185: exige la fecha y valida que sea una fecha real", async () => {
+  await assert.rejects(() => obtenerProductosVendidos(), (e) => e.status === 400);
+  await assert.rejects(() => obtenerProductosVendidos("no-es-fecha"), (e) => e.status === 400);
+});
