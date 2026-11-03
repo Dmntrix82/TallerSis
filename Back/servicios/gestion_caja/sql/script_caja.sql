@@ -256,3 +256,33 @@ ALTER TABLE caja.aprobaciones_especiales
 
 CREATE INDEX IF NOT EXISTS idx_aprobaciones_especiales_estado
   ON caja.aprobaciones_especiales (estado, tipo, creado_en DESC);
+
+-- ==========================================================================
+-- TDSI-52/699: seguimiento del aviso a Contabilidad de cada diferencia resuelta
+-- (TDSI-698 arma y publica el mensaje "diferencia_caja"; esta tabla es donde
+-- queda el registro). Una diferencia tiene a lo sumo un envio (uq mas abajo).
+-- Estado: Pendiente -> Enviado -> Confirmado / Rechazado (texto del ticket).
+-- motivo_rechazo solo se llena si Contabilidad responde Rechazado.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS caja.diferencias_envios_contabilidad (
+    id                  BIGSERIAL PRIMARY KEY,
+    diferencia_id       BIGINT NOT NULL REFERENCES caja.diferencias_resolucion(id) ON DELETE CASCADE,
+    estado              VARCHAR(20) NOT NULL DEFAULT 'Pendiente'
+                         CHECK (estado IN ('Pendiente', 'Enviado', 'Confirmado', 'Rechazado')),
+    intentos            INT          NOT NULL DEFAULT 0,
+    payload             JSONB,
+    pubsub_message_id   VARCHAR(100),
+    ultimo_error        VARCHAR(400),
+    motivo_rechazo      VARCHAR(400),
+    creado_en           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    enviado_en          TIMESTAMPTZ,
+    respondido_en       TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_diferencias_envios_contabilidad_diferencia
+    ON caja.diferencias_envios_contabilidad (diferencia_id);
+
+CREATE INDEX IF NOT EXISTS idx_diferencias_envios_contabilidad_estado
+    ON caja.diferencias_envios_contabilidad (estado);
+
+ALTER TABLE caja.diferencias_envios_contabilidad ENABLE ROW LEVEL SECURITY;
