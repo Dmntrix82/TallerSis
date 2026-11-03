@@ -404,3 +404,12 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
     confirmado_en  TIMESTAMPTZ,
     confirmado_por VARCHAR(255)
 );
+
+-- ==========================================================================
+-- TDSI-49/929: el cierre de caja necesita mostrar POR QUE se anulo cada
+-- factura y el NOMBRE del supervisor que autorizo (antes solo se guardaba
+-- su id en anulado_por).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS motivo_anulacion   VARCHAR(300),
+    ADD COLUMN IF NOT EXISTS anulado_por_nombre VARCHAR(255);

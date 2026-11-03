@@ -38,7 +38,7 @@ async function listarMisFacturas(cajero, { desde, hasta } = {}) {
  * un supervisor de caja (validado contra facturacion) y que este dentro del
  * plazo de 2 horas desde la emision. Solo el cajero que la emitio puede pedirlo.
  */
-async function anularVenta({ id_transaccion, cajero, supervisor_id, pin }) {
+async function anularVenta({ id_transaccion, cajero, supervisor_id, pin, motivo }) {
   if (!supervisor_id || !String(supervisor_id).trim() || !pin || !String(pin).trim()) {
     throw new AppError("Ingrese el usuario y el PIN del supervisor.", 400);
   }
@@ -62,10 +62,37 @@ async function anularVenta({ id_transaccion, cajero, supervisor_id, pin }) {
 
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
-  const anuladas = await repo.anularTransaccion(id_transaccion, { anulado_por: supervisor.supervisor_id });
+  const anuladas = await repo.anularTransaccion(id_transaccion, {
+    anulado_por: supervisor.supervisor_id,
+    anulado_por_nombre: supervisor.nombre,
+    motivo: motivo && String(motivo).trim() ? String(motivo).trim() : null,
+  });
   emitirActualizacion();
 
-  return { id_transaccion, autorizado_por: supervisor, filas: anuladas };
+  return { id_transaccion, autorizado_por: supervisor, motivo: motivo || null, filas: anuladas };
+}
+
+/**
+ * TDSI-929: facturas anuladas de una caja en un rango de tiempo (el turno), con su
+ * motivo y el supervisor que autorizo -- usado por gestion_caja para "Ver anuladas"
+ * en el cierre de caja (TDSI-49/175). Mismo contrato de parametros que reporteTurno.
+ */
+async function anuladasTurno({ caja_id, desde, hasta }) {
+  if (!caja_id) {
+    throw new AppError("Falta 'caja_id' para listar las anuladas del turno.", 400);
+  }
+  if (!desde) {
+    throw new AppError("Falta 'desde' para listar las anuladas del turno.", 400);
+  }
+  const desdeFecha = new Date(desde);
+  const hastaFecha = hasta ? new Date(hasta) : new Date();
+  if (Number.isNaN(desdeFecha.getTime())) {
+    throw new AppError("'desde' no es una fecha valida.", 400);
+  }
+  if (Number.isNaN(hastaFecha.getTime())) {
+    throw new AppError("'hasta' no es una fecha valida.", 400);
+  }
+  return repo.listarAnuladasTurno(caja_id, desdeFecha, hastaFecha);
 }
 
 /**
@@ -200,6 +227,7 @@ module.exports = {
   modificarVenta,
   listarBitacoraModificaciones,
   reporteTurno,
+  anuladasTurno,
   historialCliente,
   totalesGenerales,
   listarCajeros,

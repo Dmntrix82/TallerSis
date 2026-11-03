@@ -175,15 +175,19 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
   }));
 }
 
-/** Anula TODAS las filas de una venta (una si es Simple, varias si es Mixto) en una transaccion SQL. */
-async function anularTransaccion(id_transaccion, { anulado_por }) {
+/**
+ * Anula TODAS las filas de una venta (una si es Simple, varias si es Mixto) en una
+ * transaccion SQL. TDSI-929: ademas de quien autorizo (anulado_por = su id), guarda
+ * su NOMBRE y el motivo, para poder mostrarlos en el cierre de caja.
+ */
+async function anularTransaccion(id_transaccion, { anulado_por, anulado_por_nombre, motivo }) {
   return withTransaction(async (client) => {
     const { rows } = await client.query(
       `UPDATE pagos.transacciones
-          SET estado = 'Anulado', anulado_por = $2, anulado_en = now()
+          SET estado = 'Anulado', anulado_por = $2, anulado_por_nombre = $3, motivo_anulacion = $4, anulado_en = now()
         WHERE id_transaccion = $1 AND estado = 'Registrado'
         RETURNING *`,
-      [id_transaccion, anulado_por || null]
+      [id_transaccion, anulado_por || null, anulado_por_nombre || null, motivo || null]
     );
     if (rows.length === 0) return [];
 
@@ -317,6 +321,37 @@ async function reporteTurno(caja_id, desde, hasta) {
     cantidadAnuladas,
     montoAnulado,
   };
+}
+
+/**
+ * TDSI-929: lista (una fila por venta, igual que listarPorCajero) de las facturas
+ * anuladas de una caja en un rango de tiempo (el turno), con su motivo y el
+ * supervisor que autorizo -- para "Ver anuladas" en el cierre de caja (TDSI-49).
+ * Se filtra por "fecha" (la de la venta, no la de la anulacion): una factura
+ * emitida dentro del turno y anulada despues igual pertenece a ese turno.
+ */
+async function listarAnuladasTurno(caja_id, desde, hasta) {
+  const { rows } = await query(
+    `SELECT id_transaccion,
+            MIN(fecha) AS fecha,
+            SUM(monto) AS total,
+            MAX(motivo_anulacion) AS motivo,
+            COALESCE(MAX(anulado_por_nombre), MAX(anulado_por)) AS supervisor,
+            MAX(anulado_en) AS anulado_en
+       FROM pagos.transacciones
+      WHERE caja_id = $1 AND estado = 'Anulado' AND fecha >= $2 AND fecha <= $3
+      GROUP BY id_transaccion
+      ORDER BY MIN(fecha)`,
+    [caja_id, desde, hasta]
+  );
+  return rows.map((r) => ({
+    numero_factura: r.id_transaccion,
+    hora: r.fecha,
+    total: num(r.total),
+    motivo: r.motivo,
+    supervisor: r.supervisor,
+    anulado_en: r.anulado_en,
+  }));
 }
 
 /**
@@ -620,6 +655,7 @@ module.exports = {
   actualizarDatosVenta,
   listarBitacoraModificaciones,
   reporteTurno,
+  listarAnuladasTurno,
   listarCajeros,
   rankingCajas,
   rankingCajeros,
