@@ -27,8 +27,8 @@ async function obtenerProductosVendidos(fecha) {
  * idempotente, y deja el intento registrado en pagos.envios_compras (TDSI-687) --
  * Enviado o Error -- para que la lectura del acuse (TDSI-697) sepa que marcar como
  * Recibido. "Si no hubo ventas ese dia, no se puede enviar" (regla del ticket). La
- * regla de "una vez por dia salvo Error" la aplica el endpoint que llama a esto (subtask
- * aparte: TDSI-702), no esta funcion.
+ * regla de "una vez por dia salvo Error" la aplica enviarACompras (TDSI-702), no esta
+ * funcion -- publicarProductosVendidos se puede llamar mas de una vez (p.ej. un reenvio).
  */
 async function publicarProductosVendidos(fecha) {
   const { productos } = await obtenerProductosVendidos(fecha);
@@ -60,4 +60,39 @@ async function publicarProductosVendidos(fecha) {
   return { mensaje, resultado, envio };
 }
 
-module.exports = { obtenerProductosVendidos, publicarProductosVendidos };
+/**
+ * TDSI-54/702: lo que pide "Productos Vendidos" del Administrador -- la lista del dia
+ * mas el estado del envio a Compras, si ya se intento alguno.
+ */
+async function obtenerConEstadoEnvio(fecha) {
+  const resultado = await obtenerProductosVendidos(fecha);
+  const envio = await enviosRepo.obtenerPorFecha(fecha);
+  return {
+    ...resultado,
+    envio: envio
+      ? { estado: envio.estado, intentos: envio.intentos, ultimoError: envio.ultimo_error, enviadoEn: envio.enviado_en, recibidoEn: envio.recibido_en }
+      : null,
+  };
+}
+
+/**
+ * TDSI-54/702: boton "Enviar a Compras". "Cada dia se envia una sola vez, salvo que el
+ * envio haya quedado en Error" (regla del ticket) -- si ya hay un envio Enviado o
+ * Recibido para esa fecha, no se vuelve a publicar.
+ */
+async function enviarACompras(fecha) {
+  if (!fecha) {
+    throw new AppError("Falta la fecha para enviar el reporte a Compras.", 400);
+  }
+  const envioExistente = await enviosRepo.obtenerPorFecha(fecha);
+  if (envioExistente && envioExistente.estado !== "Error") {
+    throw new AppError(
+      `El reporte de ese día ya se envió (estado: ${envioExistente.estado}). Solo se puede reenviar si quedó en Error.`,
+      409,
+      { fecha, estado: envioExistente.estado }
+    );
+  }
+  return publicarProductosVendidos(fecha);
+}
+
+module.exports = { obtenerProductosVendidos, publicarProductosVendidos, obtenerConEstadoEnvio, enviarACompras };
