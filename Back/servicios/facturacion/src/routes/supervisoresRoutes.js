@@ -1,6 +1,6 @@
 const { Router } = require("express");
 const { validarPin } = require("../services/pinService");
-const { listarSupervisores } = require("../services/supervisoresService");
+const { listarSupervisores, crearSupervisor } = require("../services/supervisoresService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -8,6 +8,12 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(nex
 // TDSI-187: lista para la pantalla "Supervisores" del Administrador (sin PIN)
 router.get("/", wrap(async (req, res) => {
   res.json({ ok: true, data: await listarSupervisores() });
+}));
+
+// TDSI-721: "Nuevo supervisor" (usuario, nombre y PIN inicial)
+router.post("/", wrap(async (req, res) => {
+  const supervisor = await crearSupervisor(req.body);
+  res.status(201).json({ ok: true, data: supervisor });
 }));
 
 // Validacion generica del codigo (usuario + PIN) de un supervisor de caja.

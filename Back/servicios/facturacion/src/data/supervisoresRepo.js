@@ -66,4 +66,17 @@ async function listar() {
   return rows;
 }
 
-module.exports = { buscar, registrarFallo, reiniciarIntentos, guardarPin, listar };
+/** TDSI-721: alta de un supervisor; devuelve null si el usuario ya existe */
+async function crear({ supervisor_id, nombre, pin_hash }) {
+  const { rows } = await query(
+    `INSERT INTO facturacion.supervisores (supervisor_id, nombre, pin_hash)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (supervisor_id) DO NOTHING
+     RETURNING id, supervisor_id, nombre, activo, bloqueado_hasta,
+               false AS bloqueado, actualizado_en`,
+    [supervisor_id, nombre, pin_hash]
+  );
+  return rows[0] || null;
+}
+
+module.exports = { buscar, registrarFallo, reiniciarIntentos, guardarPin, listar, crear };
