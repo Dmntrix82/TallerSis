@@ -256,3 +256,19 @@ ALTER TABLE caja.aprobaciones_especiales
 
 CREATE INDEX IF NOT EXISTS idx_aprobaciones_especiales_estado
   ON caja.aprobaciones_especiales (estado, tipo, creado_en DESC);
+
+-- ==========================================================================
+-- TDSI-58/193: meta de ventas diaria por caja ("Metas de venta"). Una caja
+-- tiene a lo sumo una meta vigente (se edita, no se versiona por fecha --
+-- "Editar meta" la cambia para adelante). caja_id es texto suelto, sin FK,
+-- igual que en el resto del esquema (caja.turnos, caja.movimientos, etc.).
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS caja.metas_venta (
+    id              BIGSERIAL PRIMARY KEY,
+    caja_id         VARCHAR(20)   NOT NULL UNIQUE,
+    monto_meta      NUMERIC(14,2) NOT NULL CHECK (monto_meta > 0),
+    actualizado_por VARCHAR(60),
+    actualizado_en  TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+ALTER TABLE caja.metas_venta ENABLE ROW LEVEL SECURITY;
