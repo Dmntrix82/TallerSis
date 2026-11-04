@@ -4,7 +4,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query, pool } = require("../config/db");
-const { obtenerVentasPorHora, validarRango } = require("../services/horasPicoService");
+const { obtenerVentasPorHora, obtenerHorasPico, top3PorCantidad, validarRango } = require("../services/horasPicoService");
 
 const PREFIJO = `HP-${Date.now()}`;
 // Rango fijo (Bolivia, -04:00): el test no depende de en que fecha se corra.
@@ -101,4 +101,39 @@ test("TDSI-761: no cuenta las ventas anuladas", async () => {
 
   const r = await obtenerVentasPorHora(DESDE, HASTA);
   assert.deepEqual(r.find((h) => h.hora === 21), { hora: 21, cantidad: 1, monto: 40 });
+});
+
+test("TDSI-762: top3PorCantidad ordena por cantidad, y el monto desempata", () => {
+  const horas = [
+    { hora: 8, cantidad: 1, monto: 10 },
+    { hora: 9, cantidad: 3, monto: 100 },
+    { hora: 10, cantidad: 2, monto: 50 },
+    { hora: 11, cantidad: 2, monto: 80 }, // mismo cantidad que la hora 10, pero mas monto
+  ];
+  assert.deepEqual(top3PorCantidad(horas), [
+    { hora: 9, cantidad: 3, monto: 100 },
+    { hora: 11, cantidad: 2, monto: 80 },
+    { hora: 10, cantidad: 2, monto: 50 },
+  ]);
+});
+
+test("TDSI-762: top3PorCantidad devuelve menos de 3 si hubo menos de 3 horas con ventas", () => {
+  const horas = [{ hora: 8, cantidad: 1, monto: 10 }, { hora: 9, cantidad: 2, monto: 20 }];
+  assert.deepEqual(top3PorCantidad(horas), [
+    { hora: 9, cantidad: 2, monto: 20 },
+    { hora: 8, cantidad: 1, monto: 10 },
+  ]);
+});
+
+test("TDSI-762: obtenerHorasPico trae las ventas por hora y las 3 horas pico juntas", async () => {
+  await transaccion(`${PREFIJO}-11`, 10, "2024-07-10T08:00:00-04:00");
+  await transaccion(`${PREFIJO}-12`, 30, "2024-07-10T09:00:00-04:00");
+  await transaccion(`${PREFIJO}-13`, 40, "2024-07-10T09:10:00-04:00");
+  await transaccion(`${PREFIJO}-14`, 30, "2024-07-10T09:20:00-04:00");
+
+  const r = await obtenerHorasPico(DESDE, HASTA);
+  assert.ok(r.horas.find((h) => h.hora === 8));
+  assert.equal(r.top3.length, 3);
+  assert.equal(r.top3[0].hora, 9); // 3 ventas en la hora 9, la mas vendida de todo el rango
+  assert.equal(r.top3[0].cantidad, 3);
 });

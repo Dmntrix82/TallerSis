@@ -40,4 +40,22 @@ async function obtenerVentasPorHora(desde, hasta, cajaId) {
   return repo.ventasPorHoraEnRango(rango.desde, rango.hasta, caja);
 }
 
-module.exports = { obtenerVentasPorHora, validarRango, limiteBolivia };
+/**
+ * TDSI-57/762: las 3 horas con mas ventas, de mayor a menor cantidad (el monto desempata
+ * un cantidad igual). "horas" ya viene solo con las horas que tuvieron ventas, asi que
+ * si hubo menos de 3 horas con ventas, devuelve las que haya.
+ */
+function top3PorCantidad(horas) {
+  return [...horas].sort((a, b) => b.cantidad - a.cantidad || b.monto - a.monto).slice(0, 3);
+}
+
+/**
+ * TDSI-57/762: ventas por hora (TDSI-191/760/761) junto con las 3 horas pico, para el
+ * grafico de barras y el resaltado ("Hora pico: 18:00 – 19:00") que arma el Front.
+ */
+async function obtenerHorasPico(desde, hasta, cajaId) {
+  const horas = await obtenerVentasPorHora(desde, hasta, cajaId);
+  return { horas, top3: top3PorCantidad(horas) };
+}
+
+module.exports = { obtenerVentasPorHora, obtenerHorasPico, top3PorCantidad, validarRango, limiteBolivia };
