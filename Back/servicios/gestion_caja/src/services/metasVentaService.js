@@ -1,6 +1,7 @@
 const { AppError } = require("../utils/AppError");
 const metasRepo = require("../data/metasVentaRepo");
 const cajasRepo = require("../data/cajasRepo");
+const { calcularRecaudadoPorCaja } = require("./recaudadoService");
 
 /** Forma publica de una meta (monto en Bs, quien la cambio y cuando). */
 function aPublico(meta) {
@@ -32,4 +33,25 @@ async function actualizarMeta(cajaId, { monto, actualizado_por } = {}) {
   return aPublico(meta);
 }
 
-module.exports = { actualizarMeta, aPublico };
+/**
+ * TDSI-58/774: meta, vendido y % de avance por caja, para el dia pedido (por defecto
+ * hoy -- reutiliza el default de recaudadoService.calcularRecaudadoPorCaja, no lo
+ * reimplementa). Las cajas sin meta cargada quedan con meta/porcentaje en null por
+ * ahora (TDSI-775 les pone el "sin meta" explicito).
+ */
+async function obtenerAvancePorCaja(fecha) {
+  const [recaudados, metas] = await Promise.all([
+    calcularRecaudadoPorCaja({ desde: fecha, hasta: fecha }),
+    metasRepo.listarTodas(),
+  ]);
+  const metaPorCaja = new Map(metas.map((m) => [m.caja_id, m.monto_meta]));
+
+  return recaudados.map((r) => {
+    const meta = metaPorCaja.get(r.caja_id) ?? null;
+    const vendido = r.totalRecaudado;
+    const porcentaje = meta ? Number(((vendido / meta) * 100).toFixed(2)) : null;
+    return { caja_id: r.caja_id, caja_nombre: r.caja_nombre, fecha: r.desde, vendido, meta, porcentaje };
+  });
+}
+
+module.exports = { actualizarMeta, obtenerAvancePorCaja, aPublico };
