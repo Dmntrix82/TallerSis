@@ -1,5 +1,5 @@
-// TDSI-57/191: ventas agrupadas por hora del dia, en hora de Bolivia (cantidad y monto).
-// BD real; limpia lo que crea.
+// TDSI-57/191/760: ventas agrupadas por hora del dia, en hora de Bolivia (cantidad y
+// monto), con filtros por rango de fechas y por caja. BD real; limpia lo que crea.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query, pool } = require("../config/db");
@@ -10,11 +10,11 @@ const PREFIJO = `HP-${Date.now()}`;
 const DESDE = "2024-07-10";
 const HASTA = "2024-07-11";
 
-async function transaccion(id, monto, fechaIso, { metodo = "Efectivo" } = {}) {
+async function transaccion(id, monto, fechaIso, { metodo = "Efectivo", cajaId = null } = {}) {
   await query(
-    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, estado, fecha)
-     VALUES ($1, $2, $3, 'Simple', 'Registrado', $4)`,
-    [id, metodo, monto, fechaIso]
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, estado, fecha, caja_id)
+     VALUES ($1, $2, $3, 'Simple', 'Registrado', $4, $5)`,
+    [id, metodo, monto, fechaIso, cajaId]
   );
 }
 
@@ -71,4 +71,25 @@ test("TDSI-191: valida el formato y el orden del rango de fechas", () => {
   assert.throws(() => validarRango("10-07-2024", HASTA), (e) => e.status === 400);
   assert.throws(() => validarRango(DESDE, "no-es-fecha"), (e) => e.status === 400);
   assert.throws(() => validarRango("2024-07-15", "2024-07-10"), (e) => e.status === 400);
+});
+
+test("TDSI-760: filtra por caja -- sin ella trae todas, con ella solo esa caja", async () => {
+  const CAJA_A = `${PREFIJO}-CAJA-A`;
+  const CAJA_B = `${PREFIJO}-CAJA-B`;
+  await transaccion(`${PREFIJO}-7`, 20, "2024-07-10T20:00:00-04:00", { cajaId: CAJA_A });
+  await transaccion(`${PREFIJO}-8`, 30, "2024-07-10T20:10:00-04:00", { cajaId: CAJA_B });
+
+  const sinFiltro = await obtenerVentasPorHora(DESDE, HASTA);
+  assert.deepEqual(sinFiltro.find((h) => h.hora === 20), { hora: 20, cantidad: 2, monto: 50 });
+
+  const soloCajaA = await obtenerVentasPorHora(DESDE, HASTA, CAJA_A);
+  assert.deepEqual(soloCajaA.find((h) => h.hora === 20), { hora: 20, cantidad: 1, monto: 20 });
+
+  const soloCajaB = await obtenerVentasPorHora(DESDE, HASTA, CAJA_B);
+  assert.deepEqual(soloCajaB.find((h) => h.hora === 20), { hora: 20, cantidad: 1, monto: 30 });
+});
+
+test("TDSI-760: una caja sin ventas en el rango da la lista vacia (no un error)", async () => {
+  const r = await obtenerVentasPorHora(DESDE, HASTA, `${PREFIJO}-CAJA-SIN-VENTAS`);
+  assert.deepEqual(r, []);
 });

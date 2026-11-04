@@ -29,10 +29,15 @@ function validarRango(desde, hasta) {
   return { desde: desdeFecha, hasta: hastaFecha };
 }
 
-/** TDSI-57/191: ventas por hora del dia (en hora de Bolivia) en un rango de fechas. */
-async function obtenerVentasPorHora(desde, hasta) {
+/**
+ * TDSI-57/191/760: ventas por hora del dia (en hora de Bolivia) en un rango de fechas,
+ * y opcionalmente de una sola caja ("si quiere, una caja" -- el rango de fechas en
+ * cambio es obligatorio, segun el ticket).
+ */
+async function obtenerVentasPorHora(desde, hasta, cajaId) {
   const rango = validarRango(desde, hasta);
-  return repo.ventasPorHoraEnRango(rango.desde, rango.hasta);
+  const caja = cajaId != null && String(cajaId).trim() ? String(cajaId).trim() : null;
+  return repo.ventasPorHoraEnRango(rango.desde, rango.hasta, caja);
 }
 
 module.exports = { obtenerVentasPorHora, validarRango, limiteBolivia };
