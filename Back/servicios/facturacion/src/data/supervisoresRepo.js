@@ -92,6 +92,20 @@ async function actualizarPin(id, pin_hash) {
   return rows[0] || null;
 }
 
+/** TDSI-723: activa o desactiva al supervisor; null si no existe */
+async function cambiarEstado(id, activo) {
+  const { rows } = await query(
+    `UPDATE facturacion.supervisores
+     SET activo = $2, actualizado_en = now()
+     WHERE id = $1
+     RETURNING id, supervisor_id, nombre, activo, bloqueado_hasta,
+               COALESCE(bloqueado_hasta > now(), false) AS bloqueado, actualizado_en`,
+    [id, activo]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   buscar, registrarFallo, reiniciarIntentos, guardarPin, listar, crear, actualizarPin,
+  cambiarEstado,
 };

@@ -1,6 +1,8 @@
 const { Router } = require("express");
 const { validarPin } = require("../services/pinService");
-const { listarSupervisores, crearSupervisor, restablecerPin } = require("../services/supervisoresService");
+const {
+  listarSupervisores, crearSupervisor, restablecerPin, cambiarEstadoSupervisor,
+} = require("../services/supervisoresService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -19,6 +21,12 @@ router.post("/", wrap(async (req, res) => {
 // TDSI-722: "Restablecer PIN" (PIN nuevo + limpia intentos fallidos y bloqueo)
 router.put("/:id/pin", wrap(async (req, res) => {
   const supervisor = await restablecerPin(req.params.id, req.body);
+  res.json({ ok: true, data: supervisor });
+}));
+
+// TDSI-723: "Activar" / "Desactivar" ({ activo: true | false })
+router.patch("/:id/estado", wrap(async (req, res) => {
+  const supervisor = await cambiarEstadoSupervisor(req.params.id, req.body);
   res.json({ ok: true, data: supervisor });
 }));
 

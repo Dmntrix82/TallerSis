@@ -85,7 +85,18 @@ async function restablecerPin(id, { pin } = {}) {
   return aPublico(actualizado);
 }
 
+/** TDSI-723: "Desactivar" / "Activar"; un supervisor inactivo no puede autorizar */
+async function cambiarEstadoSupervisor(id, { activo } = {}) {
+  const supId = validarId(id);
+  if (typeof activo !== "boolean")
+    throw err("El campo 'activo' es obligatorio y debe ser true o false");
+
+  const actualizado = await repo.cambiarEstado(supId, activo);
+  if (!actualizado) throw err("Supervisor no encontrado", 404);
+  return aPublico(actualizado);
+}
+
 module.exports = {
-  listarSupervisores, crearSupervisor, restablecerPin,
+  listarSupervisores, crearSupervisor, restablecerPin, cambiarEstadoSupervisor,
   estadoDe, aPublico, validarFormatoPin, validarId,
 };
