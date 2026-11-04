@@ -1,5 +1,6 @@
-// TDSI-57/191/760: ventas agrupadas por hora del dia, en hora de Bolivia (cantidad y
-// monto), con filtros por rango de fechas y por caja. BD real; limpia lo que crea.
+// TDSI-57/191/760/761: ventas agrupadas por hora del dia, en hora de Bolivia (cantidad
+// y monto), con filtros por rango de fechas y por caja, sin contar anuladas.
+// BD real; limpia lo que crea.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query, pool } = require("../config/db");
@@ -10,11 +11,11 @@ const PREFIJO = `HP-${Date.now()}`;
 const DESDE = "2024-07-10";
 const HASTA = "2024-07-11";
 
-async function transaccion(id, monto, fechaIso, { metodo = "Efectivo", cajaId = null } = {}) {
+async function transaccion(id, monto, fechaIso, { metodo = "Efectivo", cajaId = null, estado = "Registrado" } = {}) {
   await query(
     `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, estado, fecha, caja_id)
-     VALUES ($1, $2, $3, 'Simple', 'Registrado', $4, $5)`,
-    [id, metodo, monto, fechaIso, cajaId]
+     VALUES ($1, $2, $3, 'Simple', $4, $5, $6)`,
+    [id, metodo, monto, estado, fechaIso, cajaId]
   );
 }
 
@@ -92,4 +93,12 @@ test("TDSI-760: filtra por caja -- sin ella trae todas, con ella solo esa caja",
 test("TDSI-760: una caja sin ventas en el rango da la lista vacia (no un error)", async () => {
   const r = await obtenerVentasPorHora(DESDE, HASTA, `${PREFIJO}-CAJA-SIN-VENTAS`);
   assert.deepEqual(r, []);
+});
+
+test("TDSI-761: no cuenta las ventas anuladas", async () => {
+  await transaccion(`${PREFIJO}-9`, 40, "2024-07-10T21:00:00-04:00", { estado: "Registrado" });
+  await transaccion(`${PREFIJO}-10`, 999, "2024-07-10T21:05:00-04:00", { estado: "Anulado" });
+
+  const r = await obtenerVentasPorHora(DESDE, HASTA);
+  assert.deepEqual(r.find((h) => h.hora === 21), { hora: 21, cantidad: 1, monto: 40 });
 });
