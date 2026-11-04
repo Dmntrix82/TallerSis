@@ -55,4 +55,15 @@ async function guardarPin({ supervisor_id, nombre, pin_hash }) {
   return rows[0];
 }
 
-module.exports = { buscar, registrarFallo, reiniciarIntentos, guardarPin };
+/** TDSI-187: lista para el Administrador; nunca selecciona pin_hash */
+async function listar() {
+  const { rows } = await query(
+    `SELECT id, supervisor_id, nombre, activo, intentos_fallidos, bloqueado_hasta,
+            COALESCE(bloqueado_hasta > now(), false) AS bloqueado, actualizado_en
+     FROM facturacion.supervisores
+     ORDER BY nombre, supervisor_id`
+  );
+  return rows;
+}
+
+module.exports = { buscar, registrarFallo, reiniciarIntentos, guardarPin, listar };

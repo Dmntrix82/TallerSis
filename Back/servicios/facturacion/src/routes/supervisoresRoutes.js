@@ -1,8 +1,14 @@
 const { Router } = require("express");
 const { validarPin } = require("../services/pinService");
+const { listarSupervisores } = require("../services/supervisoresService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+
+// TDSI-187: lista para la pantalla "Supervisores" del Administrador (sin PIN)
+router.get("/", wrap(async (req, res) => {
+  res.json({ ok: true, data: await listarSupervisores() });
+}));
 
 // Validacion generica del codigo (usuario + PIN) de un supervisor de caja.
 // La usa tanto la autorizacion de anulaciones (aca mismo) como la apertura de
