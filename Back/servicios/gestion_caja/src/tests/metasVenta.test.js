@@ -93,15 +93,15 @@ test("TDSI-773: 404 si la caja no existe", async () => {
   assert.equal(r.status, 404);
 });
 
-test("TDSI-774: sin meta cargada, vendido sale igual pero meta/porcentaje quedan null", async () => {
+test("TDSI-774/775: sin meta cargada, vendido sale igual pero meta/porcentaje devuelven 'sin meta'", async () => {
   const r = await fetch(`${base}?fecha=${DIA}`);
   assert.equal(r.status, 200);
   const cuerpo = await r.json();
   const fila = cuerpo.data.find((c) => c.caja_id === CAJA2);
   assert.ok(fila, "la caja de prueba debe aparecer en el listado");
   assert.equal(fila.vendido, 300);
-  assert.equal(fila.meta, null);
-  assert.equal(fila.porcentaje, null);
+  assert.equal(fila.meta, "sin meta");
+  assert.equal(fila.porcentaje, "sin meta");
 });
 
 test("TDSI-774: con meta cargada, calcula el % de avance (vendido/meta*100)", async () => {

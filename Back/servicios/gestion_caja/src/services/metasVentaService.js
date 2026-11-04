@@ -33,11 +33,13 @@ async function actualizarMeta(cajaId, { monto, actualizado_por } = {}) {
   return aPublico(meta);
 }
 
+const SIN_META = "sin meta";
+
 /**
- * TDSI-58/774: meta, vendido y % de avance por caja, para el dia pedido (por defecto
- * hoy -- reutiliza el default de recaudadoService.calcularRecaudadoPorCaja, no lo
- * reimplementa). Las cajas sin meta cargada quedan con meta/porcentaje en null por
- * ahora (TDSI-775 les pone el "sin meta" explicito).
+ * TDSI-58/774/775: meta, vendido y % de avance por caja, para el dia pedido (por
+ * defecto hoy -- reutiliza el default de recaudadoService.calcularRecaudadoPorCaja, no
+ * lo reimplementa). Una caja sin meta cargada devuelve "sin meta" en vez de un numero,
+ * tanto en "meta" como en "porcentaje" (no hay avance que calcular sin una meta).
  */
 async function obtenerAvancePorCaja(fecha) {
   const [recaudados, metas] = await Promise.all([
@@ -47,10 +49,18 @@ async function obtenerAvancePorCaja(fecha) {
   const metaPorCaja = new Map(metas.map((m) => [m.caja_id, m.monto_meta]));
 
   return recaudados.map((r) => {
-    const meta = metaPorCaja.get(r.caja_id) ?? null;
+    const montoMeta = metaPorCaja.get(r.caja_id);
     const vendido = r.totalRecaudado;
-    const porcentaje = meta ? Number(((vendido / meta) * 100).toFixed(2)) : null;
-    return { caja_id: r.caja_id, caja_nombre: r.caja_nombre, fecha: r.desde, vendido, meta, porcentaje };
+    const tieneMeta = montoMeta != null;
+    const porcentaje = tieneMeta ? Number(((vendido / montoMeta) * 100).toFixed(2)) : SIN_META;
+    return {
+      caja_id: r.caja_id,
+      caja_nombre: r.caja_nombre,
+      fecha: r.desde,
+      vendido,
+      meta: tieneMeta ? montoMeta : SIN_META,
+      porcentaje,
+    };
   });
 }
 
