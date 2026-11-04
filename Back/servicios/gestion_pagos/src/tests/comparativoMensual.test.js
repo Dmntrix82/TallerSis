@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const { query, pool } = require("../config/db");
 const {
   obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, calcularVariacion, validarMesAnio,
+  esMesActual,
 } = require("../services/comparativoMensualService");
 
 const PREFIJO = `CMP-${Date.now()}`;
@@ -117,4 +118,54 @@ test("TDSI-735: calcularVariacion maneja el mes anterior en cero", () => {
   assert.equal(calcularVariacion(150, 0), null, "no se puede expresar en % cuando no habia nada el mes anterior");
   assert.equal(calcularVariacion(150, 100), 50);
   assert.equal(calcularVariacion(50, 100), -50);
+});
+
+test("TDSI-736: esMesActual compara contra un 'ahora' fijo, no el reloj del sistema", () => {
+  const ahora = new Date("2021-06-23T15:00:00-04:00"); // "hoy" = 23 de junio de 2021, Bolivia
+  assert.equal(esMesActual(6, 2021, ahora), true);
+  assert.equal(esMesActual(5, 2021, ahora), false);
+  assert.equal(esMesActual(6, 2022, ahora), false);
+});
+
+test("TDSI-736: si el mes elegido es el actual, compara contra los MISMOS dias del mes anterior", async () => {
+  const ahora = new Date("2022-04-23T15:00:00-04:00"); // "hoy" = 23 de abril de 2022, Bolivia
+
+  // Abril 2022 (mes elegido = "actual"): dia 1 y dia 23 cuentan, dia 24 ("mañana") NO.
+  await transaccion(`${PREFIJO}-b1`, 10, "2022-04-01T08:00:00-04:00", "Registrado");
+  await transaccion(`${PREFIJO}-b2`, 20, "2022-04-23T23:59:59-04:00", "Registrado");
+  await transaccion(`${PREFIJO}-b3`, 999, "2022-04-24T00:00:00-04:00", "Registrado"); // no debe contar
+
+  // Marzo 2022 (mes anterior): dia 1 y dia 23 cuentan, dia 24 en adelante NO (mismos dias, no el mes completo)
+  await transaccion(`${PREFIJO}-b4`, 5, "2022-03-01T08:00:00-04:00", "Registrado");
+  await transaccion(`${PREFIJO}-b5`, 7, "2022-03-23T23:59:59-04:00", "Registrado");
+  await transaccion(`${PREFIJO}-b6`, 888, "2022-03-24T00:00:00-04:00", "Registrado"); // no debe contar aunque es "del mes"
+  await transaccion(`${PREFIJO}-b7`, 777, "2022-03-31T10:00:00-04:00", "Registrado"); // tampoco (fin de mes completo, pero no es "hasta el 23")
+
+  const r = await obtenerDesgloseMensual(4, 2022, ahora);
+  assert.equal(r.comparadoPorMismosDias, true);
+  assert.deepEqual(r.total, { actual: 30, anterior: 12, variacion: 150 }); // (30-12)/12*100
+});
+
+test("TDSI-736: si el mes elegido NO es el actual, se compara el mes completo (sin recorte)", async () => {
+  const ahora = new Date("2022-04-23T15:00:00-04:00"); // "hoy" sigue siendo abril 2022
+
+  // Febrero 2021 (mes elegido, un mes cualquiera del pasado): el dia 24+ SI debe contar
+  await transaccion(`${PREFIJO}-c1`, 15, "2021-02-01T08:00:00-04:00", "Registrado");
+  await transaccion(`${PREFIJO}-c2`, 25, "2021-02-25T08:00:00-04:00", "Registrado");
+
+  const r = await obtenerDesgloseMensual(2, 2021, ahora);
+  assert.equal(r.comparadoPorMismosDias, false);
+  assert.equal(r.total.actual, 40);
+});
+
+test("TDSI-736: si el mes anterior tiene menos dias que hoy, se usa el mes anterior completo", async () => {
+  const ahora = new Date("2023-03-31T15:00:00-04:00"); // "hoy" = 31 de marzo de 2023 (febrero 2023 solo tiene 28)
+
+  await transaccion(`${PREFIJO}-d1`, 50, "2023-03-31T10:00:00-04:00", "Registrado");
+  // Todo febrero (28 dias) debe contar, incluido el dia 28 (no hay dia 31 en febrero)
+  await transaccion(`${PREFIJO}-d2`, 20, "2023-02-01T08:00:00-04:00", "Registrado");
+  await transaccion(`${PREFIJO}-d3`, 15, "2023-02-28T23:59:59-04:00", "Registrado");
+
+  const r = await obtenerDesgloseMensual(3, 2023, ahora);
+  assert.equal(r.total.anterior, 35, "febrero completo (20+15), no se corta en el dia 28 porque ya es el mes entero");
 });

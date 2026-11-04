@@ -44,6 +44,60 @@ function mesAnteriorDe(mes, anio) {
   return mes === 1 ? { mes: 12, anio: anio - 1 } : { mes: mes - 1, anio };
 }
 
+// TDSI-56/736: "ahora" se recibe como parametro (por defecto new Date()) en vez de leer
+// el reloj adentro de cada funcion, para poder fijarlo en las pruebas sin necesitar
+// mockear el reloj del sistema.
+
+/** Fecha de hoy ("YYYY-MM-DD") en hora de Bolivia. */
+function hoyBolivia(ahora = new Date()) {
+  return ahora.toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+}
+
+/** true si (mes, anio) es el mes calendario en el que cae "ahora", en hora de Bolivia. */
+function esMesActual(mes, anio, ahora = new Date()) {
+  const [anioHoy, mesHoy] = hoyBolivia(ahora).split("-").map(Number);
+  return mes === mesHoy && anio === anioHoy;
+}
+
+/** Cuantos dias tiene un mes (28-31); invariante al huso horario. */
+function diasEnMes(anio, mes) {
+  return new Date(anio, mes, 0).getDate();
+}
+
+/**
+ * TDSI-56/736: limite superior (exclusivo) para "del dia 1 al dia `dia` inclusive" de un
+ * mes, en hora de Bolivia -- se arma sumando dias calendario al 1ro del mes (no con un
+ * string "YYYY-MM-DDT00:00:00-04:00", que no admite un `dia` fuera de rango del mes).
+ */
+function limiteHastaDiaBolivia(anio, mes, dia) {
+  const limite = limiteBolivia(anio, mes, 1);
+  limite.setUTCDate(limite.getUTCDate() + dia);
+  return limite;
+}
+
+/**
+ * TDSI-56/736: si el mes elegido es el mes actual, el rango de ESE mes se corta hasta
+ * hoy (no hasta fin de mes, que todavia no paso) y el mes anterior se compara contra
+ * esos MISMOS dias -- no el mes anterior completo -- para que la comparacion sea justa
+ * (ej. del 1 al 23 contra del 1 al 23). Si el mes anterior tiene menos dias que el dia de
+ * hoy (ej. hoy 31 de marzo, febrero no tiene dia 31), se usa el mes anterior completo.
+ */
+function rangosComparables(mes, anio, mesAnt, anioAnt, ahora = new Date()) {
+  const rangoActual = rangoDelMes(anio, mes);
+  const rangoAnterior = rangoDelMes(anioAnt, mesAnt);
+
+  if (!esMesActual(mes, anio, ahora)) {
+    return { rangoActual, rangoAnterior };
+  }
+
+  const diaHoy = Number(hoyBolivia(ahora).split("-")[2]);
+  const diaHoyEnAnterior = Math.min(diaHoy, diasEnMes(anioAnt, mesAnt));
+  return {
+    rangoActual: { desde: rangoActual.desde, hasta: limiteHastaDiaBolivia(anio, mes, diaHoy) },
+    rangoAnterior: { desde: rangoAnterior.desde, hasta: limiteHastaDiaBolivia(anioAnt, mesAnt, diaHoyEnAnterior) },
+  };
+}
+
 /**
  * TDSI-56/735: variación en % de "actual" contra "anterior". Si el mes anterior fue 0,
  * un porcentaje no tiene sentido (no se puede dividir entre 0): null si hubo venta este
@@ -76,16 +130,15 @@ function combinarPorCaja(actualArr, anteriorArr) {
 }
 
 /**
- * TDSI-56/734/735: desglose por caja y por método de pago del mes elegido y del mes
- * anterior, con la variación en %. Todavía sin el ajuste de "mismos días" cuando el mes
- * elegido es el actual (TDSI-736).
+ * TDSI-56/734/735/736: desglose por caja y por método de pago del mes elegido y del mes
+ * anterior, con la variación en %. Si el mes elegido es el mes actual, compara contra
+ * los mismos días del mes anterior (TDSI-736) en vez del mes anterior completo.
  */
-async function obtenerDesgloseMensual(mes, anio) {
+async function obtenerDesgloseMensual(mes, anio, ahora = new Date()) {
   const { mes: m, anio: a } = validarMesAnio(mes, anio);
   const anterior = mesAnteriorDe(m, a);
 
-  const rangoActual = rangoDelMes(a, m);
-  const rangoAnterior = rangoDelMes(anterior.anio, anterior.mes);
+  const { rangoActual, rangoAnterior } = rangosComparables(m, a, anterior.mes, anterior.anio, ahora);
 
   const [totalActual, totalAnterior, cajaActual, cajaAnterior, metodoActual, metodoAnterior] = await Promise.all([
     repo.totalVendidoEnRango(rangoActual.desde, rangoActual.hasta),
@@ -101,6 +154,8 @@ async function obtenerDesgloseMensual(mes, anio) {
     anio: a,
     mesAnterior: anterior.mes,
     anioAnterior: anterior.anio,
+    // TDSI-736: para que el Front pueda avisar "comparado contra los mismos días".
+    comparadoPorMismosDias: esMesActual(m, a, ahora),
     total: filaConVariacion({ actual: totalActual, anterior: totalAnterior }),
     porCaja: combinarPorCaja(cajaActual, cajaAnterior),
     porMetodo: combinarPorMetodo(metodoActual, metodoAnterior),
@@ -108,5 +163,6 @@ async function obtenerDesgloseMensual(mes, anio) {
 }
 
 module.exports = {
-  obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, calcularVariacion, validarMesAnio, limiteBolivia,
+  obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, calcularVariacion,
+  validarMesAnio, limiteBolivia, esMesActual, rangosComparables,
 };
