@@ -36,6 +36,16 @@ async function actualizarMeta(cajaId, { monto, actualizado_por } = {}) {
 const SIN_META = "sin meta";
 
 /**
+ * TDSI-58/775/776: % de avance de lo vendido contra la meta, redondeado a 2 decimales.
+ * "sin meta" si la caja todavia no tiene una meta cargada (montoMeta null/undefined) --
+ * no hay avance que calcular sin una meta. Puede superar 100 (meta ya cumplida).
+ */
+function calcularPorcentajeAvance(vendido, montoMeta) {
+  if (montoMeta == null) return SIN_META;
+  return Number(((vendido / montoMeta) * 100).toFixed(2));
+}
+
+/**
  * TDSI-58/774/775: meta, vendido y % de avance por caja, para el dia pedido (por
  * defecto hoy -- reutiliza el default de recaudadoService.calcularRecaudadoPorCaja, no
  * lo reimplementa). Una caja sin meta cargada devuelve "sin meta" en vez de un numero,
@@ -51,17 +61,15 @@ async function obtenerAvancePorCaja(fecha) {
   return recaudados.map((r) => {
     const montoMeta = metaPorCaja.get(r.caja_id);
     const vendido = r.totalRecaudado;
-    const tieneMeta = montoMeta != null;
-    const porcentaje = tieneMeta ? Number(((vendido / montoMeta) * 100).toFixed(2)) : SIN_META;
     return {
       caja_id: r.caja_id,
       caja_nombre: r.caja_nombre,
       fecha: r.desde,
       vendido,
-      meta: tieneMeta ? montoMeta : SIN_META,
-      porcentaje,
+      meta: montoMeta ?? SIN_META,
+      porcentaje: calcularPorcentajeAvance(vendido, montoMeta),
     };
   });
 }
 
-module.exports = { actualizarMeta, obtenerAvancePorCaja, aPublico };
+module.exports = { actualizarMeta, obtenerAvancePorCaja, calcularPorcentajeAvance, aPublico };

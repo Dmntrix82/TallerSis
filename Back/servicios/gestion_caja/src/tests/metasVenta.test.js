@@ -1,11 +1,13 @@
-// TDSI-58/773/774: PUT /api/metas/:cajaId (valida que la meta sea mayor a 0) y
-// GET /api/metas?fecha= (meta, vendido y % de avance, reutilizando recaudadoService).
+// TDSI-58/773/774/775/776: PUT /api/metas/:cajaId (valida que la meta sea mayor a 0),
+// GET /api/metas?fecha= (meta, vendido y % de avance, reutilizando recaudadoService) y
+// el calculo del % de avance en si mismo.
 // BD real + gestion_pagos (GESTION_PAGOS_URL); limpia lo que crea.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const express = require("express");
 const { query } = require("../config/db");
 const { errorHandler } = require("../middlewares/errorHandler");
+const { calcularPorcentajeAvance } = require("../services/metasVentaService");
 
 const CAJA = "CAJA-TEST-773";
 const CAJA2 = "CAJA-TEST-774";
@@ -123,4 +125,23 @@ test("TDSI-774: sin fecha, usa el dia de hoy (reutiliza el default de recaudadoS
   assert.equal(r.status, 200);
   const cuerpo = await r.json();
   assert.ok(Array.isArray(cuerpo.data));
+});
+
+test("TDSI-776: calcularPorcentajeAvance -- caso normal, redondeado a 2 decimales", () => {
+  assert.equal(calcularPorcentajeAvance(300, 500), 60);
+  assert.equal(calcularPorcentajeAvance(100, 300), 33.33); // 33.333... redondeado
+});
+
+test("TDSI-776: calcularPorcentajeAvance -- 0% (nada vendido) y exactamente 100%", () => {
+  assert.equal(calcularPorcentajeAvance(0, 500), 0);
+  assert.equal(calcularPorcentajeAvance(500, 500), 100);
+});
+
+test("TDSI-776: calcularPorcentajeAvance -- puede superar el 100% (meta ya cumplida y superada)", () => {
+  assert.equal(calcularPorcentajeAvance(750, 500), 150);
+});
+
+test("TDSI-776: calcularPorcentajeAvance -- 'sin meta' si no hay meta cargada (null o undefined)", () => {
+  assert.equal(calcularPorcentajeAvance(300, null), "sin meta");
+  assert.equal(calcularPorcentajeAvance(300, undefined), "sin meta");
 });
