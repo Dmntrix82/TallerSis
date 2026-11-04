@@ -79,4 +79,19 @@ async function crear({ supervisor_id, nombre, pin_hash }) {
   return rows[0] || null;
 }
 
-module.exports = { buscar, registrarFallo, reiniciarIntentos, guardarPin, listar, crear };
+/** TDSI-722: PIN nuevo, limpia intentos fallidos y bloqueo; null si no existe */
+async function actualizarPin(id, pin_hash) {
+  const { rows } = await query(
+    `UPDATE facturacion.supervisores
+     SET pin_hash = $2, intentos_fallidos = 0, bloqueado_hasta = NULL, actualizado_en = now()
+     WHERE id = $1
+     RETURNING id, supervisor_id, nombre, activo, bloqueado_hasta,
+               false AS bloqueado, actualizado_en`,
+    [id, pin_hash]
+  );
+  return rows[0] || null;
+}
+
+module.exports = {
+  buscar, registrarFallo, reiniciarIntentos, guardarPin, listar, crear, actualizarPin,
+};

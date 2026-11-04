@@ -1,6 +1,6 @@
 const { Router } = require("express");
 const { validarPin } = require("../services/pinService");
-const { listarSupervisores, crearSupervisor } = require("../services/supervisoresService");
+const { listarSupervisores, crearSupervisor, restablecerPin } = require("../services/supervisoresService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -14,6 +14,12 @@ router.get("/", wrap(async (req, res) => {
 router.post("/", wrap(async (req, res) => {
   const supervisor = await crearSupervisor(req.body);
   res.status(201).json({ ok: true, data: supervisor });
+}));
+
+// TDSI-722: "Restablecer PIN" (PIN nuevo + limpia intentos fallidos y bloqueo)
+router.put("/:id/pin", wrap(async (req, res) => {
+  const supervisor = await restablecerPin(req.params.id, req.body);
+  res.json({ ok: true, data: supervisor });
 }));
 
 // Validacion generica del codigo (usuario + PIN) de un supervisor de caja.

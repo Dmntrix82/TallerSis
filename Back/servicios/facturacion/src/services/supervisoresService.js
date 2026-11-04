@@ -25,6 +25,14 @@ function validarFormatoPin(pin) {
   return pin;
 }
 
+/** id de la ruta: entero positivo (BIGSERIAL de la tabla) */
+function validarId(id) {
+  const n = Number(id);
+  if (!/^\d+$/.test(String(id)) || !Number.isSafeInteger(n) || n < 1)
+    throw err("El id del supervisor no es valido");
+  return n;
+}
+
 /** Estado visible en la lista: Inactivo tiene prioridad sobre Bloqueado */
 function estadoDe(sup) {
   if (!sup.activo) return "Inactivo";
@@ -67,4 +75,17 @@ async function crearSupervisor({ usuario, nombre, pin } = {}) {
   return aPublico(creado);
 }
 
-module.exports = { listarSupervisores, crearSupervisor, estadoDe, aPublico, validarFormatoPin };
+/** TDSI-722: "Restablecer PIN": asigna un PIN nuevo y desbloquea si estaba bloqueado */
+async function restablecerPin(id, { pin } = {}) {
+  const supId = validarId(id);
+  validarFormatoPin(pin);
+
+  const actualizado = await repo.actualizarPin(supId, hashSecret(pin));
+  if (!actualizado) throw err("Supervisor no encontrado", 404);
+  return aPublico(actualizado);
+}
+
+module.exports = {
+  listarSupervisores, crearSupervisor, restablecerPin,
+  estadoDe, aPublico, validarFormatoPin, validarId,
+};
