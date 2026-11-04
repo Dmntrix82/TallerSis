@@ -45,9 +45,40 @@ function mesAnteriorDe(mes, anio) {
 }
 
 /**
- * TDSI-56/734: desglose por caja y por método de pago del mes elegido y del mes
- * anterior, uno al lado del otro. Todavía sin la variación en % (TDSI-735) ni el
- * ajuste de "mismos días" cuando el mes elegido es el actual (TDSI-736).
+ * TDSI-56/735: variación en % de "actual" contra "anterior". Si el mes anterior fue 0,
+ * un porcentaje no tiene sentido (no se puede dividir entre 0): null si hubo venta este
+ * mes (no hay con que comparar), 0 si tambien este mes esta en 0 (no cambio nada).
+ */
+function calcularVariacion(actual, anterior) {
+  if (anterior === 0) return actual === 0 ? 0 : null;
+  return Number((((actual - anterior) / anterior) * 100).toFixed(2));
+}
+
+/** Une el total actual/anterior de una clave (caja o metodo) con su variacion en %. */
+function filaConVariacion(datos) {
+  return { ...datos, variacion: calcularVariacion(datos.actual, datos.anterior) };
+}
+
+/** TDSI-56/735: por metodo, un objeto {actual,anterior} por cada metodo -> filas con variacion. */
+function combinarPorMetodo(actual, anterior) {
+  return Object.keys(actual).map((metodo) => filaConVariacion({ metodo, actual: actual[metodo], anterior: anterior[metodo] }));
+}
+
+/**
+ * TDSI-56/735: por caja, una caja puede existir en un mes y no en el otro (p.ej. recien
+ * abierta) -- se unen por caja_id y la que falta en alguno de los dos queda en 0.
+ */
+function combinarPorCaja(actualArr, anteriorArr) {
+  const mapaActual = new Map(actualArr.map((c) => [c.caja_id, c.total]));
+  const mapaAnterior = new Map(anteriorArr.map((c) => [c.caja_id, c.total]));
+  const cajas = [...new Set([...mapaActual.keys(), ...mapaAnterior.keys()])].sort();
+  return cajas.map((caja_id) => filaConVariacion({ caja_id, actual: mapaActual.get(caja_id) || 0, anterior: mapaAnterior.get(caja_id) || 0 }));
+}
+
+/**
+ * TDSI-56/734/735: desglose por caja y por método de pago del mes elegido y del mes
+ * anterior, con la variación en %. Todavía sin el ajuste de "mismos días" cuando el mes
+ * elegido es el actual (TDSI-736).
  */
 async function obtenerDesgloseMensual(mes, anio) {
   const { mes: m, anio: a } = validarMesAnio(mes, anio);
@@ -70,10 +101,12 @@ async function obtenerDesgloseMensual(mes, anio) {
     anio: a,
     mesAnterior: anterior.mes,
     anioAnterior: anterior.anio,
-    total: { actual: totalActual, anterior: totalAnterior },
-    porCaja: { actual: cajaActual, anterior: cajaAnterior },
-    porMetodo: { actual: metodoActual, anterior: metodoAnterior },
+    total: filaConVariacion({ actual: totalActual, anterior: totalAnterior }),
+    porCaja: combinarPorCaja(cajaActual, cajaAnterior),
+    porMetodo: combinarPorMetodo(metodoActual, metodoAnterior),
   };
 }
 
-module.exports = { obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, validarMesAnio, limiteBolivia };
+module.exports = {
+  obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, calcularVariacion, validarMesAnio, limiteBolivia,
+};

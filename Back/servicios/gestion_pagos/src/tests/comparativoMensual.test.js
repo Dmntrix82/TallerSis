@@ -1,9 +1,11 @@
-// TDSI-56/189/734: total vendido del mes y desglose por caja/metodo, sin contar
-// anuladas. BD real; limpia lo que crea.
+// TDSI-56/189/734/735: total vendido del mes, desglose por caja/metodo y variacion en
+// % contra el mes anterior, sin contar anuladas. BD real; limpia lo que crea.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query, pool } = require("../config/db");
-const { obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, validarMesAnio } = require("../services/comparativoMensualService");
+const {
+  obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, calcularVariacion, validarMesAnio,
+} = require("../services/comparativoMensualService");
 
 const PREFIJO = `CMP-${Date.now()}`;
 // Mes fijo (Bolivia, -04:00): el test no depende de en que mes se corra.
@@ -72,7 +74,7 @@ test("TDSI-734: mesAnteriorDe cambia de año en enero", () => {
   assert.deepEqual(mesAnteriorDe(6, 2021), { mes: 5, anio: 2021 });
 });
 
-test("TDSI-734: desglose por caja y por metodo del mes elegido y del mes anterior", async () => {
+test("TDSI-734/735: desglose por caja y por metodo del mes elegido y del mes anterior, con variacion en %", async () => {
   const CAJA_A = `${PREFIJO}-CAJA-A`;
   const CAJA_B = `${PREFIJO}-CAJA-B`;
 
@@ -83,7 +85,7 @@ test("TDSI-734: desglose por caja y por metodo del mes elegido y del mes anterio
   await transaccion(`${PREFIJO}-m4`, 999, "2020-03-08T10:00:00-04:00", "Anulado", { metodo: "Efectivo", cajaId: CAJA_A });
   await ventaOnline(`${PREFIJO}-m1`, 70, "2020-03-10T10:00:00-04:00", "Pagado");
 
-  // Febrero 2020 (mes anterior)
+  // Febrero 2020 (mes anterior) -- CAJA_B no vendio nada ese mes (ni aparece)
   await transaccion(`${PREFIJO}-a1`, 40, "2020-02-05T10:00:00-04:00", "Registrado", { metodo: "Efectivo", cajaId: CAJA_A });
   await ventaOnline(`${PREFIJO}-a1`, 10, "2020-02-10T10:00:00-04:00", "Pagado");
 
@@ -93,17 +95,26 @@ test("TDSI-734: desglose por caja y por metodo del mes elegido y del mes anterio
   assert.equal(r.anio, 2020);
   assert.equal(r.mesAnterior, 2);
   assert.equal(r.anioAnterior, 2020);
-  assert.deepEqual(r.total, { actual: 250, anterior: 50 });
-  assert.deepEqual(r.porMetodo, {
-    actual: { Efectivo: 100, Tarjeta: 50, QR: 30, Online: 70 },
-    anterior: { Efectivo: 40, Tarjeta: 0, QR: 0, Online: 10 },
-  });
+  // (250-50)/50 * 100 = 400%
+  assert.deepEqual(r.total, { actual: 250, anterior: 50, variacion: 400 });
 
-  const cajaActual = r.porCaja.actual.filter((c) => [CAJA_A, CAJA_B].includes(c.caja_id));
-  assert.deepEqual(cajaActual, [
-    { caja_id: CAJA_A, total: 130, cantidad: 2 },
-    { caja_id: CAJA_B, total: 50, cantidad: 1 },
+  assert.deepEqual(r.porMetodo, [
+    { metodo: "Efectivo", actual: 100, anterior: 40, variacion: 150 }, // (100-40)/40*100
+    { metodo: "Tarjeta", actual: 50, anterior: 0, variacion: null }, // mes anterior en 0, hubo venta: no se puede expresar en %
+    { metodo: "QR", actual: 30, anterior: 0, variacion: null },
+    { metodo: "Online", actual: 70, anterior: 10, variacion: 600 }, // (70-10)/10*100
   ]);
-  const cajaAnterior = r.porCaja.anterior.filter((c) => c.caja_id === CAJA_A);
-  assert.deepEqual(cajaAnterior, [{ caja_id: CAJA_A, total: 40, cantidad: 1 }]);
+
+  const porCaja = r.porCaja.filter((c) => [CAJA_A, CAJA_B].includes(c.caja_id));
+  assert.deepEqual(porCaja, [
+    { caja_id: CAJA_A, actual: 130, anterior: 40, variacion: 225 }, // (130-40)/40*100
+    { caja_id: CAJA_B, actual: 50, anterior: 0, variacion: null }, // CAJA_B no existia el mes anterior
+  ]);
+});
+
+test("TDSI-735: calcularVariacion maneja el mes anterior en cero", () => {
+  assert.equal(calcularVariacion(0, 0), 0, "0 contra 0 no es una variacion, es 'sigue en cero'");
+  assert.equal(calcularVariacion(150, 0), null, "no se puede expresar en % cuando no habia nada el mes anterior");
+  assert.equal(calcularVariacion(150, 100), 50);
+  assert.equal(calcularVariacion(50, 100), -50);
 });
