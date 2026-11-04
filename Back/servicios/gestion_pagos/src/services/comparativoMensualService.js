@@ -39,4 +39,41 @@ async function obtenerTotalDelMes(mes, anio) {
   return { mes: m, anio: a, total };
 }
 
-module.exports = { obtenerTotalDelMes, rangoDelMes, validarMesAnio, limiteBolivia };
+/** El mes calendario anterior al (mes, anio) dado, con el cambio de año en enero. */
+function mesAnteriorDe(mes, anio) {
+  return mes === 1 ? { mes: 12, anio: anio - 1 } : { mes: mes - 1, anio };
+}
+
+/**
+ * TDSI-56/734: desglose por caja y por método de pago del mes elegido y del mes
+ * anterior, uno al lado del otro. Todavía sin la variación en % (TDSI-735) ni el
+ * ajuste de "mismos días" cuando el mes elegido es el actual (TDSI-736).
+ */
+async function obtenerDesgloseMensual(mes, anio) {
+  const { mes: m, anio: a } = validarMesAnio(mes, anio);
+  const anterior = mesAnteriorDe(m, a);
+
+  const rangoActual = rangoDelMes(a, m);
+  const rangoAnterior = rangoDelMes(anterior.anio, anterior.mes);
+
+  const [totalActual, totalAnterior, cajaActual, cajaAnterior, metodoActual, metodoAnterior] = await Promise.all([
+    repo.totalVendidoEnRango(rangoActual.desde, rangoActual.hasta),
+    repo.totalVendidoEnRango(rangoAnterior.desde, rangoAnterior.hasta),
+    repo.totalesPorCajaEnRango(rangoActual.desde, rangoActual.hasta),
+    repo.totalesPorCajaEnRango(rangoAnterior.desde, rangoAnterior.hasta),
+    repo.totalesPorMetodoEnRango(rangoActual.desde, rangoActual.hasta),
+    repo.totalesPorMetodoEnRango(rangoAnterior.desde, rangoAnterior.hasta),
+  ]);
+
+  return {
+    mes: m,
+    anio: a,
+    mesAnterior: anterior.mes,
+    anioAnterior: anterior.anio,
+    total: { actual: totalActual, anterior: totalAnterior },
+    porCaja: { actual: cajaActual, anterior: cajaAnterior },
+    porMetodo: { actual: metodoActual, anterior: metodoAnterior },
+  };
+}
+
+module.exports = { obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, validarMesAnio, limiteBolivia };

@@ -1,20 +1,20 @@
-// TDSI-56/189: total vendido (caja fisica + online) de un mes, sin contar anuladas.
-// BD real; limpia lo que crea.
+// TDSI-56/189/734: total vendido del mes y desglose por caja/metodo, sin contar
+// anuladas. BD real; limpia lo que crea.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query, pool } = require("../config/db");
-const { obtenerTotalDelMes, rangoDelMes, validarMesAnio } = require("../services/comparativoMensualService");
+const { obtenerTotalDelMes, obtenerDesgloseMensual, rangoDelMes, mesAnteriorDe, validarMesAnio } = require("../services/comparativoMensualService");
 
 const PREFIJO = `CMP-${Date.now()}`;
 // Mes fijo (Bolivia, -04:00): el test no depende de en que mes se corra.
 const ANIO = 2021;
 const MES = 6; // junio 2021
 
-async function transaccion(id, monto, fechaIso, estado = "Registrado") {
+async function transaccion(id, monto, fechaIso, estado = "Registrado", { metodo = "Efectivo", cajaId = null } = {}) {
   await query(
-    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, estado, fecha)
-     VALUES ($1, 'Efectivo', $2, 'Simple', $3, $4)`,
-    [id, monto, estado, fechaIso]
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, estado, fecha, caja_id)
+     VALUES ($1, $2, $3, 'Simple', $4, $5, $6)`,
+    [id, metodo, monto, estado, fechaIso, cajaId]
   );
 }
 
@@ -65,4 +65,45 @@ test("TDSI-189: valida mes (1-12) y año", () => {
 test("TDSI-189: un mes sin ventas da total 0", async () => {
   const r = await obtenerTotalDelMes(1, 2019);
   assert.deepEqual(r, { mes: 1, anio: 2019, total: 0 });
+});
+
+test("TDSI-734: mesAnteriorDe cambia de año en enero", () => {
+  assert.deepEqual(mesAnteriorDe(1, 2021), { mes: 12, anio: 2020 });
+  assert.deepEqual(mesAnteriorDe(6, 2021), { mes: 5, anio: 2021 });
+});
+
+test("TDSI-734: desglose por caja y por metodo del mes elegido y del mes anterior", async () => {
+  const CAJA_A = `${PREFIJO}-CAJA-A`;
+  const CAJA_B = `${PREFIJO}-CAJA-B`;
+
+  // Marzo 2020 (mes elegido)
+  await transaccion(`${PREFIJO}-m1`, 100, "2020-03-05T10:00:00-04:00", "Registrado", { metodo: "Efectivo", cajaId: CAJA_A });
+  await transaccion(`${PREFIJO}-m2`, 50, "2020-03-06T10:00:00-04:00", "Registrado", { metodo: "Tarjeta", cajaId: CAJA_B });
+  await transaccion(`${PREFIJO}-m3`, 30, "2020-03-07T10:00:00-04:00", "Registrado", { metodo: "QR", cajaId: CAJA_A });
+  await transaccion(`${PREFIJO}-m4`, 999, "2020-03-08T10:00:00-04:00", "Anulado", { metodo: "Efectivo", cajaId: CAJA_A });
+  await ventaOnline(`${PREFIJO}-m1`, 70, "2020-03-10T10:00:00-04:00", "Pagado");
+
+  // Febrero 2020 (mes anterior)
+  await transaccion(`${PREFIJO}-a1`, 40, "2020-02-05T10:00:00-04:00", "Registrado", { metodo: "Efectivo", cajaId: CAJA_A });
+  await ventaOnline(`${PREFIJO}-a1`, 10, "2020-02-10T10:00:00-04:00", "Pagado");
+
+  const r = await obtenerDesgloseMensual(3, 2020);
+
+  assert.equal(r.mes, 3);
+  assert.equal(r.anio, 2020);
+  assert.equal(r.mesAnterior, 2);
+  assert.equal(r.anioAnterior, 2020);
+  assert.deepEqual(r.total, { actual: 250, anterior: 50 });
+  assert.deepEqual(r.porMetodo, {
+    actual: { Efectivo: 100, Tarjeta: 50, QR: 30, Online: 70 },
+    anterior: { Efectivo: 40, Tarjeta: 0, QR: 0, Online: 10 },
+  });
+
+  const cajaActual = r.porCaja.actual.filter((c) => [CAJA_A, CAJA_B].includes(c.caja_id));
+  assert.deepEqual(cajaActual, [
+    { caja_id: CAJA_A, total: 130, cantidad: 2 },
+    { caja_id: CAJA_B, total: 50, cantidad: 1 },
+  ]);
+  const cajaAnterior = r.porCaja.anterior.filter((c) => c.caja_id === CAJA_A);
+  assert.deepEqual(cajaAnterior, [{ caja_id: CAJA_A, total: 40, cantidad: 1 }]);
 });
