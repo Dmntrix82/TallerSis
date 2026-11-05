@@ -123,6 +123,12 @@ async function consultarHistorial({ cajero_id, caja_id, metodo, estado_revision,
       detalle_metodos: f.detalle_metodos,
       total: f.total,
       estado: f.estado,
+      // TDSI-62/956: quien pidio la operacion y, si fue una anulacion, que
+      // supervisor la autorizo (nombre, no solo el codigo). Las operaciones
+      // que no necesitaron autorizacion (todo lo que no es una anulacion)
+      // no tienen autorizado_por.
+      pedido_por: f.cajero,
+      autorizado_por: f.estado === "ANULADA" ? (f.anulado_por_nombre || f.anulado_por || null) : null,
       revision: {
         estado: f.revision_estado,
         nota: f.revision_nota,

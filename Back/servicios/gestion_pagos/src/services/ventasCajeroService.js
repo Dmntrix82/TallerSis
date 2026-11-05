@@ -62,7 +62,10 @@ async function anularVenta({ id_transaccion, cajero, supervisor_id, pin }) {
 
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
-  const anuladas = await repo.anularTransaccion(id_transaccion, { anulado_por: supervisor.supervisor_id });
+  const anuladas = await repo.anularTransaccion(id_transaccion, {
+    anulado_por: supervisor.supervisor_id,
+    anulado_por_nombre: supervisor.nombre,
+  });
   emitirActualizacion();
 
   return { id_transaccion, autorizado_por: supervisor, filas: anuladas };

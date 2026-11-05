@@ -21,6 +21,8 @@ const CTE_HISTORIAL = `
            MAX(t.cajero)                                                    AS cajero,
            MAX(COALESCE(t.caja_id, pm.caja_id))                             AS caja_id,
            MAX(t.tipo_pago)                                                 AS tipo_pago,
+           MAX(t.anulado_por)                                               AS anulado_por,
+           MAX(t.anulado_por_nombre)                                        AS anulado_por_nombre,
            SUM(t.monto)                                                     AS total,
            array_agg(t.metodo ORDER BY t.id)                                AS metodos,
            json_agg(json_build_object('metodo', t.metodo, 'monto', t.monto) ORDER BY t.id) AS detalle_metodos,
