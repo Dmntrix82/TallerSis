@@ -404,3 +404,42 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
     confirmado_en  TIMESTAMPTZ,
     confirmado_por VARCHAR(255)
 );
+
+-- ==========================================================================
+-- TDSI-44/165: respuestas rápidas del cajero para justificar la cancelación
+-- de una venta. Cada cajero tiene sus propias frases guardadas.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.respuestas_rapidas (
+    id          BIGSERIAL PRIMARY KEY,
+    cajero_id   VARCHAR(60)  NOT NULL,
+    texto       VARCHAR(100) NOT NULL CHECK (char_length(texto) >= 5),
+    orden       SMALLINT     NOT NULL DEFAULT 1,
+    creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_respuestas_rapidas_cajero ON pagos.respuestas_rapidas (cajero_id);
+
+ALTER TABLE pagos.respuestas_rapidas ENABLE ROW LEVEL SECURITY;
+-- ==========================================================================
+-- TDSI-802: guardar la respuesta rápida que usó el cajero al cancelar la venta.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS respuesta_rapida_id BIGINT REFERENCES pagos.respuestas_rapidas(id);
+
+-- ==========================================================================
+-- TDSI-45/167: ventas canceladas antes de cobrar. No generan factura ni
+-- transaccion, pero sirven para llevar un registro del motivo.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.ventas_canceladas (
+    id          BIGSERIAL PRIMARY KEY,
+    cajero_id   VARCHAR(60)  NOT NULL,
+    caja_id     VARCHAR(60),
+    turno_id    VARCHAR(60),
+    items       JSONB        NOT NULL,
+    total       NUMERIC(14,2) NOT NULL CHECK (total >= 0),
+    motivo      VARCHAR(50)  NOT NULL CHECK (motivo IN ('El cliente desistió', 'Fondos insuficientes', 'Error al cargar ítems', 'Otro')),
+    motivo_texto VARCHAR(300),
+    creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ventas_canceladas_cajero ON pagos.ventas_canceladas (cajero_id, creado_en);
+ALTER TABLE pagos.ventas_canceladas ENABLE ROW LEVEL SECURITY;
