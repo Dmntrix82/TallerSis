@@ -55,4 +55,57 @@ async function guardarPin({ supervisor_id, nombre, pin_hash }) {
   return rows[0];
 }
 
-module.exports = { buscar, registrarFallo, reiniciarIntentos, guardarPin };
+/** TDSI-187: lista para el Administrador; nunca selecciona pin_hash */
+async function listar() {
+  const { rows } = await query(
+    `SELECT id, supervisor_id, nombre, activo, intentos_fallidos, bloqueado_hasta,
+            COALESCE(bloqueado_hasta > now(), false) AS bloqueado, actualizado_en
+     FROM facturacion.supervisores
+     ORDER BY nombre, supervisor_id`
+  );
+  return rows;
+}
+
+/** TDSI-721: alta de un supervisor; devuelve null si el usuario ya existe */
+async function crear({ supervisor_id, nombre, pin_hash }) {
+  const { rows } = await query(
+    `INSERT INTO facturacion.supervisores (supervisor_id, nombre, pin_hash)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (supervisor_id) DO NOTHING
+     RETURNING id, supervisor_id, nombre, activo, bloqueado_hasta,
+               false AS bloqueado, actualizado_en`,
+    [supervisor_id, nombre, pin_hash]
+  );
+  return rows[0] || null;
+}
+
+/** TDSI-722: PIN nuevo, limpia intentos fallidos y bloqueo; null si no existe */
+async function actualizarPin(id, pin_hash) {
+  const { rows } = await query(
+    `UPDATE facturacion.supervisores
+     SET pin_hash = $2, intentos_fallidos = 0, bloqueado_hasta = NULL, actualizado_en = now()
+     WHERE id = $1
+     RETURNING id, supervisor_id, nombre, activo, bloqueado_hasta,
+               false AS bloqueado, actualizado_en`,
+    [id, pin_hash]
+  );
+  return rows[0] || null;
+}
+
+/** TDSI-723: activa o desactiva al supervisor; null si no existe */
+async function cambiarEstado(id, activo) {
+  const { rows } = await query(
+    `UPDATE facturacion.supervisores
+     SET activo = $2, actualizado_en = now()
+     WHERE id = $1
+     RETURNING id, supervisor_id, nombre, activo, bloqueado_hasta,
+               COALESCE(bloqueado_hasta > now(), false) AS bloqueado, actualizado_en`,
+    [id, activo]
+  );
+  return rows[0] || null;
+}
+
+module.exports = {
+  buscar, registrarFallo, reiniciarIntentos, guardarPin, listar, crear, actualizarPin,
+  cambiarEstado,
+};
