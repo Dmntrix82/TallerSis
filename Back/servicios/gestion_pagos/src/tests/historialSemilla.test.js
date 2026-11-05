@@ -50,7 +50,7 @@ test("TDSI-143: la semilla se puede correr varias veces sin duplicar", async () 
 
 test("TDSI-143: historial por defecto (ultimos 7 dias) de cada cajero de la semilla", async () => {
   const hugo = await consultarHistorial({ cajero_id: HUGO });
-  assert.deepEqual(hugo.filtros, { desde: diasAtras(6), hasta: HOY, cajero_id: HUGO, caja_id: null, metodo: null, estado_revision: null });
+  assert.deepEqual(hugo.filtros, { desde: diasAtras(6), hasta: HOY, cajero_id: HUGO, caja_id: null, metodo: null, estado_revision: null, supervisor_id: null });
   assert.deepEqual(ids(hugo), ["DEMO-HIST-012", "DEMO-HIST-008", "DEMO-HIST-006", "DEMO-HIST-003", "DEMO-HIST-001"]);
   assert.deepEqual(resumenCajero(hugo), [5, 1, 262, 27, 5]);
 

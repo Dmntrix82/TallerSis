@@ -43,3 +43,24 @@ test("TDSI-956: una operacion que no necesito autorizacion no tiene 'autorizado_
   assert.equal(fila.pedido_por, CAJERO);
   assert.equal(fila.autorizado_por, null);
 });
+
+// TDSI-957
+test("TDSI-957: filtra el historial por el supervisor que autorizo", async () => {
+  const anulada = (await registrarPagoSimple({ metodo: "Tarjeta", monto: 18, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
+  await anularVenta({ id_transaccion: anulada.id_transaccion, cajero: CAJERO, ...SUPERVISOR });
+  const normal = (await registrarPagoSimple({ metodo: "Tarjeta", monto: 9, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
+
+  const hoy = hoyLocal();
+  const r = await consultarHistorial({ cajero_id: CAJERO, fecha: hoy, supervisor_id: "SUP-TEST", por_pagina: 50 });
+
+  assert.ok(r.operaciones.some((o) => o.id_transaccion === anulada.id_transaccion));
+  assert.ok(!r.operaciones.some((o) => o.id_transaccion === normal.id_transaccion));
+  assert.ok(r.operaciones.every((o) => o.autorizado_por === "Supervisor Prueba"));
+  assert.equal(r.filtros.supervisor_id, "SUP-TEST");
+});
+
+test("TDSI-957: un supervisor sin anulaciones en el rango devuelve la lista vacia", async () => {
+  const hoy = hoyLocal();
+  const r = await consultarHistorial({ cajero_id: CAJERO, fecha: hoy, supervisor_id: "SUP-NO-EXISTE", por_pagina: 50 });
+  assert.equal(r.operaciones.length, 0);
+});
