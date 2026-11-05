@@ -10,17 +10,17 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * correlativo de la propia tabla (nextval de su secuencia), asi queda unico
  * por construccion, sin depender de que el cajero no repita un numero.
  */
-async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto }) {
+async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto, cobro_duplicado }) {
   const { rows } = await query(
     `WITH nuevo AS (
        SELECT nextval(pg_get_serial_sequence('pagos.transacciones', 'id')) AS id
      )
      INSERT INTO pagos.transacciones
-       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto)
-     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto, cobro_duplicado)
+     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
      FROM nuevo
      RETURNING *`,
-    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, monto_recibido ?? null, vuelto ?? null]
+    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, monto_recibido || null, vuelto || null, cobro_duplicado || false]
   );
   return { ...rows[0], monto: num(rows[0].monto), monto_recibido: num(rows[0].monto_recibido), vuelto: num(rows[0].vuelto) };
 }
