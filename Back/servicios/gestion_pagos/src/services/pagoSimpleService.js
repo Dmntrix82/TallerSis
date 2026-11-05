@@ -16,8 +16,10 @@ const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 /**
  * TDSI-423: cajero_id identifica a quien hizo la operacion (para el monitoreo).
  * Si el front todavia no lo manda, se usa "cajero" (hoy es el email del cajero).
+ * TDSI-61/199: cajero_nombre es el nombre para mostrar ("Atendido por"), se
+ * toma de la cuenta con la que el cajero inicio sesion -- nunca se escribe a mano.
  */
-async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_social, telefono, email, caja_id, turno_id, cajero, cajero_id, monto_recibido }) {
+async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_social, telefono, email, caja_id, turno_id, cajero, cajero_id, cajero_nombre, monto_recibido }) {
   if (!metodo || monto === undefined) {
     throw new AppError("Los campos metodo y monto son obligatorios.", 400);
   }
@@ -68,6 +70,7 @@ async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_s
     turno_id,
     cajero,
     cajero_id: cajero_id || cajero,
+    cajero_nombre: cajero_nombre || null,
     monto_recibido: metodo === "Efectivo" ? monto_recibido ?? null : null,
     vuelto,
   });

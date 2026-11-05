@@ -391,6 +391,15 @@ CREATE INDEX IF NOT EXISTS idx_transacciones_token_verificacion
 -- muestra en pantalla junto a la imagen fija del QR de la cuenta. El cajero
 -- confirma el pago a mano despues de verlo llegar a su banco (ver TDSI-533).
 -- ==========================================================================
+-- ==========================================================================
+-- TDSI-61/199: nombre del cajero que emitio la venta (para "Atendido por" en
+-- la factura). caja_id/cajero_id ya existian; esto guarda el NOMBRE, no solo
+-- el identificador, porque cajero hoy es el email, no el nombre para mostrar.
+-- Se toma de la cuenta con la que el cajero inicio sesion, nunca se escribe a mano.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS cajero_nombre VARCHAR(255);
+
 CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
     id             SERIAL PRIMARY KEY,
     referencia     VARCHAR(20) NOT NULL UNIQUE,

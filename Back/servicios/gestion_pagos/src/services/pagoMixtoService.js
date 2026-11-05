@@ -92,6 +92,8 @@ async function registrarPagoMixto(payload) {
 
     // TDSI-423: quien hizo la operacion (si el front no manda cajeroId, se usa "cajero").
   const cajeroId = payload.cajeroId || payload.cajero_id || cajero;
+  // TDSI-61/199: nombre para mostrar ("Atendido por"), viene de la cuenta logueada.
+  const cajeroNombre = payload.cajeroNombre || payload.cajero_nombre || null;
 
   if (id_transaccion && await repo.existePagoMixto(id_transaccion))
     throw new AppError("Esta transaccion ya tiene un pago mixto registrado", 409, { id_transaccion });
@@ -128,6 +130,7 @@ async function registrarPagoMixto(payload) {
     telefono,
     cajero,
     cajeroId,
+    cajeroNombre,
   });
 
   emitirActualizacion();
