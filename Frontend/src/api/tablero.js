@@ -22,3 +22,13 @@ export function obtenerSerieDiaria(dias = 14) {
 export function urlStreamIngresosDia() {
   return `${GESTION_PAGOS_API_BASE_URL}/api/tablero/ingresos-dia/stream`
 }
+
+// TDSI-57/763: ventas por hora del dia (07:00-23:00, hora de Bolivia) en un rango de
+// fechas, con filtro opcional por caja. "horas" solo trae las horas que tuvieron
+// ventas -- el Front completa las horas sin ventas en 0. Responde { horas: [{hora,
+// cantidad, monto}], top3: [...] } (top3 = las 3 horas con mas ventas, mismo shape).
+export function obtenerHorasPico(desde, hasta, caja) {
+  const params = new URLSearchParams({ desde, hasta })
+  if (caja) params.set('caja', caja)
+  return apiFetch(`/api/tablero/horas-pico?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
+}
