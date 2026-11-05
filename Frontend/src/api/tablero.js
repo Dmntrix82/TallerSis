@@ -22,3 +22,13 @@ export function obtenerSerieDiaria(dias = 14) {
 export function urlStreamIngresosDia() {
   return `${GESTION_PAGOS_API_BASE_URL}/api/tablero/ingresos-dia/stream`
 }
+
+// TDSI-56/737: total del mes elegido vs. el mes anterior (mismos dias si el mes elegido
+// es el actual), desglosado por caja y por metodo de pago, con la variacion en %.
+// Responde { mes, anio, mesAnterior, anioAnterior, comparadoPorMismosDias,
+// total: {actual, anterior, variacion}, porCaja: [...], porMetodo: [...] }.
+// "variacion" es null cuando el mes anterior fue 0 y el actual no (no hay con que comparar).
+export function obtenerComparativoMensual(mes, anio) {
+  const params = new URLSearchParams({ mes, anio })
+  return apiFetch(`/api/tablero/comparativo-mensual?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
+}
