@@ -10,6 +10,7 @@ const { construirFacturaDigital } = require("../services/facturaDigitalService")
 const { generarFacturaPdfBuffer } = require("../services/facturaPdfService");
 const { renderizarHtmlFactura } = require("../services/emailService");
 const { lineaAtendidoPor } = require("../utils/atendidoPor");
+const { obtenerFacturaPorToken, obtenerOCrearToken } = require("../services/verificacionFacturaService");
 const { query } = require("../config/db");
 
 const PREFIJO = `TX-CAJERONOMBRE-${Date.now()}`;
@@ -146,4 +147,36 @@ test("TDSI-944: el PDF de la factura se genera sin romperse con el nombre del ca
   const pdfBuffer = await generarFacturaPdfBuffer(factura);
   assert.ok(Buffer.isBuffer(pdfBuffer));
   assert.equal(pdfBuffer.subarray(0, 4).toString(), "%PDF");
+});
+
+// TDSI-945
+test("TDSI-945: la verificacion por QR incluye el nombre del cajero y la caja", async () => {
+  const r = await registrarPagoSimple({ metodo: "Tarjeta", monto: 25, caja_id: "CAJA-945", cajero_nombre: "Carla Flores" });
+  idsSimpleGenerados.push(r.pago.id_transaccion);
+
+  const token = await obtenerOCrearToken(r.pago.id_transaccion);
+  const data = await obtenerFacturaPorToken(token);
+  assert.equal(data.caja_id, "CAJA-945");
+  assert.equal(data.cajero_nombre, "Carla Flores");
+  assert.equal(data.atendido_por, "Atendido por: Carla Flores · Caja N° CAJA-945");
+});
+
+test("TDSI-945: una venta antigua sin cajero_nombre se verifica como 'no registrado'", async () => {
+  const r = await registrarPagoSimple({ metodo: "Tarjeta", monto: 25 });
+  idsSimpleGenerados.push(r.pago.id_transaccion);
+
+  const token = await obtenerOCrearToken(r.pago.id_transaccion);
+  const data = await obtenerFacturaPorToken(token);
+  assert.equal(data.cajero_nombre, "no registrado");
+  assert.equal(data.atendido_por, "Atendido por: no registrado");
+});
+
+test("TDSI-945: la verificacion por QR no expone el email del cajero", async () => {
+  const r = await registrarPagoSimple({ metodo: "Tarjeta", monto: 25, cajero: CAJERO_EMAIL, cajero_nombre: "Hugo Rocha" });
+  idsSimpleGenerados.push(r.pago.id_transaccion);
+
+  const token = await obtenerOCrearToken(r.pago.id_transaccion);
+  const data = await obtenerFacturaPorToken(token);
+  assert.equal(data.cajero, undefined);
+  assert.equal(data.cajero_id, undefined);
 });
