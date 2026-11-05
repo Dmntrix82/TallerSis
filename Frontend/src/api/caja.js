@@ -32,6 +32,13 @@ export function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = 
   })
 }
 
+// TDSI-49/175: facturas anuladas del turno (N° de factura, hora, total, motivo y
+// supervisor que autorizo), para el boton "Ver anuladas" del resumen de cierre.
+// Responde data: { turnoId, caja_id, cantidadAnuladas, montoAnulado, anuladas }.
+export function obtenerAnuladasTurno(turnoId) {
+  return apiFetch(`/api/caja/turnos/${turnoId}/anuladas`)
+}
+
 // TDSI-324: PDF del reporte de cierre (con firma del cajero), para ver/imprimir/guardar.
 export function urlReporteCierrePdf(turnoId, efectivoContado) {
   const base = import.meta.env.VITE_API_BASE_URL ?? ''
