@@ -63,10 +63,11 @@ export function buscarClientePorDocumento(tipo_documento, numero) {
 
 // TDSI-306/307: pantalla "Facturas" del cajero -- solo las ventas que el emitio,
 // con filtro opcional de rango de fechas ("YYYY-MM-DD").
-export function listarMisFacturas(cajero, { desde, hasta } = {}) {
+export function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
   const params = new URLSearchParams({ cajero })
   if (desde) params.set('desde', desde)
   if (hasta) params.set('hasta', hasta)
+  if (q) params.set('q', q) // <-- TDSI-46/169: Parámetro de búsqueda agregado
   return apiFetch(`/api/pagos/mis-facturas?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
 }
 
