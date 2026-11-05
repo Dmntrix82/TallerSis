@@ -370,6 +370,9 @@ function Pagos() {
           ],
           cajaId: cajero?.caja,
           cajero: cajero?.nombre,
+          // TDSI-61/200: nombre para "Atendido por" en la tirilla/PDF -- hoy es el
+          // email con el que inicio sesion (todavia no hay un nombre de pila separado).
+          cajero_nombre: cajero?.nombre,
         }
         const respuesta = await registrarPagoMixto(payload)
         idTransaccionRegistrada = respuesta.data.pago.id_transaccion
@@ -387,6 +390,7 @@ function Pagos() {
           monto: Number(datos.monto),
           caja_id: cajero?.caja,
           cajero: cajero?.nombre,
+          cajero_nombre: cajero?.nombre,
         }
         if (esEfectivoSimple && datos.montoRecibido) {
           payload.monto_recibido = Number(datos.montoRecibido)
@@ -428,6 +432,7 @@ function Pagos() {
       monto: Number(datos.monto),
       caja_id: cajero?.caja,
       cajero: cajero?.nombre,
+      cajero_nombre: cajero?.nombre,
     }
     const respuesta = await registrarPago(payload)
     setPagoRegistrado({ ...respuesta.pago, detalle: null })
