@@ -342,6 +342,17 @@
   border-bottom: none;
 }
 
+.tabla-facturas tfoot td {
+  background-color: #f4f6fa;
+  border-top: 2px solid var(--color-brand-dark);
+}
+
+/* Libro de Ventas (TDSI-50): facturas anuladas, con sus importes en cero,
+   se pintan en gris para distinguirlas de un vistazo de las vigentes. */
+.fila-anulada td {
+  color: #9aa5b1;
+}
+
 .badge-estado {
   display: inline-block;
   padding: 0.2rem 0.65rem;
