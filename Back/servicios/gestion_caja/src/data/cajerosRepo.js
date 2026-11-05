@@ -20,4 +20,18 @@ async function listar() {
   return rows;
 }
 
-module.exports = { crear, buscarPorUsuario, listar };
+async function buscarPorCajeroId(cajero_id) {
+  const { rows } = await query(`SELECT * FROM caja.cajeros WHERE cajero_id = $1`, [cajero_id]);
+  return rows[0] || null;
+}
+
+/** TDSI-47/917: "Editar" -- cambia nombre y usuario (el usuario tambien es UNIQUE aqui). */
+async function actualizar(cajero_id, { usuario, nombre }) {
+  const { rows } = await query(
+    `UPDATE caja.cajeros SET usuario = $2, nombre = $3 WHERE cajero_id = $1 RETURNING *`,
+    [cajero_id, usuario, nombre]
+  );
+  return rows[0] || null;
+}
+
+module.exports = { crear, buscarPorUsuario, listar, buscarPorCajeroId, actualizar };

@@ -92,6 +92,20 @@ async function actualizarPin(id, pin_hash) {
   return rows[0] || null;
 }
 
+/** TDSI-47/917: edita nombre y usuario; null si no existe. El UNIQUE de
+ * supervisor_id puede lanzar un error (codigo 23505) si el usuario ya existe. */
+async function actualizar(id, { supervisor_id, nombre }) {
+  const { rows } = await query(
+    `UPDATE facturacion.supervisores
+     SET supervisor_id = $2, nombre = $3, actualizado_en = now()
+     WHERE id = $1
+     RETURNING id, supervisor_id, nombre, activo, bloqueado_hasta,
+               COALESCE(bloqueado_hasta > now(), false) AS bloqueado, actualizado_en`,
+    [id, supervisor_id, nombre]
+  );
+  return rows[0] || null;
+}
+
 /** TDSI-723: activa o desactiva al supervisor; null si no existe */
 async function cambiarEstado(id, activo) {
   const { rows } = await query(
@@ -107,5 +121,5 @@ async function cambiarEstado(id, activo) {
 
 module.exports = {
   buscar, registrarFallo, reiniciarIntentos, guardarPin, listar, crear, actualizarPin,
-  cambiarEstado,
+  cambiarEstado, actualizar,
 };

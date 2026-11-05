@@ -90,6 +90,43 @@ test("TDSI-721: valida el PIN (4 a 6 digitos) y los campos obligatorios", async 
   assert.equal(sinNombre.status, 400);
 });
 
+// ---- TDSI-47/917: PUT /api/supervisores/:id ----
+
+test("TDSI-917: edita el nombre y el usuario de un supervisor", async () => {
+  const sup = await nuevoSupervisor("editar");
+  const r = await llamar("PUT", `/${sup.id}`, { usuario: `${PREFIJO}-editado`, nombre: "Nombre Nuevo" });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.data.usuario, `${PREFIJO}-editado`);
+  assert.equal(r.body.data.nombre, "Nombre Nuevo");
+
+  // el usuario viejo ya no sirve para autorizar, el nuevo si (mismo PIN, no se toco)
+  assert.equal((await validar("editar", "1234")).status, 401);
+  const r2 = await llamar("POST", "/validar", { supervisor_id: `${PREFIJO}-editado`, pin: "1234" });
+  assert.equal(r2.status, 200);
+});
+
+test("TDSI-917: no deja renombrar el usuario a uno que ya existe", async () => {
+  await nuevoSupervisor("ocupado");
+  const sup = await nuevoSupervisor("quiere-renombrarse");
+  const r = await llamar("PUT", `/${sup.id}`, { usuario: `${PREFIJO}-ocupado`, nombre: "X" });
+  assert.equal(r.status, 409);
+});
+
+test("TDSI-917: 404 si el supervisor no existe; valida campos obligatorios", async () => {
+  assert.equal((await llamar("PUT", "/999999999", { usuario: "x", nombre: "y" })).status, 404);
+  const sup = await nuevoSupervisor("sin-usuario");
+  assert.equal((await llamar("PUT", `/${sup.id}`, { nombre: "y" })).status, 400);
+  assert.equal((await llamar("PUT", `/${sup.id}`, { usuario: "x" })).status, 400);
+});
+
+test("TDSI-917: editar nombre/usuario no toca el PIN ni el estado", async () => {
+  const sup = await nuevoSupervisor("conserva-pin", "7777");
+  await llamar("PATCH", `/${sup.id}/estado`, { activo: false });
+  const r = await llamar("PUT", `/${sup.id}`, { usuario: `${PREFIJO}-conserva-pin-2`, nombre: "Y" });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.data.estado, "Inactivo");
+});
+
 // ---- TDSI-722: PUT /api/supervisores/:id/pin ----
 
 test("TDSI-722: restablecer PIN asigna uno nuevo y desbloquea al supervisor", async () => {

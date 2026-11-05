@@ -43,4 +43,25 @@ async function listarSupervisores() {
   return datos.data; // [{ usuario, nombre, estado, ... }]
 }
 
-module.exports = { validarSupervisor, listarSupervisores };
+/** TDSI-47/917: "Editar" un supervisor desde la pantalla "Usuarios" (nombre + usuario, sin PIN). */
+async function editarSupervisor(id, { usuario, nombre }) {
+  let respuesta;
+  try {
+    respuesta = await fetch(`${FACTURACION_URL}/api/supervisores/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usuario, nombre }),
+    });
+  } catch (e) {
+    throw new AppError("No se pudo editar al supervisor en este momento. Intente de nuevo.", 502);
+  }
+
+  const datos = await respuesta.json().catch(() => null);
+  if (!respuesta.ok) {
+    throw new AppError(datos?.mensaje || "No se pudo editar al supervisor.", respuesta.status, datos?.detalle);
+  }
+
+  return datos.data;
+}
+
+module.exports = { validarSupervisor, listarSupervisores, editarSupervisor };

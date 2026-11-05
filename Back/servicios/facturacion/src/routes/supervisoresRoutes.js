@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const { validarPin } = require("../services/pinService");
 const {
-  listarSupervisores, crearSupervisor, restablecerPin, cambiarEstadoSupervisor,
+  listarSupervisores, crearSupervisor, editarSupervisor, restablecerPin, cambiarEstadoSupervisor,
 } = require("../services/supervisoresService");
 
 const router = Router();
@@ -16,6 +16,12 @@ router.get("/", wrap(async (req, res) => {
 router.post("/", wrap(async (req, res) => {
   const supervisor = await crearSupervisor(req.body);
   res.status(201).json({ ok: true, data: supervisor });
+}));
+
+// TDSI-47/917: "Editar" (cambia nombre y usuario; el PIN no se toca aqui)
+router.put("/:id", wrap(async (req, res) => {
+  const supervisor = await editarSupervisor(req.params.id, req.body);
+  res.json({ ok: true, data: supervisor });
 }));
 
 // TDSI-722: "Restablecer PIN" (PIN nuevo + limpia intentos fallidos y bloqueo)
