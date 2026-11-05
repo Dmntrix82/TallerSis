@@ -404,3 +404,22 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
     confirmado_en  TIMESTAMPTZ,
     confirmado_por VARCHAR(255)
 );
+
+-- ==========================================================================
+-- TDSI-42/161: tabla de parametros para el cobro en dolares. Guarda el tipo
+-- de cambio vigente (Bs por 1 USD) para convertir el total de la venta y
+-- calcular el vuelto en bolivianos. Se puede correr varias veces.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.tipo_cambio (
+    id            SERIAL PRIMARY KEY,
+    valor         NUMERIC(10,2) NOT NULL CHECK (valor > 0),
+    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+    actualizado_por VARCHAR(60)
+);
+
+-- Insertar el valor inicial (12) solo si la tabla está vacía (idempotente)
+INSERT INTO pagos.tipo_cambio (valor, actualizado_por)
+SELECT 12, 'SISTEMA'
+WHERE NOT EXISTS (SELECT 1 FROM pagos.tipo_cambio);
+
+ALTER TABLE pagos.tipo_cambio ENABLE ROW LEVEL SECURITY;
