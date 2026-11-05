@@ -64,3 +64,31 @@ test("TDSI-957: un supervisor sin anulaciones en el rango devuelve la lista vaci
   const r = await consultarHistorial({ cajero_id: CAJERO, fecha: hoy, supervisor_id: "SUP-NO-EXISTE", por_pagina: 50 });
   assert.equal(r.operaciones.length, 0);
 });
+
+// TDSI-958: la anulacion guarda el cajero y el supervisor correctos directamente en la fila.
+test("TDSI-958: anular guarda el cajero y el supervisor real en pagos.transacciones", async () => {
+  const pago = (await registrarPagoSimple({ metodo: "Efectivo", monto: 33, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
+  await anularVenta({ id_transaccion: pago.id_transaccion, cajero: CAJERO, ...SUPERVISOR });
+
+  const { rows } = await pool.query(
+    `SELECT cajero, anulado_por, anulado_por_nombre, estado FROM pagos.transacciones WHERE id_transaccion = $1`,
+    [pago.id_transaccion]
+  );
+  assert.equal(rows[0].estado, "Anulado");
+  assert.equal(rows[0].cajero, CAJERO);
+  assert.equal(rows[0].anulado_por, "SUP-TEST");
+  assert.equal(rows[0].anulado_por_nombre, "Supervisor Prueba");
+});
+
+test("TDSI-958: solo el cajero que emitio la venta puede pedir su anulacion", async () => {
+  const pago = (await registrarPagoSimple({ metodo: "Efectivo", monto: 17, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
+
+  await assert.rejects(
+    () => anularVenta({ id_transaccion: pago.id_transaccion, cajero: "otro-cajero@test.com", ...SUPERVISOR }),
+    (e) => e.status === 403
+  );
+
+  const { rows } = await pool.query(`SELECT estado, anulado_por FROM pagos.transacciones WHERE id_transaccion = $1`, [pago.id_transaccion]);
+  assert.equal(rows[0].estado, "Registrado", "no debe quedar anulada por otro cajero");
+  assert.equal(rows[0].anulado_por, null);
+});

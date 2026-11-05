@@ -1,7 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query } = require("../config/db");
-const { calcularTotalRecaudado, compararEfectivo, generarReporteCierre, generarReporteTexto } = require("../services/cierreService");
+const { calcularTotalRecaudado, compararEfectivo, generarReporteCierre, generarReporteTexto, cerrarTurno } = require("../services/cierreService");
+
+const SUPERVISOR = { supervisor_id: "SUP-TEST", pin: "1234" };
 
 let turnoId;
 const CAJA_ID = "CAJA-TEST-319";
@@ -93,4 +95,38 @@ test("TDSI-321: el reporte en texto incluye los totales y el turno", async () =>
   assert.match(texto, /REPORTE DE CIERRE DE CAJA/);
   assert.match(texto, /TOTAL RECAUDADO\s+300\.00/);
   assert.match(texto, /CUADRA/);
+});
+
+// TDSI-62/958: el cierre guarda el supervisor real que autorizo (no solo su codigo).
+test("TDSI-958: cerrar turno guarda el nombre real del supervisor que autorizo", async () => {
+  const CAJA_958 = "CAJA-TEST-958-CIERRE";
+  await query(
+    `INSERT INTO caja.cajas (codigo, nombre, estado) VALUES ($1, 'Caja Test 958 Cierre', 'ACTIVA')
+     ON CONFLICT (codigo) DO NOTHING`,
+    [CAJA_958]
+  );
+  const { rows } = await query(
+    `INSERT INTO caja.turnos (codigo, caja_id, cajero_id, cajero_nombre, efectivo_inicial)
+     VALUES ('TURNO-TEST-958', $1, 'cajero-958-cierre@test.com', 'Cajero 958', 100)
+     RETURNING id`,
+    [CAJA_958]
+  );
+  const turno958 = rows[0].id;
+
+  try {
+    const { turno: cerrado } = await cerrarTurno(turno958, { ...SUPERVISOR });
+
+    assert.equal(cerrado.cerrado_por, "SUP-TEST");
+    assert.equal(cerrado.cerrado_por_nombre, "Supervisor Prueba");
+
+    const { rows: enBd } = await query(
+      `SELECT cerrado_por, cerrado_por_nombre FROM caja.turnos WHERE id = $1`,
+      [turno958]
+    );
+    assert.equal(enBd[0].cerrado_por, "SUP-TEST");
+    assert.equal(enBd[0].cerrado_por_nombre, "Supervisor Prueba");
+  } finally {
+    await query(`DELETE FROM caja.turnos WHERE id = $1`, [turno958]);
+    await query(`DELETE FROM caja.cajas WHERE codigo = $1`, [CAJA_958]);
+  }
 });
