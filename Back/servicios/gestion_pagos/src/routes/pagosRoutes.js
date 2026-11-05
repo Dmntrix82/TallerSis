@@ -10,7 +10,7 @@ const {
   totalesGenerales,
   listarCajeros,
 } = require("../services/ventasCajeroService");
-
+const ventasCanceladasService = require("../services/ventasCanceladasService");
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 
@@ -97,6 +97,17 @@ router.get("/historial-cliente", wrap(async (req, res) => {
 router.get("/totales-generales", wrap(async (req, res) => {
   const r = await totalesGenerales({ desde: req.query.desde, hasta: req.query.hasta });
   res.json({ ok: true, data: r });
+}));
+// TDSI-838: Registrar venta cancelada antes de cobrar (no genera transacción).
+router.post("/canceladas", wrap(async (req, res) => {
+  const data = await ventasCanceladasService.registrar(req.body);
+  res.status(201).json({ ok: true, data });
+}));
+
+// TDSI-839: Obtener conteo de ventas canceladas hoy por el cajero.
+router.get("/canceladas/conteo", wrap(async (req, res) => {
+  const data = await ventasCanceladasService.obtenerConteoHoy(req.query.cajero_id, req.query.fecha);
+  res.json({ ok: true, data });
 }));
 
 module.exports = router;
