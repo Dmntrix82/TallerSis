@@ -860,6 +860,48 @@
   padding: 0.6rem 0.85rem;
 }
 
+/* Cobro en dolares (TDSI-42 / TDSI-816 a 819) */
+.cobro-usd-datos {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.85rem;
+  background-color: #fff;
+  border: 1px solid #e4e7eb;
+  border-radius: 6px;
+}
+
+.cobro-usd-datos li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.15rem 0;
+  font-size: 0.9rem;
+}
+
+.cobro-usd-datos span {
+  color: #616e7c;
+}
+
+.cobro-usd-datos strong {
+  color: var(--color-brand-dark);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cobro-usd-faltante {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #b91c1c;
+  background-color: #fee2e2;
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+}
+
+.leyenda-usd {
+  font-weight: 600;
+  color: var(--color-brand-dark);
+}
+
 /* Layout dividido: al elegir 2 métodos de pago, el formulario de pago mixto
    ocupa la otra mitad de la pantalla en vez de reemplazar la vista. */
 .pagos-layout {
