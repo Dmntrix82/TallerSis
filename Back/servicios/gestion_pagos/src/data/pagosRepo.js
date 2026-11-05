@@ -122,6 +122,27 @@ async function buscarRazonSocialPorDocumento(tipo_documento, numero) {
   );
   return rows[0]?.razon_social || null;
 }
+/**
+ * TDSI-163/825/827: Busca si el mismo cajero ya cobró el mismo monto al mismo
+ * NIT/CI en los últimos 2 minutos (120 segundos). No cuenta ventas anuladas.
+ * Devuelve el id_transaccion, fecha y los segundos transcurridos, o null si no hay.
+ */
+async function buscarPosibleDuplicado({ cajero_id, nit, total, segundos_ventana = 120 }) {
+  const { rows } = await query(
+    `SELECT id_transaccion, fecha,
+            EXTRACT(EPOCH FROM (now() - fecha))::int AS segundos
+       FROM pagos.transacciones
+      WHERE cajero_id = $1
+        AND nit = $2
+        AND monto = $3
+        AND estado = 'Registrado'
+        AND fecha >= now() - ($4 || ' seconds')::interval
+      ORDER BY fecha DESC
+      LIMIT 1`,
+    [cajero_id, nit, total, segundos_ventana]
+  );
+  return rows[0] || null;
+}
 
 /**
  * TDSI-306: lista "una fila por venta" (agrupa por id_transaccion, asi un pago
@@ -631,4 +652,5 @@ module.exports = {
   existePagoMixto,
   registrarPagoMixtoCompleto,
   obtenerPagoMixtoPorTransaccion,
+  buscarPosibleDuplicado,
 };

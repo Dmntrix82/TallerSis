@@ -10,6 +10,7 @@ const {
   totalesGenerales,
   listarCajeros,
 } = require("../services/ventasCajeroService");
+const duplicadoService = require("../services/duplicadoService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -96,6 +97,15 @@ router.get("/historial-cliente", wrap(async (req, res) => {
 // TDSI-328: total ganado por el negocio desde el inicio (todas las cajas), para el tablero.
 router.get("/totales-generales", wrap(async (req, res) => {
   const r = await totalesGenerales({ desde: req.query.desde, hasta: req.query.hasta });
+  res.json({ ok: true, data: r });
+}));
+// TDSI-163/825: detecta si el mismo cajero ya cobró lo mismo al mismo cliente en los últimos 2 minutos.
+router.get("/posible-duplicado", wrap(async (req, res) => {
+  const r = await duplicadoService.detectarPosibleDuplicado({
+    cajero_id: req.query.cajero_id,
+    nit: req.query.nit,
+    total: Number(req.query.total),
+  });
   res.json({ ok: true, data: r });
 }));
 
