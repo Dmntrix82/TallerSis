@@ -88,7 +88,7 @@ function calcularDivision({ total, metodos, efectivoRecibido = null }) {
  * tipo_documento/nit/razon_social/telefono siguen las mismas reglas que el pago simple.
  */
 async function registrarPagoMixto(payload) {
-  const { id_transaccion, cajaId, turnoId, tipo_documento, nit, razon_social, telefono, email, cajero } = payload;
+  const { id_transaccion, cajaId, turnoId, tipo_documento, nit, razon_social, telefono, email, cajero, cobro_duplicado } = payload;
 
     // TDSI-423: quien hizo la operacion (si el front no manda cajeroId, se usa "cajero").
   const cajeroId = payload.cajeroId || payload.cajero_id || cajero;
@@ -128,6 +128,7 @@ async function registrarPagoMixto(payload) {
     telefono,
     cajero,
     cajeroId,
+    cobro_duplicado,
   });
 
   emitirActualizacion();

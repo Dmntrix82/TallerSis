@@ -54,3 +54,45 @@ test("TDSI-827: NO detecta duplicado si la venta está anulada", async () => {
   const res = await detectarPosibleDuplicado({ cajero_id: CAJERO_ID, nit: NIT, total: TOTAL });
   assert.equal(res.esDuplicado, false);
 });
+test("TDSI-832: detecta un pago mixto duplicado comparando la suma", async () => {
+  // Insertar un pago mixto con 2 filas que suman 100
+  await query(
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, nit, cajero_id, estado)
+     VALUES ('VTA-MIX-1', 'Efectivo', 60, 'Mixto', $1, $2, 'Registrado'),
+            ('VTA-MIX-1', 'Tarjeta', 40, 'Mixto', $1, $2, 'Registrado')`,
+    [NIT, CAJERO_ID]
+  );
+
+  const res = await detectarPosibleDuplicado({ cajero_id: CAJERO_ID, nit: NIT, total: 100 });
+  assert.equal(res.esDuplicado, true);
+  assert.equal(res.factura, "VTA-MIX-1");
+});
+
+test("TDSI-832: no da falso positivo si un simple coincide con una fila de un mixto", async () => {
+  const NIT_UNICO = "987654321"; // NIT distinto para este test
+  
+  // Insertar un pago mixto de 60+90=150 para este NIT
+  await query(
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, nit, cajero_id, estado)
+     VALUES ('VTA-MIX-2', 'Efectivo', 60, 'Mixto', $1, $2, 'Registrado'),
+            ('VTA-MIX-2', 'Tarjeta', 90, 'Mixto', $1, $2, 'Registrado')`,
+    [NIT_UNICO, CAJERO_ID]
+  );
+  
+  // Insertar un simple de 60 para el MISMO NIT
+  await query(
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, nit, cajero_id, estado)
+     VALUES ('VTA-SIMPLE-60', 'Efectivo', 60, 'Simple', $1, $2, 'Registrado')`,
+    [NIT_UNICO, CAJERO_ID]
+  );
+
+  // Buscar un cobro de 60. La lógica agrupa por id_transaccion:
+  // - El mixto suma 150 (no coincide)
+  // - El simple suma 60 (SÍ coincide)
+  // Como el simple es una venta distinta, la lógica SÍ lo va a encontrar.
+  // ESTO ES CORRECTO según el Jira: el sistema avisará de un cobro duplicado
+  // porque el mismo cajero cobró 60 al mismo NIT hace < 2 minutos.
+  const res = await detectarPosibleDuplicado({ cajero_id: CAJERO_ID, nit: NIT_UNICO, total: 60 });
+  assert.equal(res.esDuplicado, true);
+  assert.equal(res.factura, "VTA-SIMPLE-60");
+});
