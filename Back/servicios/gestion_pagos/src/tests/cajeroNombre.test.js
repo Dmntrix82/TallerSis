@@ -7,6 +7,9 @@ const { registrarPagoSimple } = require("../services/pagoSimpleService");
 const { registrarPagoMixto } = require("../services/pagoMixtoService");
 const { listarMisFacturas } = require("../services/ventasCajeroService");
 const { construirFacturaDigital } = require("../services/facturaDigitalService");
+const { generarFacturaPdfBuffer } = require("../services/facturaPdfService");
+const { renderizarHtmlFactura } = require("../services/emailService");
+const { lineaAtendidoPor } = require("../utils/atendidoPor");
 const { query } = require("../config/db");
 
 const PREFIJO = `TX-CAJERONOMBRE-${Date.now()}`;
@@ -106,4 +109,41 @@ test("TDSI-943: la factura digital de una venta antigua devuelve 'no registrado'
 
   const factura = await construirFacturaDigital(r.pago.id_transaccion);
   assert.equal(factura.comprobante.cajero_nombre, "no registrado");
+});
+
+// TDSI-944
+test("TDSI-944: lineaAtendidoPor combina nombre y caja", () => {
+  assert.equal(
+    lineaAtendidoPor({ cajero_nombre: "Juana Perez", caja_id: "CAJA-1" }),
+    "Atendido por: Juana Perez · Caja N° CAJA-1"
+  );
+});
+
+test("TDSI-944: lineaAtendidoPor sin caja (venta muy antigua) omite esa parte", () => {
+  assert.equal(
+    lineaAtendidoPor({ cajero_nombre: "no registrado", caja_id: null }),
+    "Atendido por: no registrado"
+  );
+});
+
+test("TDSI-944: el correo de la factura incluye la linea Atendido por", () => {
+  const factura = {
+    empresa: { nombre: "TallerSis", direccion: "Av. Principal s/n, Bolivia" },
+    comprobante: { id_transaccion: "VTA-000001", fecha: new Date().toISOString(), cajero_nombre: "Juana Perez", caja_id: "CAJA-1" },
+    cliente: { razon_social: "Consumidor final", nit: null },
+    pagos: [{ metodo: "QR", monto: 50 }],
+    total: 50,
+  };
+  const html = renderizarHtmlFactura(factura);
+  assert.ok(html.includes("Atendido por: Juana Perez · Caja N° CAJA-1"));
+});
+
+test("TDSI-944: el PDF de la factura se genera sin romperse con el nombre del cajero", async () => {
+  const r = await registrarPagoSimple({ metodo: "QR", monto: 90, caja_id: "CAJA-944", cajero_nombre: "Luis Ticona" });
+  idsSimpleGenerados.push(r.pago.id_transaccion);
+
+  const factura = await construirFacturaDigital(r.pago.id_transaccion);
+  const pdfBuffer = await generarFacturaPdfBuffer(factura);
+  assert.ok(Buffer.isBuffer(pdfBuffer));
+  assert.equal(pdfBuffer.subarray(0, 4).toString(), "%PDF");
 });

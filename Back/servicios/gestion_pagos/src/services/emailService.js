@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const { lineaAtendidoPor } = require("../utils/atendidoPor");
 
 // Extension de TDSI-107/108: aun no hay credenciales SMTP reales para este proyecto.
 // Mientras SMTP_HOST/SMTP_USER/SMTP_PASS no esten en el .env, el correo se "simula"
@@ -33,6 +34,7 @@ function renderizarHtmlFactura(factura) {
         <strong>Fecha:</strong> ${new Date(factura.comprobante.fecha).toLocaleString("es-BO")}
       </p>
       <p><strong>Cliente:</strong> ${factura.cliente.razon_social}${factura.cliente.nit ? ` (NIT: ${factura.cliente.nit})` : ""}</p>
+      <p style="color:#616e7c; font-size:0.9rem;">${lineaAtendidoPor(factura.comprobante)}</p>
       <table style="width:100%; border-collapse:collapse; margin-top:1rem;">
         <thead>
           <tr>

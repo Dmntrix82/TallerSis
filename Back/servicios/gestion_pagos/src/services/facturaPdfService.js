@@ -1,6 +1,7 @@
 const PDFDocument = require("pdfkit");
 const { montoEnLetras } = require("../utils/numeroALetras");
 const { generarImagenQrVerificacion } = require("./verificacionFacturaService");
+const { lineaAtendidoPor } = require("../utils/atendidoPor");
 
 // TDSI-303: comprobante en formato de tirilla (ancho angosto, como una impresora
 // termica de 80mm) para poder imprimirlo al momento o adjuntarlo en el correo.
@@ -73,12 +74,10 @@ function dibujarContenido(doc, { factura, dia, hora, qrBuffer }) {
   filaDosColumnas(doc, "N° de comprobante:", factura.comprobante.id_transaccion);
   filaDosColumnas(doc, "Fecha:", dia);
   filaDosColumnas(doc, "Hora de emisión:", hora);
-  if (factura.comprobante.cajero) {
-    filaDosColumnas(doc, "Emitido por (cajero):", factura.comprobante.cajero);
-  }
-  if (factura.comprobante.caja_id) {
-    filaDosColumnas(doc, "Caja:", factura.comprobante.caja_id);
-  }
+  // TDSI-61/944: si se reimprime, siguen siendo los datos de quien la emitio
+  // originalmente, no los de quien reimprime (vienen ya fijos en factura.comprobante).
+  doc.text(lineaAtendidoPor(factura.comprobante), MARGEN, doc.y, { width: ANCHO_PT - MARGEN * 2 });
+  doc.moveDown(0.15);
 
   lineaPunteada(doc);
   filaDosColumnas(doc, "Nombre/Razón social:", factura.cliente.razon_social);
