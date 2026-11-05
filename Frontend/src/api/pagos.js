@@ -3,6 +3,13 @@ import { apiFetch } from './client.js'
 // Apunta al microservicio Back/servicios/gestion_pagos.
 const GESTION_PAGOS_API_BASE_URL = import.meta.env.VITE_GESTION_PAGOS_API_BASE_URL ?? ''
 
+// TDSI-163/825: revisa si este cajero ya le cobro ese total a ese NIT/CI en los ultimos 2 minutos.
+// Responde data: { esDuplicado: false } o { esDuplicado: true, factura, segundos }.
+export function consultarPosibleDuplicado({ cajero_id, nit, total }) {
+  const params = new URLSearchParams({ cajero_id, nit, total })
+  return apiFetch(`/api/pagos/posible-duplicado?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
+}
+
 export function registrarPago(pago) {
   return apiFetch(
     '/api/pagos/registrar',

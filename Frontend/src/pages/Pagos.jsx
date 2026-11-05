@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { registrarPago, registrarPagoMixto, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { registrarPago, registrarPagoMixto, consultarPosibleDuplicado, listarMisFacturas, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
 import { calcularVuelto, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
+import AvisoCobroDuplicadoModal from '../components/AvisoCobroDuplicadoModal.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 // TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
@@ -92,6 +93,15 @@ function formatearTiempoRestante(segundos) {
   return `${minutos}:${String(resto).padStart(2, '0')}`
 }
 
+// TDSI-831: datos del cobro que se esta por repetir. mis-facturas filtra por dia ("YYYY-MM-DD"):
+// se pide desde ayer para no perderlo cerca de medianoche o por la zona horaria del servidor.
+async function buscarCobroAnterior(cajero, factura) {
+  const ayer = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const desde = `${ayer.getFullYear()}-${String(ayer.getMonth() + 1).padStart(2, '0')}-${String(ayer.getDate()).padStart(2, '0')}`
+  const { data } = await listarMisFacturas(cajero, { desde })
+  return data.find((f) => f.id_transaccion === factura) ?? null
+}
+
 function validarFormulario(datos) {
   if (!datos.monto || Number(datos.monto) <= 0) {
     return 'Ingrese un monto válido.'
@@ -150,6 +160,11 @@ function Pagos() {
   const [vuelto, setVuelto] = useState(null)
   const [errorVuelto, setErrorVuelto] = useState(null)
   const [calculandoVuelto, setCalculandoVuelto] = useState(false)
+
+  // TDSI-43: aviso de posible cobro repetido.
+  const [avisoDuplicado, setAvisoDuplicado] = useState(null) // { factura, segundos, anterior } | null
+  // En QR la venta se registra despues de generar el QR, asi que la decision se guarda hasta entonces.
+  const [cobroDuplicado, setCobroDuplicado] = useState(false)
 
   const esMixto = datos.metodos.length === 2
   const esQrSimple = datos.metodos.length === 1 && datos.metodos[0] === 'QR'
@@ -345,7 +360,43 @@ function Pagos() {
     }
   }
 
+  // TDSI-164: antes de registrar se revisa si esta venta repite un cobro reciente. Sin NIT/CI no
+  // hay cliente con el cual comparar. Si la consulta falla, no se traba la venta: es solo un aviso.
   async function confirmarCobro() {
+    setErrorApi(null)
+    setCobroDuplicado(false)
+
+    if (datos.tipoDocumento !== 'NINGUNO') {
+      setEnviando(true)
+      try {
+        const { data } = await consultarPosibleDuplicado({
+          cajero_id: cajero?.nombre,
+          nit: datos.numeroDocumento.trim(),
+          total: Number(datos.monto),
+        })
+        if (data.esDuplicado) {
+          const anterior = await buscarCobroAnterior(cajero?.nombre, data.factura).catch(() => null)
+          setAvisoDuplicado({ factura: data.factura, segundos: data.segundos, anterior })
+          return
+        }
+      } catch {
+        // Se sigue con el cobro normal.
+      } finally {
+        setEnviando(false)
+      }
+    }
+
+    await ejecutarCobro(false)
+  }
+
+  // TDSI-830: "Cobrar igual" registra el cobro normalmente y deja constancia de la decision.
+  async function cobrarIgual() {
+    setAvisoDuplicado(null)
+    setCobroDuplicado(true)
+    await ejecutarCobro(true)
+  }
+
+  async function ejecutarCobro(esCobroDuplicado) {
     // El QR no se registra como venta todavia: primero hay que generarlo y
     // esperar a que el cajero confirme que vio llegar el pago (ver abajo).
     if (esQrSimple) {
@@ -356,6 +407,9 @@ function Pagos() {
     setEnviando(true)
     setErrorApi(null)
     const datosFacturacion = construirDatosFacturacion()
+    if (esCobroDuplicado) {
+      datosFacturacion.cobro_duplicado = true
+    }
 
     try {
       let idTransaccionRegistrada
@@ -428,6 +482,7 @@ function Pagos() {
       monto: Number(datos.monto),
       caja_id: cajero?.caja,
       cajero: cajero?.nombre,
+      ...(cobroDuplicado && { cobro_duplicado: true }),
     }
     const respuesta = await registrarPago(payload)
     setPagoRegistrado({ ...respuesta.pago, detalle: null })
@@ -819,6 +874,17 @@ function Pagos() {
           </div>
         )}
       </div>
+
+      {avisoDuplicado && (
+        <AvisoCobroDuplicadoModal
+          factura={avisoDuplicado.factura}
+          segundos={avisoDuplicado.segundos}
+          anterior={avisoDuplicado.anterior}
+          actual={{ total: Number(datos.monto), metodos: datos.metodos, razonSocial: datos.razonSocial.trim() }}
+          onCancelar={() => setAvisoDuplicado(null)}
+          onCobrarIgual={cobrarIgual}
+        />
+      )}
     </section>
   )
 }
