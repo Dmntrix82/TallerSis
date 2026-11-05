@@ -40,6 +40,9 @@ async function construirFacturaDigital(id_transaccion) {
       fecha: primera.fecha,
       caja_id: primera.caja_id || null,
       cajero: primera.cajero || null,
+      // TDSI-61/943: nombre para mostrar ("Atendido por"); "no registrado" en
+      // ventas de antes de este cambio, que no tienen cajero_nombre guardado.
+      cajero_nombre: primera.cajero_nombre || "no registrado",
       tipo_pago: primera.tipo_pago,
       tokenVerificacion,
       urlVerificacion: urlVerificacion(tokenVerificacion),

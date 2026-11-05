@@ -151,6 +151,7 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
             MAX(tipo_documento) AS tipo_documento,
             MAX(telefono) AS telefono,
             MAX(caja_id) AS caja_id,
+            MAX(cajero_nombre) AS cajero_nombre,
             bool_and(estado = 'Anulado') AS anulado,
             bool_or(estado = 'AnulacionSolicitada') AS anulacion_solicitada
        FROM pagos.transacciones
@@ -170,6 +171,8 @@ async function listarPorCajero(cajero, { desde, hasta } = {}) {
     tipo_documento: r.tipo_documento,
     telefono: r.telefono,
     caja_id: r.caja_id,
+    // TDSI-61/943: "no registrado" para ventas de antes de este cambio (TDSI-199).
+    cajero_nombre: r.cajero_nombre || "no registrado",
     // TDSI-28: la venta con una anulacion pendiente se muestra como "Anulacion solicitada"
     estado: r.anulado ? 'Anulado' : r.anulacion_solicitada ? 'AnulacionSolicitada' : 'Registrado',
   }));
