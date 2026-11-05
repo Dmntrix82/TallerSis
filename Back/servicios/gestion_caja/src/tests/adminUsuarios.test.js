@@ -4,7 +4,7 @@
 // limpia las cuentas y filas que crea.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { crearCajero, listarUsuarios, editarUsuario, cambiarPasswordCajero } = require("../services/adminUsuariosService");
+const { crearCajero, listarUsuarios, editarUsuario, cambiarPasswordCajero, cambiarEstadoUsuario } = require("../services/adminUsuariosService");
 const { autenticarCajero } = require("../services/authService");
 const { query } = require("../config/db");
 
@@ -221,6 +221,73 @@ test("TDSI-917: rechaza una contrasena nueva muy corta y 404 si el cajero no exi
   );
   await assert.rejects(
     () => cambiarPasswordCajero("00000000-0000-0000-0000-000000000000", { password: "clave123" }),
+    (e) => e.status === 404
+  );
+});
+
+// TDSI-918: PATCH /api/usuarios/:id/estado + bloqueo de login de cajeros desactivados.
+test("TDSI-918: desactiva y reactiva un cajero (estado visible en el listado)", async () => {
+  const usuario = emailDePrueba(14);
+  const cajero = await crearCajero({ usuario, password: "clave123", nombre: "Diego Vargas" });
+  cuentasCreadas.push(cajero.cajero_id);
+
+  const d = await cambiarEstadoUsuario(cajero.cajero_id, { activo: false });
+  assert.equal(d.estado, "Inactivo");
+
+  const a = await cambiarEstadoUsuario(cajero.cajero_id, { activo: true });
+  assert.equal(a.estado, "Activo");
+});
+
+test("TDSI-918: un cajero desactivado no puede iniciar sesion, aunque la contrasena sea correcta", async () => {
+  const usuario = emailDePrueba(15);
+  const cajero = await crearCajero({ usuario, password: "clave123", nombre: "Mario Choque" });
+  cuentasCreadas.push(cajero.cajero_id);
+
+  await cambiarEstadoUsuario(cajero.cajero_id, { activo: false });
+  await assert.rejects(
+    () => autenticarCajero({ email: usuario, password: "clave123" }),
+    (e) => e.status === 403
+  );
+
+  await cambiarEstadoUsuario(cajero.cajero_id, { activo: true });
+  const login = await autenticarCajero({ email: usuario, password: "clave123" });
+  assert.equal(login.email, usuario);
+});
+
+test("TDSI-918: una cuenta de Supabase sin perfil en caja.cajeros (p.ej. un Administrador) no se bloquea", async () => {
+  const usuario = emailDePrueba(16);
+  const cajero = await crearCajero({ usuario, password: "clave123", nombre: "Sin Perfil" });
+  cuentasCreadas.push(cajero.cajero_id);
+  await query(`DELETE FROM caja.cajeros WHERE cajero_id = $1`, [cajero.cajero_id]);
+
+  const login = await autenticarCajero({ email: usuario, password: "clave123" });
+  assert.equal(login.email, usuario);
+});
+
+test("TDSI-918: cambia el estado de un supervisor desde la misma ruta", async () => {
+  const usuarioSup = `${PREFIJO}-SUP-918`;
+  const r = await fetch(`${FACTURACION_URL}/api/supervisores`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ usuario: usuarioSup, nombre: "Supervisor 918", pin: "6666" }),
+  });
+  const supervisor = (await r.json()).data;
+  supervisorIdsCreados.push(supervisor.id);
+
+  const d = await cambiarEstadoUsuario(supervisor.id, { activo: false });
+  assert.equal(d.estado, "Inactivo");
+});
+
+test("TDSI-918: valida que 'activo' sea obligatorio y booleano, 404 si el id no existe", async () => {
+  const cajero = await crearCajero({ usuario: emailDePrueba(17), password: "clave123", nombre: "X" });
+  cuentasCreadas.push(cajero.cajero_id);
+
+  await assert.rejects(
+    () => cambiarEstadoUsuario(cajero.cajero_id, {}),
+    (e) => e.status === 400
+  );
+  await assert.rejects(
+    () => cambiarEstadoUsuario("999999999", { activo: false }),
     (e) => e.status === 404
   );
 });

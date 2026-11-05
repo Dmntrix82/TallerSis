@@ -64,4 +64,25 @@ async function editarSupervisor(id, { usuario, nombre }) {
   return datos.data;
 }
 
-module.exports = { validarSupervisor, listarSupervisores, editarSupervisor };
+/** TDSI-47/918: "Activar" / "Desactivar" un supervisor desde la pantalla "Usuarios". */
+async function cambiarEstadoSupervisor(id, activo) {
+  let respuesta;
+  try {
+    respuesta = await fetch(`${FACTURACION_URL}/api/supervisores/${encodeURIComponent(id)}/estado`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activo }),
+    });
+  } catch (e) {
+    throw new AppError("No se pudo cambiar el estado del supervisor en este momento. Intente de nuevo.", 502);
+  }
+
+  const datos = await respuesta.json().catch(() => null);
+  if (!respuesta.ok) {
+    throw new AppError(datos?.mensaje || "No se pudo cambiar el estado del supervisor.", respuesta.status, datos?.detalle);
+  }
+
+  return datos.data;
+}
+
+module.exports = { validarSupervisor, listarSupervisores, editarSupervisor, cambiarEstadoSupervisor };

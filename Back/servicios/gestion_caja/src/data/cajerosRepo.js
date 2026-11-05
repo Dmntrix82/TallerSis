@@ -34,4 +34,13 @@ async function actualizar(cajero_id, { usuario, nombre }) {
   return rows[0] || null;
 }
 
-module.exports = { crear, buscarPorUsuario, listar, buscarPorCajeroId, actualizar };
+/** TDSI-47/918: "Activar" / "Desactivar" -- un cajero desactivado no puede iniciar sesion. */
+async function cambiarEstado(cajero_id, activo) {
+  const { rows } = await query(
+    `UPDATE caja.cajeros SET activo = $2 WHERE cajero_id = $1 RETURNING *`,
+    [cajero_id, activo]
+  );
+  return rows[0] || null;
+}
+
+module.exports = { crear, buscarPorUsuario, listar, buscarPorCajeroId, actualizar, cambiarEstado };

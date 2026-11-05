@@ -1,6 +1,6 @@
 const { AppError } = require("../utils/AppError");
 const cajerosRepo = require("../data/cajerosRepo");
-const { listarSupervisores, editarSupervisor } = require("./supervisorProxy");
+const { listarSupervisores, editarSupervisor, cambiarEstadoSupervisor } = require("./supervisorProxy");
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -171,4 +171,23 @@ async function cambiarPasswordCajero(cajero_id, { password } = {}) {
   return aPublico(cajero);
 }
 
-module.exports = { crearCajero, listarUsuarios, editarUsuario, cambiarPasswordCajero };
+/**
+ * TDSI-47/918: "Activar" / "Desactivar" en la pantalla "Usuarios" -- para un cajero
+ * o un supervisor (mismo criterio que editarUsuario). Un cajero desactivado no
+ * puede volver a iniciar sesion (ver authService.autenticarCajero).
+ */
+async function cambiarEstadoUsuario(id, { activo } = {}) {
+  if (typeof activo !== "boolean") {
+    throw new AppError("El campo 'activo' es obligatorio y debe ser true o false.", 400);
+  }
+
+  const cajero = await cajerosRepo.buscarPorCajeroId(id);
+  if (cajero) {
+    const actualizado = await cajerosRepo.cambiarEstado(id, activo);
+    return aPublico(actualizado);
+  }
+
+  return cambiarEstadoSupervisor(id, activo);
+}
+
+module.exports = { crearCajero, listarUsuarios, editarUsuario, cambiarPasswordCajero, cambiarEstadoUsuario };

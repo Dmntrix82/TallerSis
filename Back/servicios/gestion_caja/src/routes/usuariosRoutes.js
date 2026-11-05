@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { crearCajero, listarUsuarios, editarUsuario, cambiarPasswordCajero } = require("../services/adminUsuariosService");
+const { crearCajero, listarUsuarios, editarUsuario, cambiarPasswordCajero, cambiarEstadoUsuario } = require("../services/adminUsuariosService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -26,6 +26,12 @@ router.put("/:id", wrap(async (req, res) => {
 router.put("/cajeros/:id/password", wrap(async (req, res) => {
   const cajero = await cambiarPasswordCajero(req.params.id, req.body);
   res.json({ ok: true, mensaje: "Contrasena actualizada.", data: cajero });
+}));
+
+// TDSI-47/918: "Activar" / "Desactivar" un cajero o un supervisor.
+router.patch("/:id/estado", wrap(async (req, res) => {
+  const usuario = await cambiarEstadoUsuario(req.params.id, req.body);
+  res.json({ ok: true, data: usuario });
 }));
 
 module.exports = router;
