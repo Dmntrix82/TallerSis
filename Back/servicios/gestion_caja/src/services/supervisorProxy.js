@@ -26,4 +26,21 @@ async function validarSupervisor({ supervisor_id, pin }) {
   return datos.data; // { supervisor_id, nombre }
 }
 
-module.exports = { validarSupervisor };
+/** TDSI-47/916: lista de supervisores para la pantalla "Usuarios" (sin PIN). */
+async function listarSupervisores() {
+  let respuesta;
+  try {
+    respuesta = await fetch(`${FACTURACION_URL}/api/supervisores`);
+  } catch (e) {
+    throw new AppError("No se pudo obtener la lista de supervisores en este momento.", 502);
+  }
+
+  const datos = await respuesta.json().catch(() => null);
+  if (!respuesta.ok) {
+    throw new AppError(datos?.mensaje || "No se pudo obtener la lista de supervisores.", respuesta.status, datos?.detalle);
+  }
+
+  return datos.data; // [{ usuario, nombre, estado, ... }]
+}
+
+module.exports = { validarSupervisor, listarSupervisores };

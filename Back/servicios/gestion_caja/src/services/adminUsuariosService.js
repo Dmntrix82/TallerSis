@@ -1,5 +1,6 @@
 const { AppError } = require("../utils/AppError");
 const cajerosRepo = require("../data/cajerosRepo");
+const { listarSupervisores } = require("./supervisorProxy");
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -72,4 +73,31 @@ async function crearCajero({ usuario, password, nombre }) {
   return aPublico(cajero);
 }
 
-module.exports = { crearCajero };
+/**
+ * TDSI-47/916: lista unificada para la pantalla "Usuarios" -- cajeros (perfil local
+ * en caja.cajeros) y supervisores (vía proxy a facturacion), sin contrasenas ni PIN.
+ * El filtro por rol lo hace el Front sobre esta misma lista.
+ */
+async function listarUsuarios() {
+  const [cajeros, supervisores] = await Promise.all([
+    cajerosRepo.listar(),
+    listarSupervisores(),
+  ]);
+
+  const filasCajeros = cajeros.map((c) => ({
+    usuario: c.usuario,
+    nombre: c.nombre,
+    rol: "Cajero",
+    estado: c.activo ? "Activo" : "Inactivo",
+  }));
+  const filasSupervisores = supervisores.map((s) => ({
+    usuario: s.usuario,
+    nombre: s.nombre,
+    rol: "Supervisor",
+    estado: s.estado,
+  }));
+
+  return [...filasCajeros, ...filasSupervisores];
+}
+
+module.exports = { crearCajero, listarUsuarios };

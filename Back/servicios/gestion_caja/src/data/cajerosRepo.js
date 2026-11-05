@@ -14,4 +14,10 @@ async function buscarPorUsuario(usuario) {
   return rows[0] || null;
 }
 
-module.exports = { crear, buscarPorUsuario };
+/** TDSI-47/916: lista de cajeros para la pantalla "Usuarios". */
+async function listar() {
+  const { rows } = await query(`SELECT * FROM caja.cajeros ORDER BY nombre`);
+  return rows;
+}
+
+module.exports = { crear, buscarPorUsuario, listar };
