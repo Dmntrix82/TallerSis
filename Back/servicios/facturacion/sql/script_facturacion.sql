@@ -212,3 +212,18 @@ ALTER TABLE facturacion.factura_envios_contabilidad
     ADD COLUMN IF NOT EXISTS resultado_motivo      VARCHAR(400),
     ADD COLUMN IF NOT EXISTS resultado_en          TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS resultado_message_id  VARCHAR(100);
+
+-- ==========================================================================
+-- TDSI-48/173: respuestas rápidas para anular facturas (mismo enfoque que TDSI-44).
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS facturacion.respuestas_anulacion (
+    id          BIGSERIAL PRIMARY KEY,
+    cajero_id   VARCHAR(60)  NOT NULL,
+    texto       VARCHAR(300) NOT NULL CHECK (char_length(texto) >= 10),
+    orden       SMALLINT     NOT NULL DEFAULT 1,
+    creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_respuestas_anulacion_cajero ON facturacion.respuestas_anulacion (cajero_id);
+
+ALTER TABLE facturacion.respuestas_anulacion ENABLE ROW LEVEL SECURITY;
