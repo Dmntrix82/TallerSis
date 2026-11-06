@@ -5,7 +5,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const express = require("express");
 const { query, pool } = require("../config/db");
-const { calcularArqueo, compararArqueo, cerrarTurno } = require("../services/cierreService");
+const { calcularArqueo, compararArqueo, cerrarTurno, generarReporteCierre, generarReporteTexto } = require("../services/cierreService");
+const { generarReporteCierrePdfBuffer } = require("../services/reportePdfService");
 const arqueoRepo = require("../data/arqueoRepo");
 
 const SUFIJO = Date.now();
@@ -197,4 +198,46 @@ test("TDSI-879: con una cantidad invalida no se cierra el turno ni se guarda el 
   const { rows } = await query("SELECT estado FROM caja.turnos WHERE id = $1", [turnoId]);
   assert.equal(rows[0].estado, "ABIERTO");
   assert.deepEqual(await arqueoRepo.listarPorTurno(turnoId), []);
+});
+
+test("TDSI-880/889: el reporte de cierre trae el detalle de billetes y monedas contados", async () => {
+  const turnoId = await crearTurno("G");
+  await venderEfectivo(turnoId, 250);
+  await cerrarTurno(turnoId, {
+    ...SUPERVISOR,
+    arqueo: [{ denominacion: 100, cantidad: 3 }, { denominacion: 50, cantidad: 1 }, { denominacion: 0.2, cantidad: 5 }],
+  });
+
+  // sin mandar el monto: el turno cerrado usa lo que se guardo al cerrar
+  const r = await generarReporteCierre(turnoId);
+  assert.equal(r.arqueoEfectivo.efectivoContado, 351);
+  assert.equal(r.arqueoEfectivo.tipoDiferencia, "SOBRANTE");
+  assert.deepEqual(r.arqueoDenominaciones, {
+    detalle: [
+      { denominacion: 100, cantidad: 3, subtotal: 300, tipo: "BILLETE" },
+      { denominacion: 50, cantidad: 1, subtotal: 50, tipo: "BILLETE" },
+      { denominacion: 0.2, cantidad: 5, subtotal: 1, tipo: "MONEDA" },
+    ],
+    totalContado: 351,
+  });
+
+  const texto = await generarReporteTexto(turnoId);
+  assert.match(texto, /DETALLE DEL CONTEO/);
+  assert.match(texto, /Billete Bs 100\.00 x 3 +300\.00/);
+  assert.match(texto, /Moneda Bs 0\.20 x 5 +1\.00/);
+  assert.match(texto, /TOTAL CONTADO +351\.00/);
+
+  const pdf = await generarReporteCierrePdfBuffer(r, { cajeroNombre: r.cajero });
+  assert.equal(pdf.subarray(0, 4).toString(), "%PDF");
+  const sinDetalle = await generarReporteCierrePdfBuffer({ ...r, arqueoDenominaciones: null }, { cajeroNombre: r.cajero });
+  assert.ok(pdf.length > sinDetalle.length, "el PDF con el detalle del conteo tiene que ser mas grande");
+});
+
+test("TDSI-880: un turno cerrado sin arqueo por denominacion no trae detalle", async () => {
+  const turnoId = await crearTurno("H");
+  await cerrarTurno(turnoId, { ...SUPERVISOR, efectivo_contado: 100 });
+  const r = await generarReporteCierre(turnoId);
+  assert.equal(r.arqueoDenominaciones, null);
+  assert.equal(r.arqueoEfectivo.tipoDiferencia, "CUADRA");
+  assert.doesNotMatch(await generarReporteTexto(turnoId), /DETALLE DEL CONTEO/);
 });

@@ -142,13 +142,30 @@ async function compararArqueo(turnoId, detalle) {
   return { ...comparacion, denominaciones: filas };
 }
 
+/**
+ * TDSI-880: billetes y monedas contados en el turno, para el reporte de cierre.
+ * null si el turno se cerro sin arqueo por denominacion.
+ */
+async function obtenerArqueoDenominaciones(turnoId) {
+  const filas = await arqueoRepo.listarPorTurno(turnoId);
+  if (filas.length === 0) return null;
+  const totalC = filas.reduce((acc, f) => acc + aCentavos(f.subtotal), 0);
+  return { detalle: filas.map((f) => ({ ...f, tipo: tipoDe(f.denominacion) })), totalContado: aMonto(totalC) };
+}
+
 /** TDSI-321: arma el reporte de cierre con totales por método (datos estructurados). */
 async function generarReporteCierre(turnoId, efectivoContado = null) {
   const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
   if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
 
   const recaudado = await calcularTotalRecaudado(turnoId);
-  const arqueo = efectivoContado != null ? await compararEfectivo(turnoId, efectivoContado) : null;
+  // TDSI-880: un turno ya cerrado usa el efectivo contado que se guardo al cerrarlo,
+  // asi el reporte (PDF o texto) muestra su arqueo aunque no se mande el monto.
+  const contado = efectivoContado != null
+    ? efectivoContado
+    : turno.efectivo_contado != null ? Number(turno.efectivo_contado) : null;
+  const arqueo = contado != null ? await compararEfectivo(turnoId, contado) : null;
+  const arqueoDenominaciones = await obtenerArqueoDenominaciones(turnoId);
 
   return {
     turnoId,
@@ -165,6 +182,7 @@ async function generarReporteCierre(turnoId, efectivoContado = null) {
     operaciones: recaudado.operaciones,
     resumenVentas: recaudado.resumenVentas,
     arqueoEfectivo: arqueo,
+    arqueoDenominaciones,
   };
 }
 
@@ -216,6 +234,17 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
     L.push(col("  Esperado", r.arqueoEfectivo.efectivoEsperado.toFixed(2)));
     L.push(col("  Contado", r.arqueoEfectivo.efectivoContado.toFixed(2)));
     L.push(col(`  ${r.arqueoEfectivo.tipoDiferencia}`, r.arqueoEfectivo.diferencia.toFixed(2)));
+  }
+
+  // TDSI-880: detalle de billetes y monedas contados
+  if (r.arqueoDenominaciones) {
+    L.push(linea());
+    L.push("DETALLE DEL CONTEO");
+    for (const d of r.arqueoDenominaciones.detalle) {
+      const nombre = `${d.tipo === "BILLETE" ? "Billete" : "Moneda"} Bs ${d.denominacion.toFixed(2)}`;
+      L.push(col(`  ${nombre} x ${d.cantidad}`, d.subtotal.toFixed(2)));
+    }
+    L.push(col("  TOTAL CONTADO", r.arqueoDenominaciones.totalContado.toFixed(2)));
   }
 
   L.push(linea("="));
