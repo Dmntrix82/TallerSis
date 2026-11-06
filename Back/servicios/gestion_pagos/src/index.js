@@ -39,6 +39,7 @@ app.use("/api/pagos/monitoreo", monitoreoRoutes); // TDSI-23/426 (antes de /api/
 app.use("/api/pagos/revision", revisionRoutes); // TDSI-27/131 (antes de /api/pagos)
 app.use("/api/pagos/historial-cajeros", historialCajerosRoutes); // TDSI-33/434 (antes de /api/pagos)
 app.use("/api/pagos/metodos", metodosPagoRoutes); // TDSI-34/438 (antes de /api/pagos)
+app.use("/api/pagos", require("./routes/resumenAutorizacionRoutes")); // TDSI-59/195
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/pagos", pagoMixtoRoutes);
 app.use("/api/pagos", ventaOnlineRoutes);
