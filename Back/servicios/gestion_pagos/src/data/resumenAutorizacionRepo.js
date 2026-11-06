@@ -31,4 +31,16 @@ async function solicitudAnulacionPendiente(id_transaccion) {
   return rows[0] || null;
 }
 
-module.exports = { filasDeVenta, solicitudAnulacionPendiente };
+/** TDSI-904: modificaciones ya hechas a la venta (TDSI-37), de la mas reciente a la mas antigua. */
+async function modificacionesAnteriores(id_transaccion) {
+  const { rows } = await query(
+    `SELECT campo, valor_anterior, valor_nuevo, modificado_por, autorizado_por, modificado_en
+       FROM pagos.bitacora_modificaciones
+      WHERE id_transaccion = $1
+      ORDER BY modificado_en DESC, id DESC`,
+    [id_transaccion]
+  );
+  return rows;
+}
+
+module.exports = { filasDeVenta, solicitudAnulacionPendiente, modificacionesAnteriores };
