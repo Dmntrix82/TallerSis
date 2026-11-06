@@ -256,3 +256,11 @@ ALTER TABLE caja.aprobaciones_especiales
 
 CREATE INDEX IF NOT EXISTS idx_aprobaciones_especiales_estado
   ON caja.aprobaciones_especiales (estado, tipo, creado_en DESC);
+
+-- ==========================================================================
+-- TDSI-53/852: registrar hora de bloqueo/desbloqueo e intentos fallidos.
+-- ==========================================================================
+ALTER TABLE caja.sesiones_cajero
+    ADD COLUMN IF NOT EXISTS bloqueada_en TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS desbloqueada_en TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS intentos_desbloqueo INT NOT NULL DEFAULT 0;
