@@ -106,6 +106,16 @@ async function compararEfectivo(turnoId, efectivoContado) {
   };
 }
 
+/**
+ * TDSI-878: compara el total del arqueo por denominacion con el efectivo esperado del
+ * turno, para mostrar cuadra / faltante / sobrante antes de confirmar el cierre.
+ */
+async function compararArqueo(turnoId, detalle) {
+  const { filas, totalContado } = calcularArqueo(detalle);
+  const comparacion = await compararEfectivo(turnoId, totalContado);
+  return { ...comparacion, denominaciones: filas };
+}
+
 /** TDSI-321: arma el reporte de cierre con totales por método (datos estructurados). */
 async function generarReporteCierre(turnoId, efectivoContado = null) {
   const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
@@ -210,14 +220,24 @@ async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado, arqu
   }
 
   const conteo = detalleArqueo !== undefined && detalleArqueo !== null ? calcularArqueo(detalleArqueo) : null;
+  // TDSI-878: con arqueo, el efectivo contado ES su total; si tambien mandan
+  // efectivo_contado, tiene que coincidir para no guardar dos montos distintos.
+  if (conteo && hayContado && aCentavos(efectivo_contado) !== aCentavos(conteo.totalContado)) {
+    throw new AppError(
+      `El efectivo contado (${Number(efectivo_contado).toFixed(2)}) no coincide con el total del arqueo (${conteo.totalContado.toFixed(2)}).`,
+      400,
+      { efectivo_contado: Number(efectivo_contado), total_arqueo: conteo.totalContado }
+    );
+  }
+  const contado = conteo ? conteo.totalContado : hayContado ? Number(efectivo_contado) : null;
 
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
   // Se guarda antes de marcar el turno cerrado: si el cierre falla, un reintento lo reemplaza.
   const denominaciones = conteo ? await arqueoRepo.reemplazarArqueo(turnoId, conteo.filas) : [];
 
-  // Si viene efectivo_contado, calculamos la diferencia
-  const arqueo = hayContado ? await compararEfectivo(turnoId, Number(efectivo_contado)) : null;
+  // Si viene el arqueo o efectivo_contado, calculamos la diferencia contra lo esperado
+  const arqueo = contado !== null ? await compararEfectivo(turnoId, contado) : null;
 
   const turnoCerrado = await turnosRepo.marcarCerrado(turnoId, {
     efectivoContado: arqueo ? arqueo.efectivoContado : null,
@@ -246,4 +266,4 @@ async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado, arqu
   };
 }
 
-module.exports = { calcularTotalRecaudado, calcularArqueo, compararEfectivo, generarReporteCierre, generarReporteTexto, cerrarTurno };
+module.exports = { calcularTotalRecaudado, calcularArqueo, compararEfectivo, compararArqueo, generarReporteCierre, generarReporteTexto, cerrarTurno };

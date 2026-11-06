@@ -5,7 +5,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const express = require("express");
 const { query, pool } = require("../config/db");
-const { calcularArqueo, cerrarTurno } = require("../services/cierreService");
+const { calcularArqueo, compararArqueo, cerrarTurno } = require("../services/cierreService");
 const arqueoRepo = require("../data/arqueoRepo");
 
 const SUFIJO = Date.now();
@@ -39,6 +39,14 @@ test.after(async () => {
   await query("DELETE FROM caja.cajas WHERE codigo = $1", [CAJA_ID]);
   await pool.end();
 });
+
+async function venderEfectivo(turnoId, monto) {
+  await query(
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, caja_id, turno_id, estado)
+     VALUES ($1, 'Efectivo', $2, 'Simple', $3, $4, 'Registrado')`,
+    [`VTA-ARQ-${turnoId}-${monto}`, monto, CAJA_ID, turnoId]
+  );
+}
 
 test("TDSI-877/886: 3 billetes de 100 y 2 de 50 suman Bs 400.00", () => {
   const r = calcularArqueo([
@@ -91,6 +99,67 @@ test("TDSI-60/885: GET /api/caja/arqueo/denominaciones lista los 5 billetes y la
     const { data } = await r.json();
     assert.deepEqual(data.map((d) => d.valor), [200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1]);
     assert.equal(data.filter((d) => d.tipo === "BILLETE").length, 5);
+  } finally {
+    await new Promise((ok) => servidor.close(ok));
+  }
+});
+
+test("TDSI-878/887: el total del arqueo se compara con el efectivo esperado (Faltante)", async () => {
+  const turnoId = await crearTurno("B");
+  await venderEfectivo(turnoId, 250); // esperado = 100 inicial + 250 = 350
+  const r = await compararArqueo(turnoId, [{ denominacion: 100, cantidad: 3 }, { denominacion: 20, cantidad: 2 }]);
+  assert.equal(r.efectivoEsperado, 350);
+  assert.equal(r.efectivoContado, 340);
+  assert.equal(r.tipoDiferencia, "FALTANTE");
+  assert.equal(r.diferencia, -10);
+  assert.deepEqual(r.denominaciones.map((d) => d.subtotal), [300, 40]);
+});
+
+test("TDSI-878: al cerrar, la diferencia del turno sale del total del arqueo", async () => {
+  const turnoId = await crearTurno("C");
+  await venderEfectivo(turnoId, 250);
+  const r = await cerrarTurno(turnoId, {
+    ...SUPERVISOR,
+    arqueo: [{ denominacion: 200, cantidad: 1 }, { denominacion: 100, cantidad: 1 }, { denominacion: 50, cantidad: 1 }, { denominacion: 1, cantidad: 2 }],
+  });
+  assert.equal(Number(r.turno.efectivo_contado), 352);
+  assert.equal(Number(r.turno.efectivo_esperado), 350);
+  assert.equal(r.turno.tipo_diferencia, "SOBRANTE");
+  assert.equal(r.reporte.arqueoEfectivo.diferencia, 2);
+  const { rows } = await query("SELECT tipo, monto FROM caja.diferencias_resolucion WHERE turno_id = $1", [turnoId]);
+  assert.deepEqual(rows.map((f) => [f.tipo, Number(f.monto)]), [["SOBRANTE", 2]]);
+});
+
+test("TDSI-878: si mandan efectivo_contado y arqueo, tienen que coincidir", async () => {
+  const turnoId = await crearTurno("D");
+  await assert.rejects(
+    () => cerrarTurno(turnoId, { ...SUPERVISOR, efectivo_contado: 500, arqueo: [{ denominacion: 100, cantidad: 4 }] }),
+    { status: 400 }
+  );
+  const { rows } = await query("SELECT estado FROM caja.turnos WHERE id = $1", [turnoId]);
+  assert.equal(rows[0].estado, "ABIERTO");
+  const r = await cerrarTurno(turnoId, { ...SUPERVISOR, efectivo_contado: "400.00", arqueo: [{ denominacion: 100, cantidad: 4 }] });
+  assert.equal(Number(r.turno.efectivo_contado), 400);
+});
+
+test("TDSI-878: POST /api/caja/turnos/:id/comparar-efectivo acepta el arqueo", async () => {
+  const turnoId = await crearTurno("E");
+  await venderEfectivo(turnoId, 250);
+  const app = express();
+  app.use(express.json());
+  app.use("/api/caja", require("../routes/turnosRoutes"));
+  app.use(require("../middlewares/errorHandler").errorHandler);
+  const servidor = await new Promise((ok) => { const s = app.listen(0, () => ok(s)); });
+  try {
+    const r = await fetch(`http://localhost:${servidor.address().port}/api/caja/turnos/${turnoId}/comparar-efectivo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ arqueo: [{ denominacion: 200, cantidad: 1 }, { denominacion: 50, cantidad: 3 }] }),
+    });
+    assert.equal(r.status, 200);
+    const { data } = await r.json();
+    assert.equal(data.efectivoContado, 350);
+    assert.equal(data.tipoDiferencia, "CUADRA");
   } finally {
     await new Promise((ok) => servidor.close(ok));
   }

@@ -40,8 +40,11 @@ router.get("/turnos/:turnoId/recaudado", wrap(async (req, res) => {
   res.json({ ok: true, data });
 }));
 
+// TDSI-878: con { arqueo: [{ denominacion, cantidad }] } compara el total del arqueo.
 router.post("/turnos/:turnoId/comparar-efectivo", wrap(async (req, res) => {
-  const data = await cierre.compararEfectivo(req.params.turnoId, req.body.efectivoContado);
+  const data = req.body.arqueo !== undefined
+    ? await cierre.compararArqueo(req.params.turnoId, req.body.arqueo)
+    : await cierre.compararEfectivo(req.params.turnoId, req.body.efectivoContado);
   res.json({ ok: true, data });
 }));
 
