@@ -3,6 +3,9 @@ import { listarMisFacturas, anularVenta, solicitarAnulacionPendiente, modificarV
 import { useAuth } from '../context/AuthContext.jsx'
 import BuscadorFacturas from '../components/BuscadorFacturas.jsx'
 import useDebounce from '../hooks/useDebounce.js'
+import useResumenFactura from '../hooks/useResumenFactura.js'
+import ResumenFactura from '../components/ResumenFactura.jsx'
+import ComparacionModificacion from '../components/ComparacionModificacion.jsx'
 
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000 // 2 horas
 const MOTIVO_MAX = 300
@@ -80,6 +83,23 @@ function Facturas() {
   const [errorModificar, setErrorModificar] = useState(null)
   const [modificando, setModificando] = useState(false)
   const [tiempoRestante, setTiempoRestante] = useState(null)
+
+  // TDSI-59: resumen de la factura que se muestra antes del PIN del supervisor
+  // (anulación o modificación; solo hay una ventana abierta a la vez).
+  const {
+    resumen,
+    cargando: cargandoResumen,
+    error: errorResumen,
+    reintentar: reintentarResumen,
+  } = useResumenFactura(facturaParaAnular?.id_transaccion ?? facturaParaModificar?.id_transaccion ?? null)
+  // TDSI-909: se muestra el N° de factura, no el número interno de la transacción
+  const numeroFactura =
+    resumen?.numero_factura ??
+    resumen?.nro_factura ??
+    resumen?.numero ??
+    facturaParaAnular?.numero_factura ??
+    facturaParaModificar?.numero_factura ??
+    null
 
   async function cargarFacturas() {
     if (!cajero) return
@@ -377,12 +397,20 @@ function Facturas() {
       {/* Ventana emergente 1: usuario + PIN del supervisor de caja */}
       {facturaParaAnular && !pidiendoConfirmacion && !pidiendoMotivoSolicitud && (
         <div className="modal-overlay">
-          <form className="modal-caja" onSubmit={aceptarCredenciales}>
+          <form className="modal-caja modal-caja-ancho" onSubmit={aceptarCredenciales}>
             <h2>Autorización de supervisor</h2>
-            <p>
-              Para anular la factura <strong>{facturaParaAnular.id_transaccion}</strong> se necesita el usuario y el PIN
-              de un supervisor de caja.
-            </p>
+            <p className="factura-numero-destacado">Factura N° {cargandoResumen ? '…' : (numeroFactura ?? '—')}</p>
+
+            {/* TDSI-196 / 907 / 910: resumen de la factura antes de los campos de PIN */}
+            <ResumenFactura
+              resumen={resumen}
+              cargando={cargandoResumen}
+              error={errorResumen}
+              onReintentar={reintentarResumen}
+              factura={facturaParaAnular}
+            />
+
+            <p>Para anular esta factura se necesita el usuario y el PIN de un supervisor de caja.</p>
 
             <label className="campo">
               Usuario del supervisor
@@ -412,7 +440,7 @@ function Facturas() {
               <button type="button" className="btn btn-secundario" onClick={cerrarTodo}>
                 Cancelar
               </button>
-              <button type="submit" className="btn">
+              <button type="submit" className="btn" disabled={cargandoResumen}>
                 Aceptar
               </button>
             </div>
@@ -431,7 +459,7 @@ function Facturas() {
           <form className="modal-caja" onSubmit={enviarSolicitudAnulacion}>
             <h2>Solicitar anulación</h2>
             <p>
-              La factura <strong>{facturaParaAnular.id_transaccion}</strong> quedará en espera hasta que un supervisor
+              La factura <strong>{numeroFactura ?? facturaParaAnular.id_transaccion}</strong> quedará en espera hasta que un supervisor
               la revise y la apruebe o la rechace desde su panel.
             </p>
 
@@ -469,7 +497,7 @@ function Facturas() {
           <div className="modal-caja">
             <h2>¿Está seguro?</h2>
             <p>
-              ¿Desea anular la factura número <strong>{facturaParaAnular.id_transaccion}</strong>? Esta acción no se
+              ¿Desea anular la factura número <strong>{numeroFactura ?? facturaParaAnular.id_transaccion}</strong>? Esta acción no se
               puede deshacer.
             </p>
 
@@ -488,14 +516,23 @@ function Facturas() {
       {/* TDSI-37: modificar los datos de facturacion de una venta, con PIN de supervisor */}
       {facturaParaModificar && formModificar && (
         <div className="modal-overlay">
-          <form className="modal-caja" onSubmit={enviarModificacion}>
-            <h2>Modificar factura {facturaParaModificar.id_transaccion}</h2>
+          <form className="modal-caja modal-caja-ancho" onSubmit={enviarModificacion}>
+            <h2>Modificar factura</h2>
+            <p className="factura-numero-destacado">Factura N° {cargandoResumen ? '…' : (numeroFactura ?? '—')}</p>
 
             {tiempoRestante ? (
               <p className="ayuda-mixto">{tiempoRestante} para poder modificar esta factura.</p>
             ) : (
               <p className="error">Ya pasaron las 2 horas desde la emisión: no se puede modificar.</p>
             )}
+
+            <ResumenFactura
+              resumen={resumen}
+              cargando={cargandoResumen}
+              error={errorResumen}
+              onReintentar={reintentarResumen}
+              factura={facturaParaModificar}
+            />
 
             <div className="tipo-venta-opciones">
               {TIPOS_DOCUMENTO_MOD.map((tipo) => (
@@ -538,6 +575,17 @@ function Facturas() {
                 onChange={(e) => actualizarFormModificar('telefono', e.target.value)}
               />
             </label>
+
+            {/* TDSI-908 / 914: dato actual y dato nuevo lado a lado, antes del PIN */}
+            <ComparacionModificacion
+              actual={{
+                tipoDocumento: facturaParaModificar.tipo_documento || 'NIT',
+                numeroDocumento: facturaParaModificar.nit || '',
+                razonSocial: facturaParaModificar.razon_social || '',
+                telefono: facturaParaModificar.telefono || '',
+              }}
+              nuevo={formModificar}
+            />
 
             <label className="campo">
               Usuario del supervisor
