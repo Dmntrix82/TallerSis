@@ -9,10 +9,13 @@ const repo = require("../data/resumenAutorizacionRepo");
  * - items: las ventas de caja no guardan detalle por producto (no hay catalogo y el
  *   formulario de "Pagos" solo pide el monto), asi que se arma un solo item con el
  *   total de la venta; items_detallados = false lo deja claro.
+ * - motivo (TDSI-903): el que escribio el cajero al pedir la anulacion, si esta pendiente.
  */
 async function obtenerResumenAutorizacion(id_transaccion) {
-  const filas = await repo.filasDeVenta(String(id_transaccion || "").trim());
+  const id = String(id_transaccion || "").trim();
+  const filas = await repo.filasDeVenta(id);
   if (filas.length === 0) throw new AppError("Transaccion no encontrada.", 404);
+  const solicitud = await repo.solicitudAnulacionPendiente(id);
 
   const primera = filas[0];
   const totalC = filas.reduce((acc, f) => acc + aCentavos(f.monto), 0);
@@ -35,6 +38,10 @@ async function obtenerResumenAutorizacion(id_transaccion) {
     caja_id: primera.caja_id,
     items: [{ descripcion: "Venta", cantidad: 1, precio_unitario: total, subtotal: total }],
     items_detallados: false,
+    motivo: solicitud ? solicitud.motivo : null,
+    solicitud: solicitud
+      ? { motivo: solicitud.motivo, solicitado_por: solicitud.solicitado_por, solicitado_en: solicitud.solicitado_en }
+      : null,
   };
 }
 
