@@ -2,6 +2,9 @@ const { AppError } = require("../utils/AppError");
 const { aCentavos, aMonto } = require("../utils/money");
 const repo = require("../data/resumenAutorizacionRepo");
 
+// TDSI-905: mismo largo que pagos.transacciones.id_transaccion.
+const ID_MAX = 60;
+
 /**
  * TDSI-195: resumen de la factura que ve el supervisor en la ventana "Autorizacion de
  * supervisor" antes de escribir su PIN (anulacion o modificacion).
@@ -16,8 +19,17 @@ const repo = require("../data/resumenAutorizacionRepo");
  */
 async function obtenerResumenAutorizacion(id_transaccion) {
   const id = String(id_transaccion || "").trim();
+  if (!id || id.length > ID_MAX) {
+    throw new AppError("El N° de factura no es valido.", 400, { id_transaccion: id.slice(0, 20) });
+  }
   const filas = await repo.filasDeVenta(id);
-  if (filas.length === 0) throw new AppError("Transaccion no encontrada.", 404);
+  // TDSI-905: 404 con un mensaje que el supervisor entienda, sin mostrar una vista previa vacia.
+  if (filas.length === 0) {
+    throw new AppError(`La factura ${id} no existe.`, 404, { id_transaccion: id });
+  }
+  if (filas.every((f) => f.estado === "Anulado")) {
+    throw new AppError(`La factura ${id} ya esta anulada: no se puede anular ni modificar.`, 404, { id_transaccion: id, estado: "Anulado" });
+  }
   const [solicitud, modificaciones] = await Promise.all([
     repo.solicitudAnulacionPendiente(id),
     repo.modificacionesAnteriores(id),
