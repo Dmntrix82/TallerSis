@@ -2,6 +2,8 @@ const { AppError } = require("../utils/AppError");
 const { aCentavos, aMonto } = require("../utils/money");
 const turnosRepo = require("../data/turnosRepo");
 const diferenciasRepo = require("../data/diferenciasRepo");
+const arqueoRepo = require("../data/arqueoRepo");
+const { tipoDe } = require("../utils/denominaciones");
 const { obtenerReporteVentas } = require("./pagosProxy");
 const { validarSupervisor } = require("./supervisorProxy");
 
@@ -40,6 +42,34 @@ async function calcularTotalRecaudado(turnoId) {
       montoAnulado: reporteVentas.montoAnulado,
     },
   };
+}
+
+/**
+ * TDSI-877: arma el arqueo a partir de lo que conto el cajero.
+ * detalle: [{ denominacion: 100, cantidad: 3 }, ...] -> filas con subtotal (solo las que
+ * tienen cantidad) y el total contado. Se suma en centavos para no perder las monedas de
+ * 0.10, 0.20 y 0.50 por redondeo.
+ */
+function calcularArqueo(detalle) {
+  if (!Array.isArray(detalle) || detalle.length === 0) {
+    throw new AppError("El arqueo debe ser una lista de { denominacion, cantidad }.", 400);
+  }
+
+  let totalC = 0;
+  const filas = [];
+  for (const item of detalle) {
+    const denominacion = Number(item && item.denominacion);
+    if (!tipoDe(denominacion)) {
+      throw new AppError(`${item && item.denominacion} no es un billete ni una moneda de Bs.`, 400, { denominacion: item && item.denominacion });
+    }
+    const cantidad = Number(item.cantidad);
+    const subtotalC = aCentavos(denominacion) * cantidad;
+    totalC += subtotalC;
+    if (cantidad > 0) filas.push({ denominacion, cantidad, subtotal: aMonto(subtotalC) });
+  }
+
+  filas.sort((a, b) => b.denominacion - a.denominacion);
+  return { filas, totalContado: aMonto(totalC) };
 }
 
 /** TDSI-320: compara efectivo inicial + ventas en efectivo - egresos en efectivo, contra lo contado. */
@@ -161,8 +191,10 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
  * la apertura, el cajero no puede cerrar la caja solo: necesita que un supervisor
  * ponga su usuario + PIN (validado via supervisorProxy.js). Ya no pide el monto
  * contado en efectivo: el cierre se basa solo en lo que registro el sistema.
+ * TDSI-877: tambien recibe el arqueo por denominacion ("arqueo"), lo guarda en
+ * caja.arqueo_denominaciones y devuelve el total contado.
  */
-async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {}) {
+async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado, arqueo: detalleArqueo } = {}) {
   const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
   if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
   if (turno.estado === "CERRADO") throw new AppError("El turno ya fue cerrado", 409, { turnoId });
@@ -177,7 +209,12 @@ async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {
     throw new AppError("El efectivo contado debe ser un numero mayor o igual a 0", 400);
   }
 
+  const conteo = detalleArqueo !== undefined && detalleArqueo !== null ? calcularArqueo(detalleArqueo) : null;
+
   const supervisor = await validarSupervisor({ supervisor_id, pin });
+
+  // Se guarda antes de marcar el turno cerrado: si el cierre falla, un reintento lo reemplaza.
+  const denominaciones = conteo ? await arqueoRepo.reemplazarArqueo(turnoId, conteo.filas) : [];
 
   // Si viene efectivo_contado, calculamos la diferencia
   const arqueo = hayContado ? await compararEfectivo(turnoId, Number(efectivo_contado)) : null;
@@ -202,7 +239,11 @@ async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {
     });
   }
 
-  return { turno: turnoCerrado, reporte };
+  return {
+    turno: turnoCerrado,
+    reporte,
+    arqueoDenominaciones: conteo ? { detalle: denominaciones, totalContado: conteo.totalContado } : null,
+  };
 }
 
-module.exports = { calcularTotalRecaudado, compararEfectivo, generarReporteCierre, generarReporteTexto, cerrarTurno };
+module.exports = { calcularTotalRecaudado, calcularArqueo, compararEfectivo, generarReporteCierre, generarReporteTexto, cerrarTurno };
