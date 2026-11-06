@@ -44,6 +44,24 @@ async function calcularTotalRecaudado(turnoId) {
   };
 }
 
+// TDSI-879: tope por denominacion, para frenar un numero escrito de mas (ej. 1000000).
+const CANTIDAD_MAX = 100000;
+
+/** TDSI-879: la cantidad de billetes o monedas tiene que ser un entero >= 0 (vacio cuenta como 0). */
+function validarCantidad(valor, denominacion) {
+  if (valor === undefined || valor === null || valor === "") return 0;
+  const unidad = `${tipoDe(denominacion) === "BILLETE" ? "billetes" : "monedas"} de Bs ${denominacion.toFixed(2)}`;
+  const texto = typeof valor === "string" ? valor.trim() : valor;
+  const cantidad = typeof texto === "number" || (typeof texto === "string" && /^-?\d+(\.\d+)?$/.test(texto)) ? Number(texto) : NaN;
+  if (!Number.isInteger(cantidad) || cantidad < 0) {
+    throw new AppError(`Solo números enteros: la cantidad de ${unidad} debe ser un entero mayor o igual a 0.`, 400, { denominacion, cantidad: valor });
+  }
+  if (cantidad > CANTIDAD_MAX) {
+    throw new AppError(`La cantidad de ${unidad} no puede pasar de ${CANTIDAD_MAX}.`, 400, { denominacion, cantidad: valor });
+  }
+  return cantidad;
+}
+
 /**
  * TDSI-877: arma el arqueo a partir de lo que conto el cajero.
  * detalle: [{ denominacion: 100, cantidad: 3 }, ...] -> filas con subtotal (solo las que
@@ -57,12 +75,20 @@ function calcularArqueo(detalle) {
 
   let totalC = 0;
   const filas = [];
+  const vistas = new Set();
   for (const item of detalle) {
-    const denominacion = Number(item && item.denominacion);
-    if (!tipoDe(denominacion)) {
-      throw new AppError(`${item && item.denominacion} no es un billete ni una moneda de Bs.`, 400, { denominacion: item && item.denominacion });
+    if (!item || typeof item !== "object") {
+      throw new AppError("Cada fila del arqueo debe ser { denominacion, cantidad }.", 400);
     }
-    const cantidad = Number(item.cantidad);
+    const denominacion = Number(item.denominacion);
+    if (!tipoDe(denominacion)) {
+      throw new AppError(`${item.denominacion} no es un billete ni una moneda de Bs.`, 400, { denominacion: item.denominacion });
+    }
+    if (vistas.has(denominacion)) {
+      throw new AppError(`La denominacion de Bs ${denominacion.toFixed(2)} esta repetida en el arqueo.`, 400, { denominacion });
+    }
+    vistas.add(denominacion);
+    const cantidad = validarCantidad(item.cantidad, denominacion);
     const subtotalC = aCentavos(denominacion) * cantidad;
     totalC += subtotalC;
     if (cantidad > 0) filas.push({ denominacion, cantidad, subtotal: aMonto(subtotalC) });

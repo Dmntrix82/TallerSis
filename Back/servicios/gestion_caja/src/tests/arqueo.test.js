@@ -164,3 +164,37 @@ test("TDSI-878: POST /api/caja/turnos/:id/comparar-efectivo acepta el arqueo", a
     await new Promise((ok) => servidor.close(ok));
   }
 });
+
+test("TDSI-879/888: 1.5 en una cantidad responde \"Solo números enteros\"", () => {
+  assert.throws(() => calcularArqueo([{ denominacion: 100, cantidad: 1.5 }]), (e) => e.status === 400 && /Solo números enteros/.test(e.message));
+  assert.throws(() => calcularArqueo([{ denominacion: 0.5, cantidad: "1.5" }]), /monedas de Bs 0.50/);
+});
+
+test("TDSI-879: rechaza cantidades negativas, texto, booleanos y numeros enormes", () => {
+  for (const cantidad of [-1, "-2", "abc", "2e1", true, [], {}, 100001]) {
+    assert.throws(() => calcularArqueo([{ denominacion: 10, cantidad }]), { status: 400 }, `cantidad ${JSON.stringify(cantidad)}`);
+  }
+});
+
+test("TDSI-879: una cantidad vacia cuenta como 0 y \"3\" como 3", () => {
+  const r = calcularArqueo([
+    { denominacion: 50, cantidad: "" },
+    { denominacion: 20, cantidad: null },
+    { denominacion: 10, cantidad: " 3 " },
+  ]);
+  assert.equal(r.totalContado, 30);
+  assert.deepEqual(r.filas, [{ denominacion: 10, cantidad: 3, subtotal: 30 }]);
+});
+
+test("TDSI-879: rechaza una denominacion repetida o una fila que no es objeto", () => {
+  assert.throws(() => calcularArqueo([{ denominacion: 10, cantidad: 1 }, { denominacion: "10", cantidad: 2 }]), { status: 400 });
+  assert.throws(() => calcularArqueo([null]), { status: 400 });
+});
+
+test("TDSI-879: con una cantidad invalida no se cierra el turno ni se guarda el arqueo", async () => {
+  const turnoId = await crearTurno("F");
+  await assert.rejects(() => cerrarTurno(turnoId, { ...SUPERVISOR, arqueo: [{ denominacion: 100, cantidad: 2.5 }] }), { status: 400 });
+  const { rows } = await query("SELECT estado FROM caja.turnos WHERE id = $1", [turnoId]);
+  assert.equal(rows[0].estado, "ABIERTO");
+  assert.deepEqual(await arqueoRepo.listarPorTurno(turnoId), []);
+});
