@@ -141,8 +141,10 @@ const sinTildes = (texto) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, 
  */
 function agregarBusqueda(q, condiciones, params) {
   if (/^\d{1,6}$/.test(q)) {
-    params.push(Number(q));
-    condiciones.push(`substring(id_transaccion from '(\\d+)$')::bigint = $${params.length}`);
+    // Se compara como texto sin ceros a la izquierda (no ::bigint): un id con mas de 19
+    // digitos al final (ej. uno importado) hacia fallar toda la busqueda con "out of range".
+    params.push(q.replace(/^0+/, "") || "0");
+    condiciones.push(`COALESCE(NULLIF(ltrim(substring(id_transaccion from '(\\d+)$'), '0'), ''), '0') = $${params.length}`);
   } else if (/^\d{7,}$/.test(q)) {
     params.push(`${q}%`);
     condiciones.push(`nit LIKE $${params.length}`);
