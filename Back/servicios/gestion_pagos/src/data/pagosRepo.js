@@ -135,14 +135,23 @@ const sinTildes = (texto) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, 
 
 /**
  * TDSI-169: condicion del buscador de "Facturas".
- * - Solo digitos, hasta 6 (ej. "54" o "000054"): N° de factura -> VTA-000054 exacto.
+ * - Solo digitos, hasta 6 (ej. "54" o "000054"), o con el prefijo ("VTA-54", "vta 54"):
+ *   N° de factura -> VTA-000054 exacto.
  * - Solo digitos, 7 o mas: NIT (10 digitos) o CI (7-8), por prefijo.
  * - Cualquier otro texto: parte del N° de factura ("VTA-0000") o del nombre del cliente.
  */
 function agregarBusqueda(q, condiciones, params) {
+  // "VTA-54", "vta 54" o "VTA54" tambien son el N° de factura 54. Con ceros a la izquierda
+  // y menos de 6 digitos ("VTA-0000") se deja como busqueda parcial, por si sigue escribiendo.
+  const conPrefijo = /^vta[-\s]?(\d{1,6})$/i.exec(q);
+  if (conPrefijo && (conPrefijo[1].length === 6 || !conPrefijo[1].startsWith("0"))) {
+    q = conPrefijo[1];
+  }
   if (/^\d{1,6}$/.test(q)) {
-    params.push(Number(q));
-    condiciones.push(`substring(id_transaccion from '(\\d+)$')::bigint = $${params.length}`);
+    // Se compara como texto sin ceros a la izquierda (no ::bigint): un id con mas de 19
+    // digitos al final (ej. uno importado) hacia fallar toda la busqueda con "out of range".
+    params.push(q.replace(/^0+/, "") || "0");
+    condiciones.push(`COALESCE(NULLIF(ltrim(substring(id_transaccion from '(\\d+)$'), '0'), ''), '0') = $${params.length}`);
   } else if (/^\d{7,}$/.test(q)) {
     params.push(`${q}%`);
     condiciones.push(`nit LIKE $${params.length}`);

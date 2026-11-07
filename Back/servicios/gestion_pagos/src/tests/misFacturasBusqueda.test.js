@@ -140,3 +140,28 @@ test("TDSI-867: GET /api/pagos/mis-facturas?q= por HTTP", async () => {
   body = await r.json();
   assert.match(body.mensaje, /posterior/);
 });
+
+test("TDSI-46: \"VTA-54\", \"vta 54\" y \"VTA54\" buscan la factura exacta; \"VTA-0000\" sigue siendo parcial", async () => {
+  const n = numero("a1");
+  for (const q of [`VTA-${n}`, `vta ${n}`, `VTA${n}`]) {
+    assert.deepEqual(await buscar(q), [id("a1")], q);
+  }
+  const parcial = await buscar("VTA-0", { desde: D1, hasta: D3 });
+  assert.ok(parcial.includes(id("a1")) && parcial.length > 1, "VTA-0 tiene que traer varias facturas");
+});
+
+test("TDSI-46: un id con muchos digitos al final no rompe la busqueda por numero", async () => {
+  // Antes el numero se convertia a bigint y este id hacia fallar toda la consulta (error 500).
+  const idLargo = `IMP-${SUFIJO}12345678`;
+  await pool.query(
+    `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, cajero, estado)
+     VALUES ($1, 'Efectivo', 5, 'Simple', $2, 'Registrado')`,
+    [idLargo, CAJERO_A]
+  );
+  try {
+    assert.deepEqual(await buscar(numero("a1")), [id("a1")]);
+    assert.deepEqual(await buscar(`0${numero("a1")}`), [id("a1")]);
+  } finally {
+    await pool.query("DELETE FROM pagos.transacciones WHERE id_transaccion = $1", [idLargo]);
+  }
+});
