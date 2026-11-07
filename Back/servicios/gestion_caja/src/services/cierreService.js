@@ -288,11 +288,13 @@ async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado, arqu
 
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
-  // Se guarda antes de marcar el turno cerrado: si el cierre falla, un reintento lo reemplaza.
-  const denominaciones = conteo ? await arqueoRepo.reemplazarArqueo(turnoId, conteo.filas) : [];
-
-  // Si viene el arqueo o efectivo_contado, calculamos la diferencia contra lo esperado
+  // Si viene el arqueo o efectivo_contado, calculamos la diferencia contra lo esperado.
+  // Va antes de guardar el arqueo: si gestion_pagos no responde, el cierre falla sin
+  // dejar billetes y monedas guardados en un turno que sigue abierto.
   const arqueo = contado !== null ? await compararEfectivo(turnoId, contado) : null;
+
+  // Se guarda justo antes de marcar el turno cerrado: si eso falla, un reintento lo reemplaza.
+  const denominaciones = conteo ? await arqueoRepo.reemplazarArqueo(turnoId, conteo.filas) : [];
 
   const turnoCerrado = await turnosRepo.marcarCerrado(turnoId, {
     efectivoContado: arqueo ? arqueo.efectivoContado : null,
