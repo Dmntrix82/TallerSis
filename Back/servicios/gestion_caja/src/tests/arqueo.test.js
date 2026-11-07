@@ -242,3 +242,29 @@ test("TDSI-880: un turno cerrado sin arqueo por denominacion no trae detalle", a
   assert.equal(r.arqueoEfectivo.tipoDiferencia, "CUADRA");
   assert.doesNotMatch(await generarReporteTexto(turnoId), /DETALLE DEL CONTEO/);
 });
+
+test("TDSI-60: un arqueo con todo en 0 (lista vacia) cierra la caja con Bs 0.00 contado", async () => {
+  assert.deepEqual(calcularArqueo([]), { filas: [], totalContado: 0 });
+  assert.deepEqual(calcularArqueo([{ denominacion: 100, cantidad: 0 }, { denominacion: 1, cantidad: "" }]), { filas: [], totalContado: 0 });
+
+  const turnoId = await crearTurno("I");
+  const r = await cerrarTurno(turnoId, { ...SUPERVISOR, arqueo: [] });
+  assert.equal(r.turno.estado, "CERRADO");
+  assert.equal(Number(r.turno.efectivo_contado), 0);
+  assert.equal(r.turno.tipo_diferencia, "FALTANTE"); // esperado = 100 de efectivo inicial
+  assert.equal(r.reporte.arqueoEfectivo.diferencia, -100);
+});
+
+test("TDSI-60: la vista previa de un turno abierto no muestra un arqueo guardado de un intento anterior", async () => {
+  const turnoId = await crearTurno("J");
+  // queda un conteo guardado (como si un cierre hubiera fallado despues de guardarlo)
+  await arqueoRepo.reemplazarArqueo(turnoId, [{ denominacion: 50, cantidad: 2, subtotal: 100 }]);
+
+  const previa = await generarReporteCierre(turnoId, 100);
+  assert.equal(previa.arqueoDenominaciones, null);
+  assert.doesNotMatch(await generarReporteTexto(turnoId, 100), /DETALLE DEL CONTEO/);
+
+  // al cerrar, el conteo nuevo reemplaza al viejo y ese si sale en el reporte
+  const r = await cerrarTurno(turnoId, { ...SUPERVISOR, arqueo: [{ denominacion: 100, cantidad: 1 }] });
+  assert.deepEqual(r.reporte.arqueoDenominaciones.detalle.map((d) => [d.denominacion, d.cantidad]), [[100, 1]]);
+});
