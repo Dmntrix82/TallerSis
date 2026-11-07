@@ -580,12 +580,14 @@ function Facturas() {
             </label>
 
             {/* TDSI-908 / 914: dato actual y dato nuevo lado a lado, antes del PIN */}
+            {/* TDSI-904: "actual" sale de lo guardado en la BD (resumen.datos_actuales); la fila
+                de la tabla puede estar desactualizada si la factura se modifico despues de cargarla */}
             <ComparacionModificacion
               actual={{
-                tipoDocumento: facturaParaModificar.tipo_documento || 'NIT',
-                numeroDocumento: facturaParaModificar.nit || '',
-                razonSocial: facturaParaModificar.razon_social || '',
-                telefono: facturaParaModificar.telefono || '',
+                tipoDocumento: (resumen?.datos_actuales ?? facturaParaModificar).tipo_documento || 'NIT',
+                numeroDocumento: (resumen?.datos_actuales ?? facturaParaModificar).nit || '',
+                razonSocial: (resumen?.datos_actuales ?? facturaParaModificar).razon_social || '',
+                telefono: (resumen?.datos_actuales ?? facturaParaModificar).telefono || '',
               }}
               nuevo={formModificar}
             />
