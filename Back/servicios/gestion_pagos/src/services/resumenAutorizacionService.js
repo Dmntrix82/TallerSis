@@ -4,6 +4,19 @@ const repo = require("../data/resumenAutorizacionRepo");
 
 // TDSI-905: mismo largo que pagos.transacciones.id_transaccion.
 const ID_MAX = 60;
+// Mismo plazo que piden anularVenta (TDSI-306) y modificarVenta (TDSI-37): 2 horas desde la emision.
+const PLAZO_AUTORIZACION_MS = 2 * 60 * 60 * 1000;
+
+/** Cuanto le queda a la factura para poder anularse o modificarse. */
+function calcularPlazo(fecha, ahora = Date.now()) {
+  const venceMs = new Date(fecha).getTime() + PLAZO_AUTORIZACION_MS;
+  const restanteMs = venceMs - ahora;
+  return {
+    vence_en: new Date(venceMs).toISOString(),
+    minutos_restantes: Math.max(0, Math.floor(restanteMs / 60000)),
+    vencido: restanteMs <= 0,
+  };
+}
 
 /**
  * TDSI-195: resumen de la factura que ve el supervisor en la ventana "Autorizacion de
@@ -16,6 +29,8 @@ const ID_MAX = 60;
  * - datos_actuales (TDSI-904): los datos de facturacion tal como estan guardados ahora,
  *   para mostrarlos al lado de los nuevos cuando se pide una modificacion; con las
  *   modificaciones anteriores de la bitacora.
+ * - plazo: cuanto falta para que venzan las 2 horas en que se puede anular o modificar,
+ *   para que el supervisor lo vea antes de escribir su PIN.
  * - cajero: el de la sesion. Igual que en "Facturas" (TDSI-866), solo puede ver el resumen
  *   el cajero que emitio la venta; asi no se pueden leer los datos de clientes de otras
  *   cajas probando numeros de factura.
@@ -77,7 +92,8 @@ async function obtenerResumenAutorizacion(id_transaccion, { cajero } = {}) {
       telefono: primera.telefono,
     },
     modificaciones_anteriores: modificaciones,
+    plazo: calcularPlazo(primera.fecha),
   };
 }
 
-module.exports = { obtenerResumenAutorizacion };
+module.exports = { obtenerResumenAutorizacion, calcularPlazo };

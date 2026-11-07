@@ -1,4 +1,13 @@
 const dinero = (valor) => `Bs ${(Number(valor) || 0).toFixed(2)}`
+
+// TDSI-59: cuanto queda de las 2 horas para anular o modificar la factura
+const textoPlazo = (plazo) => {
+  if (!plazo) return null
+  if (plazo.vencido) return 'Vencido: pasaron las 2 horas'
+  const horas = Math.floor(plazo.minutos_restantes / 60)
+  const minutos = plazo.minutos_restantes % 60
+  return horas > 0 ? `Quedan ${horas} h ${minutos} min` : `Quedan ${minutos} min`
+}
 const texto = (valor) => (valor === null || valor === undefined || valor === '' ? '—' : valor)
 
 // TDSI-59: vista previa de la factura dentro de la ventana de autorización del supervisor.
@@ -32,6 +41,7 @@ export default function ResumenFactura({ resumen, cargando, error, onReintentar,
     ['Total', dinero(resumen?.total ?? factura?.total)],
     ['Método de pago', Array.isArray(metodos) ? metodos.join(' + ') : metodos],
     ['Cajero', resumen?.cajero],
+    ['Plazo para autorizar', textoPlazo(resumen?.plazo)],
   ]
   const motivoSolicitud = resumen?.motivo ?? motivo
 
