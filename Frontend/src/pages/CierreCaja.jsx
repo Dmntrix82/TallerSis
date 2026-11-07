@@ -3,31 +3,32 @@ import { useNavigate } from 'react-router-dom'
 import { generarReporteCierre, cerrarTurno, urlReporteCierrePdf } from '../api/caja.js'
 import { obtenerTurnoActual } from '../api/turnos.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import ArqueoEfectivo, { ResumenArqueo } from '../components/ArqueoEfectivo.jsx'
+import { arqueoEsValido, arqueoTieneConteo, totalContadoCentavos, detalleArqueo } from '../utils/arqueo.js' // <-- Se importó detalleArqueo aquí
 
 function CierreCaja() {
   const { cajero, cerrarSesion } = useAuth()
   const navigate = useNavigate()
 
-  // Tras cerrar la caja, el turno queda cerrado: se vuelve a la pantalla de
-  // login para empezar de nuevo (hace falta un supervisor para reabrir la caja).
   function volverAIniciarSesion() {
     cerrarSesion()
     navigate('/login')
   }
 
-  const [turnoActual, setTurnoActual] = useState(null) // { id, codigo } del turno abierto en la caja
+  const [turnoActual, setTurnoActual] = useState(null) 
   const [cargandoTurno, setCargandoTurno] = useState(true)
   const [errorTurno, setErrorTurno] = useState(null)
 
-  const [paso, setPaso] = useState('ingreso') // ingreso, reporte, listo
+  const [paso, setPaso] = useState('ingreso')
   const [supervisorId, setSupervisorId] = useState('')
   const [pin, setPin] = useState('')
-  const [efectivoContado, setEfectivoContado] = useState('')
+  const [cantidades, setCantidades] = useState({})
+  
+  const efectivoContado = totalContadoCentavos(cantidades) / 100
   const [reporte, setReporte] = useState(null)
   const [error, setError] = useState(null)
   const [cargando, setCargando] = useState(false)
 
-  // El turno (de caja) sale de la caja del cajero logueado, no se escribe a mano.
   useEffect(() => {
     if (!cajero?.caja) {
       setCargandoTurno(false)
@@ -41,6 +42,7 @@ function CierreCaja() {
   }, [cajero?.caja])
 
   const turnoId = turnoActual?.id
+  const efectivoEsperado = reporte?.arqueoEfectivo?.efectivoEsperado ?? reporte?.totalesPorMetodo?.Efectivo?.neto ?? 0
 
   const manejarContinuar = async (e) => {
     e.preventDefault()
@@ -48,8 +50,8 @@ function CierreCaja() {
       setError('Ingrese el usuario y el PIN de un supervisor de caja para poder cerrar la caja.')
       return
     }
-    if (!efectivoContado || Number(efectivoContado) < 0) {
-      setError('Ingrese el efectivo contado en caja para poder cerrarla.')
+    if (!arqueoEsValido(cantidades) || !arqueoTieneConteo(cantidades)) {
+      setError('Complete el arqueo de efectivo con números enteros para poder cerrar la caja.')
       return
     }
 
@@ -70,14 +72,13 @@ function CierreCaja() {
     setCargando(true)
     setError(null)
     try {
-      await cerrarTurno(turnoId, { supervisor_id: supervisorId.trim(), pin: pin.trim(), efectivo_contado: Number(efectivoContado) })
-      // El reporte en PDF (con firma del cajero) se abre en una pestaña nueva
-      // apenas se cierra la caja, para que se pueda imprimir o guardar al toque.
+      // AQUÍ ESTÁN LAS DOS LÍNEAS DE INTEGRACIÓN CON EL BACKEND DE JOSÉ
+      const arqueo = detalleArqueo(cantidades)
+      await cerrarTurno(turnoId, { supervisor_id: supervisorId.trim(), pin: pin.trim(), efectivo_contado: Number(efectivoContado), arqueo })
+      
       window.open(urlReporteCierrePdf(turnoId, Number(efectivoContado)), '_blank', 'noopener,noreferrer')
       setPaso('listo')
     } catch (err) {
-      // Si el PIN es incorrecto (o vencio el intento), se vuelve a la pantalla de
-      // autorizacion para corregirlo, en vez de perder el reporte ya generado.
       setPaso('ingreso')
       setError(err.mensaje || err.message)
     } finally {
@@ -112,7 +113,7 @@ function CierreCaja() {
       {error && <div className="error" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px' }}>{error}</div>}
 
       {paso === 'ingreso' && (
-        <div style={{ maxWidth: '400px', margin: 'auto', padding: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+        <div style={{ maxWidth: '480px', margin: 'auto', padding: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
           <h3>Por favor, ingrese los datos del supervisor de caja para cerrar caja</h3>
           <p style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '1rem' }}>
             Pida a un supervisor de caja su usuario y PIN para poder cerrar el turno.
@@ -147,20 +148,14 @@ function CierreCaja() {
               />
             </label>
 
-            <label className="campo" style={{ display: 'block', marginBottom: '1rem' }}>
-              Efectivo contado en caja (Bs.)
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={efectivoContado}
-                onChange={(e) => {
-                  setEfectivoContado(e.target.value)
-                  setError(null)
-                }}
-                style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
-              />
-            </label>
+            <ArqueoEfectivo
+              cantidades={cantidades}
+              onChange={(nuevas) => {
+                setCantidades(nuevas)
+                setError(null)
+              }}
+              mostrarDiferencia={false}
+            />
 
             <button type="submit" className="btn" disabled={cargando} style={{ width: '100%' }}>
               {cargando ? 'Generando Reporte...' : 'Continuar al Reporte'}
@@ -207,23 +202,7 @@ function CierreCaja() {
               </ul>
             </div>
 
-            {reporte.arqueoEfectivo && (
-              <div
-                style={{
-                  marginTop: '1rem',
-                  padding: '1rem',
-                  borderRadius: '8px',
-                  backgroundColor: reporte.arqueoEfectivo.tipoDiferencia === 'CUADRA' ? '#ecfdf5' : '#fef3c7',
-                }}
-              >
-                <h4 style={{ marginTop: 0 }}>Arqueo de efectivo</h4>
-                <p style={{ margin: '0.25rem 0' }}>Esperado: Bs. {reporte.arqueoEfectivo.efectivoEsperado}</p>
-                <p style={{ margin: '0.25rem 0' }}>Contado: Bs. {reporte.arqueoEfectivo.efectivoContado}</p>
-                <p style={{ margin: '0.25rem 0', fontWeight: 'bold' }}>
-                  {reporte.arqueoEfectivo.tipoDiferencia}: Bs. {reporte.arqueoEfectivo.diferencia}
-                </p>
-              </div>
-            )}
+            <ResumenArqueo cantidades={cantidades} efectivoEsperado={efectivoEsperado} />
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
               <button
@@ -250,11 +229,14 @@ function CierreCaja() {
       )}
 
       {paso === 'listo' && (
-        <div style={{ maxWidth: '400px', margin: 'auto', textAlign: 'center', padding: '2rem', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#ecfdf5' }}>
+        <div style={{ maxWidth: '520px', margin: 'auto', textAlign: 'center', padding: '2rem', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#ecfdf5' }}>
           <h2 style={{ color: '#065f46' }}>Caja Cerrada Exitosamente</h2>
           <p style={{ color: '#064e3b', marginBottom: '1rem' }}>
             El turno #{turnoActual.codigo ?? turnoId} ha sido cerrado. El reporte en PDF se abrió en una pestaña nueva.
           </p>
+          <div style={{ textAlign: 'left', margin: '0 0 1.5rem' }}>
+            <ResumenArqueo cantidades={cantidades} efectivoEsperado={efectivoEsperado} />
+          </div>
           <button type="button" className="btn" onClick={volverAIniciarSesion}>Volver al Inicio</button>
         </div>
       )}
