@@ -165,7 +165,9 @@ async function generarReporteCierre(turnoId, efectivoContado = null) {
     ? efectivoContado
     : turno.efectivo_contado != null ? Number(turno.efectivo_contado) : null;
   const arqueo = contado != null ? await compararEfectivo(turnoId, contado) : null;
-  const arqueoDenominaciones = await obtenerArqueoDenominaciones(turnoId);
+  // Solo un turno cerrado tiene arqueo definitivo: si quedo uno de un intento de cierre que
+  // fallo, la vista previa de un turno abierto no lo muestra (el cajero esta contando de nuevo).
+  const arqueoDenominaciones = turno.estado === "CERRADO" ? await obtenerArqueoDenominaciones(turnoId) : null;
 
   return {
     turnoId,
