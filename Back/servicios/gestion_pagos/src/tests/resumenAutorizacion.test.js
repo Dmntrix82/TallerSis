@@ -8,7 +8,7 @@ const { pool } = require("../config/db");
 const { errorHandler } = require("../middlewares/errorHandler");
 const { registrarPagoSimple } = require("../services/pagoSimpleService");
 const { registrarPagoMixto } = require("../services/pagoMixtoService");
-const { obtenerResumenAutorizacion } = require("../services/resumenAutorizacionService");
+const { obtenerResumenAutorizacion, calcularPlazo } = require("../services/resumenAutorizacionService");
 
 const SUFIJO = Date.now();
 const CAJERO = `test.resumen.${SUFIJO}@tallersis.bo`;
@@ -138,4 +138,33 @@ test("TDSI-906: GET /api/pagos/:id_transaccion/resumen-autorizacion por HTTP", a
   const error = await r.json();
   assert.equal(error.ok, false);
   assert.match(error.mensaje, /ya esta anulada/);
+});
+
+test("TDSI-59: solo el cajero que emitio la factura ve su resumen", async () => {
+  const id = ventas.mixta.id_transaccion;
+  await assert.rejects(() => obtenerResumenAutorizacion(id, { cajero: "otro.cajero@tallersis.bo" }), { status: 403 });
+  await assert.rejects(() => obtenerResumenAutorizacion(id), { status: 400 });
+  await assert.rejects(() => obtenerResumenAutorizacion(id, { cajero: [CAJERO, "otro@x.bo"] }), { status: 400 });
+  // el correo se compara sin mayusculas ni espacios
+  const r = await obtenerResumenAutorizacion(id, { cajero: `  ${CAJERO.toUpperCase()} ` });
+  assert.equal(r.numero_factura, id);
+
+  const http = await fetch(`${base}/${id}/resumen-autorizacion?cajero=otro.cajero%40tallersis.bo`);
+  assert.equal(http.status, 403);
+  assert.match((await http.json()).mensaje, /Solo el cajero que emitio/);
+});
+
+test("TDSI-59: el resumen trae el plazo de 2 horas para anular o modificar", async () => {
+  const r = await obtenerResumenAutorizacion(ventas.simple.id_transaccion, { cajero: CAJERO });
+  assert.equal(r.plazo.vencido, false);
+  assert.ok(r.plazo.minutos_restantes > 100 && r.plazo.minutos_restantes <= 120, `minutos_restantes: ${r.plazo.minutos_restantes}`);
+  assert.equal(new Date(r.plazo.vence_en).getTime(), new Date(r.fecha).getTime() + 2 * 60 * 60 * 1000);
+
+  const emitida = new Date("2026-11-07T10:00:00Z");
+  assert.deepEqual(calcularPlazo(emitida, emitida.getTime() + 90 * 60000), {
+    vence_en: "2026-11-07T12:00:00.000Z", minutos_restantes: 30, vencido: false,
+  });
+  assert.deepEqual(calcularPlazo(emitida, emitida.getTime() + 121 * 60000), {
+    vence_en: "2026-11-07T12:00:00.000Z", minutos_restantes: 0, vencido: true,
+  });
 });
