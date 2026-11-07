@@ -145,3 +145,12 @@ export function obtenerTotalesGenerales({ desde, hasta } = {}) {
   const query = params.toString()
   return apiFetch(`/api/pagos/totales-generales${query ? `?${query}` : ''}`, {}, GESTION_PAGOS_API_BASE_URL)
 }
+
+// TDSI-59/195: resumen de una factura para la ventana de autorización del supervisor
+export function obtenerResumenFactura(id_transaccion) {
+  return apiFetch(
+    `/api/pagos/${encodeURIComponent(id_transaccion)}/resumen-autorizacion`,
+    {},
+    GESTION_PAGOS_API_BASE_URL,
+  )
+}
