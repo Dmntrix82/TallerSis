@@ -1,7 +1,6 @@
 const texto = (valor) => (valor === null || valor === undefined || String(valor).trim() === '' ? '—' : valor)
 
-// TDSI-908: dato actual y dato nuevo lado a lado, en la ventana de modificación.
-// `actual` y `nuevo` tienen la forma { tipoDocumento, numeroDocumento, razonSocial, telefono }.
+
 export default function ComparacionModificacion({ actual, nuevo }) {
   const filas = [
     ['Tipo de documento', actual.tipoDocumento, nuevo.tipoDocumento],
