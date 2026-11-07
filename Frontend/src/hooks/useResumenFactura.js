@@ -3,7 +3,7 @@ import { obtenerResumenFactura } from '../api/pagos.js'
 
 // TDSI-59: pide el resumen de una factura cuando se abre la ventana de autorización.
 // Si `idTransaccion` es null (no hay ventana abierta) no hace nada.
-export default function useResumenFactura(idTransaccion) {
+export default function useResumenFactura(idTransaccion, cajero) {
   const [resumen, setResumen] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
@@ -24,7 +24,7 @@ export default function useResumenFactura(idTransaccion) {
     setError(null)
     setCargando(true)
 
-    obtenerResumenFactura(idTransaccion)
+    obtenerResumenFactura(idTransaccion, cajero)
       .then((respuesta) => {
         if (vigente) setResumen(respuesta?.data ?? respuesta)
       })
@@ -38,7 +38,7 @@ export default function useResumenFactura(idTransaccion) {
     return () => {
       vigente = false
     }
-  }, [idTransaccion, intento])
+  }, [idTransaccion, cajero, intento])
 
   return { resumen, cargando, error, reintentar }
 }

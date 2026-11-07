@@ -91,7 +91,10 @@ function Facturas() {
     cargando: cargandoResumen,
     error: errorResumen,
     reintentar: reintentarResumen,
-  } = useResumenFactura(facturaParaAnular?.id_transaccion ?? facturaParaModificar?.id_transaccion ?? null)
+  } = useResumenFactura(
+    facturaParaAnular?.id_transaccion ?? facturaParaModificar?.id_transaccion ?? null,
+    cajero?.nombre,
+  )
   // TDSI-909: se muestra el N° de factura, no el número interno de la transacción
   const numeroFactura =
     resumen?.numero_factura ??

@@ -16,16 +16,26 @@ const ID_MAX = 60;
  * - datos_actuales (TDSI-904): los datos de facturacion tal como estan guardados ahora,
  *   para mostrarlos al lado de los nuevos cuando se pide una modificacion; con las
  *   modificaciones anteriores de la bitacora.
+ * - cajero: el de la sesion. Igual que en "Facturas" (TDSI-866), solo puede ver el resumen
+ *   el cajero que emitio la venta; asi no se pueden leer los datos de clientes de otras
+ *   cajas probando numeros de factura.
  */
-async function obtenerResumenAutorizacion(id_transaccion) {
+async function obtenerResumenAutorizacion(id_transaccion, { cajero } = {}) {
   const id = String(id_transaccion || "").trim();
   if (!id || id.length > ID_MAX) {
     throw new AppError("El N° de factura no es valido.", 400, { id_transaccion: id.slice(0, 20) });
+  }
+  if (Array.isArray(cajero) || !cajero || !String(cajero).trim()) {
+    throw new AppError("Falta identificar al cajero para ver el resumen de la factura.", 400);
   }
   const filas = await repo.filasDeVenta(id);
   // TDSI-905: 404 con un mensaje que el supervisor entienda, sin mostrar una vista previa vacia.
   if (filas.length === 0) {
     throw new AppError(`La factura ${id} no existe.`, 404, { id_transaccion: id });
+  }
+  const delCajero = (valor) => String(valor || "").trim().toLowerCase();
+  if (delCajero(filas[0].cajero) !== delCajero(cajero)) {
+    throw new AppError("Solo el cajero que emitio esta factura puede ver su resumen.", 403, { id_transaccion: id });
   }
   if (filas.every((f) => f.estado === "Anulado")) {
     throw new AppError(`La factura ${id} ya esta anulada: no se puede anular ni modificar.`, 404, { id_transaccion: id, estado: "Anulado" });

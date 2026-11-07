@@ -48,7 +48,7 @@ test.after(async () => {
 });
 
 test("TDSI-195/911: el resumen trae N° de factura, cliente, total, metodos y cajero (pago mixto)", async () => {
-  const r = await obtenerResumenAutorizacion(ventas.mixta.id_transaccion);
+  const r = await obtenerResumenAutorizacion(ventas.mixta.id_transaccion, { cajero: CAJERO });
   assert.equal(r.numero_factura, ventas.mixta.id_transaccion);
   assert.match(r.numero_factura, /^VTA-\d{6}$/);
   assert.equal(r.cliente, "José Pérez");
@@ -64,13 +64,13 @@ test("TDSI-195/911: el resumen trae N° de factura, cliente, total, metodos y ca
 });
 
 test("TDSI-195/912: los items traen cantidad, precio y subtotal (sin detalle por producto: 1 item con el total)", async () => {
-  const r = await obtenerResumenAutorizacion(ventas.mixta.id_transaccion);
+  const r = await obtenerResumenAutorizacion(ventas.mixta.id_transaccion, { cajero: CAJERO });
   assert.deepEqual(r.items, [{ descripcion: "Venta", cantidad: 1, precio_unitario: 87.5, subtotal: 87.5 }]);
   assert.equal(r.items_detallados, false);
 });
 
 test("TDSI-195: una venta sin NIT/CI sale como Consumidor final", async () => {
-  const r = await obtenerResumenAutorizacion(ventas.simple.id_transaccion);
+  const r = await obtenerResumenAutorizacion(ventas.simple.id_transaccion, { cajero: CAJERO });
   assert.equal(r.cliente, "Consumidor final");
   assert.equal(r.nit, null);
   assert.deepEqual(r.metodos, ["Tarjeta"]);
@@ -79,7 +79,7 @@ test("TDSI-195: una venta sin NIT/CI sale como Consumidor final", async () => {
 
 test("TDSI-903/913: el resumen trae el motivo de la solicitud de anulacion pendiente", async () => {
   const id = ventas.simple.id_transaccion;
-  let r = await obtenerResumenAutorizacion(id);
+  let r = await obtenerResumenAutorizacion(id, { cajero: CAJERO });
   assert.equal(r.motivo, null);
   assert.equal(r.solicitud, null);
 
@@ -89,7 +89,7 @@ test("TDSI-903/913: el resumen trae el motivo de la solicitud de anulacion pendi
             ($1, 'El cliente pago dos veces', $2, 'Solicitada', now())`,
     [id, CAJERO]
   );
-  r = await obtenerResumenAutorizacion(id);
+  r = await obtenerResumenAutorizacion(id, { cajero: CAJERO });
   assert.equal(r.motivo, "El cliente pago dos veces");
   assert.equal(r.solicitud.solicitado_por, CAJERO);
   assert.ok(r.solicitud.solicitado_en);
@@ -97,7 +97,7 @@ test("TDSI-903/913: el resumen trae el motivo de la solicitud de anulacion pendi
 
 test("TDSI-904/914: el resumen trae los datos actuales y las modificaciones anteriores", async () => {
   const id = ventas.mixta.id_transaccion;
-  let r = await obtenerResumenAutorizacion(id);
+  let r = await obtenerResumenAutorizacion(id, { cajero: CAJERO });
   assert.deepEqual(r.datos_actuales, { tipo_documento: "CI", nit: CI, razon_social: "José Pérez", telefono: null });
   assert.deepEqual(r.modificaciones_anteriores, []);
 
@@ -107,7 +107,7 @@ test("TDSI-904/914: el resumen trae los datos actuales y las modificaciones ante
      VALUES ($1, 'razon_social', 'José Pérez', 'José Pérez Ríos', $2, 'SUP-TEST')`,
     [id, CAJERO]
   );
-  r = await obtenerResumenAutorizacion(id);
+  r = await obtenerResumenAutorizacion(id, { cajero: CAJERO });
   assert.equal(r.datos_actuales.razon_social, "José Pérez Ríos");
   assert.equal(r.modificaciones_anteriores.length, 1);
   assert.equal(r.modificaciones_anteriores[0].campo, "razon_social");
@@ -116,24 +116,24 @@ test("TDSI-904/914: el resumen trae los datos actuales y las modificaciones ante
 });
 
 test("TDSI-905: 404 con mensaje claro si la factura no existe o ya esta anulada", async () => {
-  await assert.rejects(() => obtenerResumenAutorizacion("VTA-999999999"), (e) => e.status === 404 && /no existe/.test(e.message));
+  await assert.rejects(() => obtenerResumenAutorizacion("VTA-999999999", { cajero: CAJERO }), (e) => e.status === 404 && /no existe/.test(e.message));
   await assert.rejects(
-    () => obtenerResumenAutorizacion(ventas.anulada.id_transaccion),
+    () => obtenerResumenAutorizacion(ventas.anulada.id_transaccion, { cajero: CAJERO }),
     (e) => e.status === 404 && /ya esta anulada/.test(e.message)
   );
-  await assert.rejects(() => obtenerResumenAutorizacion("   "), { status: 400 });
-  await assert.rejects(() => obtenerResumenAutorizacion("X".repeat(61)), { status: 400 });
+  await assert.rejects(() => obtenerResumenAutorizacion("   ", { cajero: CAJERO }), { status: 400 });
+  await assert.rejects(() => obtenerResumenAutorizacion("X".repeat(61), { cajero: CAJERO }), { status: 400 });
 });
 
 test("TDSI-906: GET /api/pagos/:id_transaccion/resumen-autorizacion por HTTP", async () => {
-  let r = await fetch(`${base}/${ventas.mixta.id_transaccion}/resumen-autorizacion`);
+  let r = await fetch(`${base}/${ventas.mixta.id_transaccion}/resumen-autorizacion?cajero=${encodeURIComponent(CAJERO)}`);
   assert.equal(r.status, 200);
   const { ok, data } = await r.json();
   assert.equal(ok, true);
   assert.equal(data.numero_factura, ventas.mixta.id_transaccion);
   assert.equal(data.items.length, 1);
 
-  r = await fetch(`${base}/${ventas.anulada.id_transaccion}/resumen-autorizacion`);
+  r = await fetch(`${base}/${ventas.anulada.id_transaccion}/resumen-autorizacion?cajero=${encodeURIComponent(CAJERO)}`);
   assert.equal(r.status, 404);
   const error = await r.json();
   assert.equal(error.ok, false);
