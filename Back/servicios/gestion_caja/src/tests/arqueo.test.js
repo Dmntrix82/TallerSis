@@ -73,7 +73,8 @@ test("TDSI-877: las monedas de 0.10, 0.20 y 0.50 se suman sin errores de redonde
 
 test("TDSI-877: rechaza una denominacion que no es billete ni moneda de Bs", () => {
   assert.throws(() => calcularArqueo([{ denominacion: 3, cantidad: 1 }]), { status: 400 });
-  assert.throws(() => calcularArqueo([]), { status: 400 });
+  assert.throws(() => calcularArqueo({ denominacion: 100, cantidad: 1 }), { status: 400 });
+  assert.throws(() => calcularArqueo("100x3"), { status: 400 });
 });
 
 test("TDSI-877: al cerrar con el arqueo se guarda el detalle y se devuelve el total contado", async () => {

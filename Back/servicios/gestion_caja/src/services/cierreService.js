@@ -67,9 +67,11 @@ function validarCantidad(valor, denominacion) {
  * detalle: [{ denominacion: 100, cantidad: 3 }, ...] -> filas con subtotal (solo las que
  * tienen cantidad) y el total contado. Se suma en centavos para no perder las monedas de
  * 0.10, 0.20 y 0.50 por redondeo.
+ * Una lista vacia es un arqueo valido de Bs 0.00: el front solo manda las filas con
+ * cantidad, asi que si el cajero conto 0 en todo llega [] (caja sin efectivo).
  */
 function calcularArqueo(detalle) {
-  if (!Array.isArray(detalle) || detalle.length === 0) {
+  if (!Array.isArray(detalle)) {
     throw new AppError("El arqueo debe ser una lista de { denominacion, cantidad }.", 400);
   }
 
