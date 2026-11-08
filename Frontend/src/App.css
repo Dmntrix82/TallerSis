@@ -2239,6 +2239,9 @@
   color: #92400e;
 }
 
+/* TDSI-52: boton "Reenviar" a Contabilidad, mismo tamaño compacto que en Cierre Diario */
+.diferencias-caja .btn.btn-pequeno { height: 34px; padding: 0 14px; font-size: .85rem; }
+
 /* TDSI-27*/
 .revision-transacciones {
   --rt-primario: #2f5d31;
