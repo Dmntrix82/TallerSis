@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { registrarPago, registrarPagoMixto, calcularPagoMixto, consultarPosibleDuplicado, obtenerTipoCambio, listarMisFacturas, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { registrarPago, registrarPagoMixto, calcularPagoMixto, registrarVentaCancelada, contarVentasCanceladas, consultarPosibleDuplicado, obtenerTipoCambio, listarMisFacturas, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
 import { calcularVuelto, calcularCobroUsd, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
+import CancelarVentaModal from '../components/CancelarVentaModal.jsx'
 import MisRespuestasRapidas from '../components/MisRespuestasRapidas.jsx'
 import AvisoCobroDuplicadoModal from '../components/AvisoCobroDuplicadoModal.jsx'
 import DesgloseVuelto from '../components/DesgloseVuelto.jsx'
@@ -109,6 +110,13 @@ function formatearTiempoRestante(segundos) {
   return `${minutos}:${String(resto).padStart(2, '0')}`
 }
 
+// El conteo se pide con la fecha local: sin fecha, el backend usa la fecha del servidor de la base,
+// que en UTC ya cambia de dia a las 20:00 de Bolivia.
+function hoyLocal() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 // TDSI-831: datos del cobro que se esta por repetir. mis-facturas filtra por dia ("YYYY-MM-DD"):
 // se pide desde ayer para no perderlo cerca de medianoche o por la zona horaria del servidor.
 async function buscarCobroAnterior(cajero, factura) {
@@ -174,6 +182,11 @@ function validarFormulario(datos) {
 
 function Pagos() {
   const { cajero } = useAuth()
+
+  // TDSI-45: cancelar una venta que todavia no se cobro.
+  const [mostrarCancelarVenta, setMostrarCancelarVenta] = useState(false)
+  const [mensajeCancelacion, setMensajeCancelacion] = useState(null)
+  const [canceladasHoy, setCanceladasHoy] = useState(null)
   const [mostrarRespuestasRapidas, setMostrarRespuestasRapidas] = useState(false) // TDSI-44
   const [datos, setDatos] = useState(ESTADO_INICIAL)
   const [paso, setPaso] = useState('formulario')
@@ -249,7 +262,45 @@ function Pagos() {
   }, [cobroQr?.expira_en, cobroQr?.estado])
 
   function actualizarCampo(campo, valor) {
+    setMensajeCancelacion(null)
     setDatos((prev) => ({ ...prev, [campo]: valor }))
+  }
+
+  // TDSI-844: contador "Canceladas hoy". Si no se puede consultar, simplemente no se muestra.
+  async function actualizarCanceladasHoy() {
+    if (!cajero?.nombre) return
+    try {
+      const { data } = await contarVentasCanceladas(cajero.nombre, hoyLocal())
+      setCanceladasHoy(data.total)
+    } catch {
+      setCanceladasHoy(null)
+    }
+  }
+
+  useEffect(() => {
+    actualizarCanceladasHoy()
+  }, [cajero?.nombre])
+
+  // TDSI-843/845: registra la cancelacion, deja la pantalla limpia y avisa.
+  // Si falla, el error se muestra en el modal (que sigue abierto).
+  async function confirmarCancelacion({ motivo, motivo_texto }) {
+    const total = Number(datos.monto)
+    await registrarVentaCancelada({
+      cajero_id: cajero?.nombre,
+      caja_id: cajero?.caja,
+      // La pantalla de Pagos no tiene items de producto (no hay catalogo): se registra lo que
+      // se cargo, que es el monto de la venta.
+      items: [{ descripcion: 'Monto de la venta', monto: total }],
+      total,
+      motivo,
+      motivo_texto,
+    })
+    setMostrarCancelarVenta(false)
+    registrarOtro()
+    setErrorValidacion(null)
+    setErrorApi(null)
+    setMensajeCancelacion(`Venta cancelada (Bs. ${total.toFixed(2)}). Motivo: ${motivo_texto || motivo}.`)
+    actualizarCanceladasHoy()
   }
 
   // TDSI-29/571: apenas hay total + monto recibido validos, se consulta el
@@ -686,10 +737,22 @@ function Pagos() {
     <section>
       <div className="pagos-encabezado">
         <h1>Método de pago</h1>
+        {canceladasHoy !== null && <span className="canceladas-hoy">Canceladas hoy: {canceladasHoy}</span>}
         <button type="button" className="btn btn-secundario" onClick={() => setMostrarRespuestasRapidas(true)}>
           Mis respuestas rápidas
         </button>
       </div>
+
+      {mensajeCancelacion && <p className="mensaje-exito pagos-mensaje">{mensajeCancelacion}</p>}
+
+      {mostrarCancelarVenta && (
+        <CancelarVentaModal
+          total={Number(datos.monto)}
+          cajeroId={cajero?.nombre}
+          onConfirmar={confirmarCancelacion}
+          onVolver={() => setMostrarCancelarVenta(false)}
+        />
+      )}
 
       {mostrarRespuestasRapidas && (
         <MisRespuestasRapidas cajeroId={cajero?.nombre} onCerrar={() => setMostrarRespuestasRapidas(false)} />
@@ -890,9 +953,19 @@ function Pagos() {
 
               {errorValidacion && <p className="error">{errorValidacion}</p>}
 
-              <button type="submit" className="btn" disabled={cobroUsdBloqueado}>
-                Continuar
-              </button>
+              <div className="pago-acciones">
+                <button type="submit" className="btn" disabled={cobroUsdBloqueado}>
+                  Continuar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secundario"
+                  onClick={() => setMostrarCancelarVenta(true)}
+                  disabled={!(Number(datos.monto) > 0)}
+                >
+                  Cancelar venta
+                </button>
+              </div>
             </form>
           )}
 
@@ -943,6 +1016,9 @@ function Pagos() {
                   {enviando
                     ? (esQrSimple ? 'Generando QR...' : 'Confirmando...')
                     : (esQrSimple ? 'Generar QR' : 'Confirmar cobro')}
+                </button>
+                <button type="button" className="btn btn-secundario" onClick={() => setMostrarCancelarVenta(true)} disabled={enviando}>
+                  Cancelar venta
                 </button>
               </div>
             </div>

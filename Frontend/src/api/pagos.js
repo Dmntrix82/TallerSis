@@ -3,6 +3,25 @@ import { apiFetch } from './client.js'
 // Apunta al microservicio Back/servicios/gestion_pagos.
 const GESTION_PAGOS_API_BASE_URL = import.meta.env.VITE_GESTION_PAGOS_API_BASE_URL ?? ''
 
+// TDSI-838: registra una venta cancelada antes de cobrar (no crea transaccion ni factura).
+// motivo: 'El cliente desistió' | 'Fondos insuficientes' | 'Error al cargar ítems' | 'Otro' (con motivo_texto).
+export function registrarVentaCancelada({ cajero_id, caja_id, items, total, motivo, motivo_texto }) {
+  return apiFetch(
+    '/api/pagos/canceladas',
+    {
+      method: 'POST',
+      body: JSON.stringify({ cajero_id, caja_id, items, total, motivo, motivo_texto }),
+    },
+    GESTION_PAGOS_API_BASE_URL,
+  )
+}
+
+// TDSI-839: cuantas ventas cancelo el cajero en el dia (fecha "YYYY-MM-DD"). Responde data: { total }.
+export function contarVentasCanceladas(cajero_id, fecha) {
+  const params = new URLSearchParams({ cajero_id, fecha })
+  return apiFetch(`/api/pagos/canceladas/conteo?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
+}
+
 // TDSI-163/825: revisa si este cajero ya le cobro ese total a ese NIT/CI en los ultimos 2 minutos.
 // Responde data: { esDuplicado: false } o { esDuplicado: true, factura, segundos }.
 export function consultarPosibleDuplicado({ cajero_id, nit, total }) {
