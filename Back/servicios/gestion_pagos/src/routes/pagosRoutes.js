@@ -11,6 +11,7 @@ const {
   listarCajeros,
 } = require("../services/ventasCajeroService");
 const duplicadoService = require("../services/duplicadoService");
+const tipoCambioService = require("../services/tipoCambioService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -109,4 +110,9 @@ router.get("/posible-duplicado", wrap(async (req, res) => {
   res.json({ ok: true, data: r });
 }));
 
+// TDSI-161: el cajero necesita saber el tipo de cambio vigente para el cobro en dólares.
+router.get("/tipo-cambio", wrap(async (req, res) => {
+  const data = await tipoCambioService.obtenerTipoCambio();
+  res.json({ ok: true, data });
+}));
 module.exports = router;

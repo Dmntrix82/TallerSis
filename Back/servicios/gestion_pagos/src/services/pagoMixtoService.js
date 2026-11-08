@@ -4,6 +4,7 @@ const repo = require("../data/pagosRepo");
 const { guardarClienteEnFacturacion } = require("./clientesProxy");
 const { emitirActualizacion } = require("../utils/tableroEvents");
 const { TIPOS_DOCUMENTO_VALIDOS, validarFormatoDocumento } = require("../utils/documento");
+const { calcularDesgloseVuelto } = require("./cobroEfectivoService");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
@@ -67,6 +68,7 @@ function calcularDivision({ total, metodos, efectivoRecibido = null }) {
   ];
 
   let cambio = null;
+  let desgloseVuelto = [];
   const efectivo = detalle.find((d) => d.metodo === "Efectivo");
   if (efectivo && efectivoRecibido != null) {
     const recibidoC = aCentavos(efectivoRecibido);
@@ -76,9 +78,12 @@ function calcularDivision({ total, metodos, efectivoRecibido = null }) {
         recibido: aMonto(recibidoC), requerido: efectivo.monto,
       });
     cambio = aMonto(recibidoC - efectivoC);
+    
+    // TDSI-788: agregar desglose del cambio en pago mixto
+    desgloseVuelto = calcularDesgloseVuelto(cambio);
   }
 
-  return { total: aMonto(totalC), tipoPago: "Mixto", cuadra: true, restante: 0, cambio, metodos: detalle };
+  return { total: aMonto(totalC), tipoPago: "Mixto", cuadra: true, restante: 0, cambio, desgloseVuelto, metodos: detalle };
 }
 
 /**
@@ -132,7 +137,7 @@ async function registrarPagoMixto(payload) {
   });
 
   emitirActualizacion();
-  return { ...resultado, cambio: calculo.cambio, clienteGuardado: clienteAutoguardado.creado, cliente: clienteAutoguardado.cliente };
+  return { ...resultado, cambio: calculo.cambio, desgloseVuelto: calculo.desgloseVuelto, clienteGuardado: clienteAutoguardado.creado, cliente: clienteAutoguardado.cliente };
 }
 
 async function obtenerPorTransaccion(id_transaccion) {

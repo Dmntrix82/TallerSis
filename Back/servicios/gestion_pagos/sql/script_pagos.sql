@@ -410,3 +410,34 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
 -- ==========================================================================
 ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS cobro_duplicado BOOLEAN NOT NULL DEFAULT false;
+
+-- ==========================================================================
+-- TDSI-42/161: tabla de parametros para el cobro en dolares. Guarda el tipo
+-- de cambio vigente (Bs por 1 USD) para convertir el total de la venta y
+-- calcular el vuelto en bolivianos. Se puede correr varias veces.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.tipo_cambio (
+    id            SERIAL PRIMARY KEY,
+    valor         NUMERIC(10,2) NOT NULL CHECK (valor > 0),
+    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+    actualizado_por VARCHAR(60)
+);
+
+-- Insertar el valor inicial (12) solo si la tabla está vacía (idempotente)
+INSERT INTO pagos.tipo_cambio (valor, actualizado_por)
+SELECT 12, 'SISTEMA'
+WHERE NOT EXISTS (SELECT 1 FROM pagos.tipo_cambio);
+
+ALTER TABLE pagos.tipo_cambio ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-42/813: faltaba guardar con que moneda pago el cliente cuando elige
+-- "Efectivo en dolares" -- el endpoint de calcular-vuelto (TDSI-812) y la
+-- leyenda del PDF (TDSI-814) ya existian, pero la venta nunca guardaba estos
+-- datos, asi que la leyenda "Pagado en USD" nunca llegaba a la factura real.
+-- La venta en si sigue en Bs (monto, monto_recibido, vuelto no cambian).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS moneda_recibida VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS monto_usd       NUMERIC(10,2) CHECK (monto_usd IS NULL OR monto_usd > 0),
+    ADD COLUMN IF NOT EXISTS tipo_cambio     NUMERIC(10,2) CHECK (tipo_cambio IS NULL OR tipo_cambio > 0);
