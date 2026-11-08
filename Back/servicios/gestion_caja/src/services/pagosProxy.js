@@ -24,4 +24,23 @@ async function obtenerReporteVentas({ caja_id, desde, hasta }) {
   return datos.data;
 }
 
-module.exports = { obtenerReporteVentas };
+/** TDSI-929: facturas anuladas de una caja entre "desde" (apertura del turno) y "hasta" (ahora o el cierre). */
+async function obtenerAnuladasTurno({ caja_id, desde, hasta }) {
+  const params = new URLSearchParams({ caja_id, desde: new Date(desde).toISOString() });
+  if (hasta) params.set("hasta", new Date(hasta).toISOString());
+
+  let respuesta;
+  try {
+    respuesta = await fetch(`${GESTION_PAGOS_URL}/api/pagos/anuladas-turno?${params.toString()}`);
+  } catch (e) {
+    throw new AppError("No se pudo obtener las facturas anuladas de este turno. Intente de nuevo.", 502);
+  }
+
+  const datos = await respuesta.json().catch(() => null);
+  if (!respuesta.ok) {
+    throw new AppError(datos?.mensaje || "No se pudo obtener las facturas anuladas de este turno.", respuesta.status);
+  }
+  return datos.data;
+}
+
+module.exports = { obtenerReporteVentas, obtenerAnuladasTurno };

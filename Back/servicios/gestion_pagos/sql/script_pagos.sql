@@ -421,6 +421,14 @@ ALTER TABLE pagos.transacciones
     ALTER COLUMN motivo_anulacion TYPE VARCHAR(100);
 
 -- ==========================================================================
+-- TDSI-49/929: el cierre de caja necesita mostrar tambien el NOMBRE del
+-- supervisor que autorizo la anulacion (antes solo se guardaba su id en
+-- anulado_por).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS anulado_por_nombre VARCHAR(255);
+
+-- ==========================================================================
 -- TDSI-46: indice para la pantalla "Facturas" del cajero
 -- --------------------------------------------------------------------------
 -- GET /api/pagos/mis-facturas siempre filtra por el cajero de la sesion con

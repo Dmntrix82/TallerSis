@@ -6,6 +6,7 @@ const {
   listarMisFacturas,
   anularVenta,
   reporteTurno,
+  anuladasTurno,
   historialCliente,
   totalesGenerales,
   listarCajeros,
@@ -84,6 +85,12 @@ router.post("/:id_transaccion/anular", wrap(async (req, res) => {
 // TDSI-323: reporte de ventas de una caja (usado por gestion_caja para el cierre de turno).
 router.get("/reporte-turno", wrap(async (req, res) => {
   const r = await reporteTurno({ caja_id: req.query.caja_id, desde: req.query.desde, hasta: req.query.hasta });
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-929: facturas anuladas de una caja en un rango (usado por gestion_caja para "Ver anuladas" del cierre).
+router.get("/anuladas-turno", wrap(async (req, res) => {
+  const r = await anuladasTurno({ caja_id: req.query.caja_id, desde: req.query.desde, hasta: req.query.hasta });
   res.json({ ok: true, data: r });
 }));
 
