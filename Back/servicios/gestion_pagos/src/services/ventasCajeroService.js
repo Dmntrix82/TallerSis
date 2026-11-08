@@ -3,12 +3,17 @@ const repo = require("../data/pagosRepo");
 const { validarSupervisor } = require("./supervisorProxy");
 const { emitirActualizacion } = require("../utils/tableroEvents");
 const { validarFormatoDocumento } = require("../utils/documento");
+const { validarFechaDia } = require("../utils/fechaLocal");
 
 // TDSI-306: mismo plazo de 2 horas que la anulacion de facturas en facturacion.
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000;
 // TDSI-48/897: mismos limites que facturacion.respuestas_anulacion (TDSI-891).
 const MOTIVO_ANULACION_MIN = 10;
 const MOTIVO_ANULACION_MAX = 100;
+// TDSI-169: largo maximo del texto del buscador de "Facturas".
+const BUSQUEDA_MAX = 100;
+// TDSI-866: mismo largo que la columna pagos.transacciones.cajero.
+const CAJERO_MAX = 255;
 
 function dentroDelPlazo(fecha) {
   return Date.now() - new Date(fecha).getTime() <= PLAZO_ANULACION_MS;
@@ -18,22 +23,38 @@ function dentroDelPlazo(fecha) {
  * El cajero ve unicamente sus propias ventas en la pantalla de Facturas.
  * TDSI-307: desde/hasta (strings "YYYY-MM-DD") filtran por fecha de emision;
  * "hasta" incluye el dia completo (hasta las 23:59:59.999).
+ * TDSI-169: q (opcional) busca por N° de factura, NIT/CI o nombre del cliente.
+ * TDSI-865: la busqueda se combina con el rango de fechas (las dos condiciones a la vez),
+ * y los dias se cuentan en hora de Bolivia aunque el servidor este en otro huso.
+ * TDSI-866: los resultados (con o sin busqueda) son solo los del cajero de la sesion.
  */
-async function listarMisFacturas(cajero, { desde, hasta } = {}) {
+async function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
+  // Un parametro repetido (?cajero=a&cajero=b) llega como arreglo: se rechaza en vez de
+  // convertirlo en texto y buscar con un cajero que no es el de la sesion.
+  if (Array.isArray(cajero) || Array.isArray(q)) {
+    throw new AppError("Los parametros 'cajero' y 'q' deben enviarse una sola vez.", 400);
+  }
   if (!cajero || !String(cajero).trim()) {
     throw new AppError("Falta identificar al cajero para listar sus facturas.", 400);
   }
-
-  const desdeFecha = desde ? new Date(`${desde}T00:00:00`) : null;
-  const hastaFecha = hasta ? new Date(`${hasta}T23:59:59.999`) : null;
-  if (desde && Number.isNaN(desdeFecha.getTime())) {
-    throw new AppError('El parametro "desde" no es una fecha valida.', 400);
-  }
-  if (hasta && Number.isNaN(hastaFecha.getTime())) {
-    throw new AppError('El parametro "hasta" no es una fecha valida.', 400);
+  // El cajero de la sesion es su correo: se compara sin importar mayusculas ni espacios.
+  const cajeroSesion = String(cajero).trim().toLowerCase();
+  if (cajeroSesion.length > CAJERO_MAX) {
+    throw new AppError(`El cajero admite hasta ${CAJERO_MAX} caracteres.`, 400);
   }
 
-  return repo.listarPorCajero(String(cajero).trim(), { desde: desdeFecha, hasta: hastaFecha });
+  const busqueda = q === undefined || q === null ? "" : String(q).trim();
+  if (busqueda.length > BUSQUEDA_MAX) {
+    throw new AppError(`La busqueda admite hasta ${BUSQUEDA_MAX} caracteres.`, 400, { q: busqueda.slice(0, 20) });
+  }
+
+  const desdeDia = desde ? validarFechaDia(desde, "desde") : null;
+  const hastaDia = hasta ? validarFechaDia(hasta, "hasta") : null;
+  if (desdeDia && hastaDia && desdeDia > hastaDia) {
+    throw new AppError('La fecha "desde" no puede ser posterior a "hasta".', 400, { desde: desdeDia, hasta: hastaDia });
+  }
+
+  return repo.listarPorCajero(cajeroSesion, { desde: desdeDia, hasta: hastaDia, q: busqueda || null });
 }
 
 /**

@@ -10,6 +10,10 @@ const {
   totalesGenerales,
   listarCajeros,
 } = require("../services/ventasCajeroService");
+const ventasCanceladasService = require("../services/ventasCanceladasService");
+const respuestasRapidasService = require("../services/respuestasRapidasService");
+const duplicadoService = require("../services/duplicadoService");
+const tipoCambioService = require("../services/tipoCambioService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -63,8 +67,10 @@ router.get("/cliente-por-documento", wrap(async (req, res) => {
 
 // TDSI-306/307: pantalla "Facturas" del cajero -- solo sus propias ventas,
 // con filtro opcional de rango de fechas (?desde=YYYY-MM-DD&hasta=YYYY-MM-DD).
+// TDSI-169: ?q= busca por N° de factura, NIT/CI o nombre del cliente.
 router.get("/mis-facturas", wrap(async (req, res) => {
-  const r = await listarMisFacturas(req.query.cajero, { desde: req.query.desde, hasta: req.query.hasta });
+  const { cajero, desde, hasta, q } = req.query;
+  const r = await listarMisFacturas(cajero, { desde, hasta, q });
   res.json({ ok: true, data: r });
 }));
 
@@ -98,5 +104,55 @@ router.get("/totales-generales", wrap(async (req, res) => {
   const r = await totalesGenerales({ desde: req.query.desde, hasta: req.query.hasta });
   res.json({ ok: true, data: r });
 }));
+// TDSI-838: Registrar venta cancelada antes de cobrar (no genera transacción).
+router.post("/canceladas", wrap(async (req, res) => {
+  const data = await ventasCanceladasService.registrar(req.body);
+  res.status(201).json({ ok: true, data });
+}));
 
+// TDSI-839: Obtener conteo de ventas canceladas hoy por el cajero.
+router.get("/canceladas/conteo", wrap(async (req, res) => {
+  const data = await ventasCanceladasService.obtenerConteoHoy(req.query.cajero_id, req.query.fecha);
+  res.json({ ok: true, data });
+}));
+
+// TDSI-799: Obtener las respuestas rápidas del cajero
+router.get("/respuestas-rapidas", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.listar(req.query.cajero_id);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-800: Crear una respuesta rápida
+router.post("/respuestas-rapidas", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.crear(req.body);
+  res.status(201).json({ ok: true, data: r });
+}));
+
+// TDSI-800: Editar una respuesta rápida
+router.put("/respuestas-rapidas/:id", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.actualizar(req.params.id, req.body.cajero_id, req.body);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-801: Eliminar una respuesta rápida
+router.delete("/respuestas-rapidas/:id", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.eliminar(req.params.id, req.query.cajero_id);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-163/825: detecta si el mismo cajero ya cobró lo mismo al mismo cliente en los últimos 2 minutos.
+router.get("/posible-duplicado", wrap(async (req, res) => {
+  const r = await duplicadoService.detectarPosibleDuplicado({
+    cajero_id: req.query.cajero_id,
+    nit: req.query.nit,
+    total: Number(req.query.total),
+  });
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-161: el cajero necesita saber el tipo de cambio vigente para el cobro en dólares.
+router.get("/tipo-cambio", wrap(async (req, res) => {
+  const data = await tipoCambioService.obtenerTipoCambio();
+  res.json({ ok: true, data });
+}));
 module.exports = router;
