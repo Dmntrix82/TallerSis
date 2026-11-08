@@ -258,6 +258,14 @@ CREATE INDEX IF NOT EXISTS idx_aprobaciones_especiales_estado
   ON caja.aprobaciones_especiales (estado, tipo, creado_en DESC);
 
 -- ==========================================================================
+-- TDSI-53/852: registrar hora de bloqueo/desbloqueo e intentos fallidos.
+-- ==========================================================================
+ALTER TABLE caja.sesiones_cajero
+    ADD COLUMN IF NOT EXISTS bloqueada_en TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS desbloqueada_en TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS intentos_desbloqueo INT NOT NULL DEFAULT 0;
+
+-- ==========================================================================
 -- TDSI-52/699: seguimiento del aviso a Contabilidad de cada diferencia resuelta
 -- (TDSI-698 arma y publica el mensaje "diferencia_caja"; esta tabla es donde
 -- queda el registro). Una diferencia tiene a lo sumo un envio (uq mas abajo).

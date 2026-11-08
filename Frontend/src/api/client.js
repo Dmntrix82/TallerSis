@@ -12,6 +12,7 @@ export async function apiFetch(path, options = {}, baseUrl = API_BASE_URL) {
     if (body) {
       Object.assign(error, body);
     }
+    error.status = response.status
     throw error;
   }
 

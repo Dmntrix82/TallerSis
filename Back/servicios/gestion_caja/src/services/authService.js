@@ -41,5 +41,21 @@ async function autenticarCajero({ email, password }) {
     access_token: datos.access_token,
   };
 }
+/** TDSI-183: verifica la contraseña del cajero para desbloquear la pantalla. */
+async function verificarContrasena(email, password) {
+  const respuesta = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ email, password }),
+  });
 
-module.exports = { autenticarCajero };
+  if (!respuesta.ok) {
+    return false;
+  }
+  return true;
+}
+
+module.exports = { autenticarCajero, verificarContrasena };
