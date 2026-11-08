@@ -902,6 +902,66 @@
   color: var(--color-brand-dark);
 }
 
+/* Desglose del vuelto en billetes y monedas (TDSI-160 / TDSI-790) */
+.desglose-vuelto .vuelto-destacado {
+  margin-bottom: 0.75rem;
+}
+
+.desglose-vuelto-titulo {
+  margin: 0 0 0.5rem;
+  color: #616e7c;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.fichas-dinero {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+.ficha-dinero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  background-color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.ficha-dinero--billete {
+  min-width: 84px;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--color-brand-dark);
+  border-radius: 6px;
+  background-color: var(--color-brand-green);
+  color: var(--color-brand-dark);
+}
+
+.ficha-dinero--moneda {
+  width: 68px;
+  height: 68px;
+  border: 2px solid var(--color-brand-olive);
+  border-radius: 50%;
+  color: #3e4c59;
+}
+
+.ficha-dinero-cantidad {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ficha-dinero-valor {
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* Layout dividido: al elegir 2 métodos de pago, el formulario de pago mixto
    ocupa la otra mitad de la pantalla en vez de reemplazar la vista. */
 .pagos-layout {

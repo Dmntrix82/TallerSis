@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { registrarPago, registrarPagoMixto, obtenerTipoCambio, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { registrarPago, registrarPagoMixto, calcularPagoMixto, obtenerTipoCambio, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
 import { calcularVuelto, calcularCobroUsd, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
+import DesgloseVuelto from '../components/DesgloseVuelto.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 // TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
@@ -76,7 +77,7 @@ const ESTADO_INICIAL = {
   metodos: [], // 1 metodo = pago simple, 2 metodos = pago mixto
   montoMixto1: '',
   montoMixto2: '',
-  montoRecibido: '', // TDSI-29: solo aplica a pago simple en Efectivo
+  montoRecibido: '', // TDSI-29/793: efectivo que dio el cliente (obligatorio en pago simple, opcional en mixto)
   dolaresRecibidos: '', // TDSI-817: solo aplica a "Efectivo en dólares"
   tipoDocumento: 'NINGUNO',
   numeroDocumento: '',
@@ -175,6 +176,7 @@ function Pagos() {
 
   // TDSI-29: vuelto calculado por el backend (endpoint dedicado), en vivo mientras se escribe.
   const [vuelto, setVuelto] = useState(null)
+  const [desgloseVuelto, setDesgloseVuelto] = useState([]) // TDSI-160: [{ denominacion, cantidad }]
   const [errorVuelto, setErrorVuelto] = useState(null)
   const [calculandoVuelto, setCalculandoVuelto] = useState(false)
 
@@ -195,6 +197,7 @@ function Pagos() {
   // TDSI-818: sin un calculo valido del backend no se puede seguir con el cobro.
   const cobroUsdBloqueado = esEfectivoUsd && (calculandoCobroUsd || faltanteBs !== null || errorCobroUsd !== null)
   const tipoCambioVigente = cobroUsd?.tipoCambio ?? tipoCambio
+  const esMixtoConEfectivo = esMixto && datos.metodos.includes('Efectivo')
 
   // TDSI-39/532: mientras se espera el pago, se consulta el estado cada 4s
   // (el backend es quien decide si ya expiro o si se confirmo).
@@ -234,17 +237,24 @@ function Pagos() {
 
   // TDSI-29/571: apenas hay total + monto recibido validos, se consulta el
   // vuelto al backend (nunca se calcula "de mentira" solo en el navegador).
+  // TDSI-791/793: se recalcula con cada cambio; en pago mixto, solo si los montos ya cuadran
+  // con el total (el backend rechaza el calculo si no).
   useEffect(() => {
-    if (!esEfectivoSimple || !datos.monto || !datos.montoRecibido) {
-      setVuelto(null)
-      setErrorVuelto(null)
-      return
-    }
     const total = Number(datos.monto)
     const montoRecibido = Number(datos.montoRecibido)
-    if (!(total > 0) || !(montoRecibido > 0)) {
+    const montoMixto1 = Number(datos.montoMixto1)
+    const montoMixto2 = Number(datos.montoMixto2)
+    const mixtoCuadra =
+      esMixtoConEfectivo &&
+      montoMixto1 > 0 &&
+      montoMixto2 > 0 &&
+      Math.round((montoMixto1 + montoMixto2) * 100) === Math.round(total * 100)
+
+    if (!(esEfectivoSimple || mixtoCuadra) || !(total > 0) || !(montoRecibido > 0)) {
       setVuelto(null)
+      setDesgloseVuelto([])
       setErrorVuelto(null)
+      setCalculandoVuelto(false)
       return
     }
 
@@ -252,9 +262,19 @@ function Pagos() {
     setCalculandoVuelto(true)
     const timeout = setTimeout(async () => {
       try {
-        const r = await calcularVuelto(total, montoRecibido)
+        const { data } = esEfectivoSimple
+          ? await calcularVuelto(total, montoRecibido)
+          : await calcularPagoMixto({
+              total,
+              metodos: [
+                { metodo: datos.metodos[0], monto: montoMixto1 },
+                { metodo: datos.metodos[1], monto: montoMixto2 },
+              ],
+              efectivoRecibido: montoRecibido,
+            })
         if (!cancelado) {
-          setVuelto(r.data.vuelto)
+          setVuelto(esEfectivoSimple ? data.vuelto : data.cambio)
+          setDesgloseVuelto(esEfectivoSimple ? data.desglose : data.desgloseVuelto)
           setErrorVuelto(null)
           // TDSI-573: el monto ya alcanza, asi que el aviso de "insuficiente" deja de aplicar
           setErrorValidacion((actual) => (actual === MENSAJE_MONTO_INSUFICIENTE ? null : actual))
@@ -262,6 +282,7 @@ function Pagos() {
       } catch (err) {
         if (!cancelado) {
           setVuelto(null)
+          setDesgloseVuelto([])
           setErrorVuelto(err.message)
         }
       } finally {
@@ -273,7 +294,7 @@ function Pagos() {
       cancelado = true
       clearTimeout(timeout)
     }
-  }, [esEfectivoSimple, datos.monto, datos.montoRecibido])
+  }, [esEfectivoSimple, esMixtoConEfectivo, datos.metodos, datos.monto, datos.montoRecibido, datos.montoMixto1, datos.montoMixto2])
 
   // TDSI-816: el tipo de cambio se consulta cada vez que se elige "Efectivo en dólares".
   useEffect(() => {
@@ -664,9 +685,7 @@ function Pagos() {
                   {calculandoVuelto && <p className="ayuda-mixto">Calculando vuelto...</p>}
                   {/* TDSI-573: si ya se muestra la validacion del formulario, no repetir el aviso */}
                   {errorVuelto && !errorValidacion && <p className="error">{errorVuelto}</p>}
-                  {vuelto !== null && !calculandoVuelto && (
-                    <p className="vuelto-destacado">Vuelto a entregar: Bs. {vuelto.toFixed(2)}</p>
-                  )}
+                  {vuelto !== null && !calculandoVuelto && <DesgloseVuelto vuelto={vuelto} desglose={desgloseVuelto} />}
                 </div>
               )}
 
@@ -831,11 +850,8 @@ function Pagos() {
                     <li>Vuelto a entregar: Bs. {cobroUsd.vuelto.toFixed(2)}</li>
                   </>
                 )}
-                {esEfectivoSimple && (
-                  <>
-                    <li>Monto recibido: Bs. {datos.montoRecibido}</li>
-                    <li>Vuelto a entregar: Bs. {vuelto !== null ? vuelto.toFixed(2) : '-'}</li>
-                  </>
+                {(esEfectivoSimple || (esMixtoConEfectivo && datos.montoRecibido)) && (
+                  <li>{esMixto ? 'Efectivo recibido' : 'Monto recibido'}: Bs. {datos.montoRecibido}</li>
                 )}
                 <li>
                   Datos de facturación:{' '}
@@ -849,6 +865,7 @@ function Pagos() {
                   {datos.enviarCorreo ? `Sí, a ${datos.email}` : 'No'}
                 </li>
               </ul>
+              {vuelto !== null && !calculandoVuelto && <DesgloseVuelto vuelto={vuelto} desglose={desgloseVuelto} />}
 
               {errorApi && <p className="error">Error: {errorApi}</p>}
 
@@ -996,6 +1013,12 @@ function Pagos() {
               monto2={datos.montoMixto2}
               onCambiarMonto1={(valor) => actualizarCampo('montoMixto1', valor)}
               onCambiarMonto2={(valor) => actualizarCampo('montoMixto2', valor)}
+              montoRecibido={datos.montoRecibido}
+              onCambiarMontoRecibido={(valor) => actualizarCampo('montoRecibido', valor)}
+              vuelto={vuelto}
+              desgloseVuelto={desgloseVuelto}
+              calculandoVuelto={calculandoVuelto}
+              errorVuelto={errorVuelto}
             />
           </div>
         )}
