@@ -1,0 +1,56 @@
+// TDSI-51/179: lectura (pull) de la suscripcion donde el Marketplace publica sus ventas.
+const { v1 } = require("@google-cloud/pubsub");
+const cfg = require("../config/marketplace");
+
+let cliente = null;
+
+function obtenerCliente() {
+  if (!cliente) {
+    const cred = cfg.GOOGLE_CREDENTIALS;
+    cliente = new v1.SubscriberClient(
+      cred ? { projectId: cred.project_id, credentials: { client_email: cred.client_email, private_key: cred.private_key } } : {}
+    );
+  }
+  return cliente;
+}
+
+/** Nombre completo de la suscripcion: acepta "projects/<p>/subscriptions/<s>" o solo "<s>". */
+function nombreSuscripcion(suscripcion = cfg.VENTAS_SUBSCRIPTION) {
+  if (!suscripcion) return null;
+  if (suscripcion.includes("/topics/"))
+    throw new Error("MARKETPLACE_VENTAS_SUBSCRIPTION tiene un topico; debe ser una suscripcion (projects/<p>/subscriptions/<nombre> o solo <nombre>)");
+  if (suscripcion.startsWith("projects/")) return suscripcion;
+  const proyecto = cfg.GOOGLE_CREDENTIALS?.project_id;
+  return `projects/${proyecto}/subscriptions/${suscripcion}`;
+}
+
+/** Trae hasta `max` mensajes: [{ ackId, messageId, publicadoEn, atributos, texto }]. */
+async function leer(max = 50, suscripcion = nombreSuscripcion()) {
+  const [respuesta] = await obtenerCliente().pull({ subscription: suscripcion, maxMessages: max }, { timeout: cfg.PUBSUB_TIMEOUT_MS });
+  return (respuesta.receivedMessages || []).map(({ ackId, message }) => ({
+    ackId,
+    messageId: message.messageId,
+    publicadoEn: message.publishTime
+      ? new Date(Number(message.publishTime.seconds) * 1000 + Math.floor((message.publishTime.nanos || 0) / 1e6)).toISOString()
+      : null,
+    atributos: message.attributes || {},
+    texto: Buffer.from(message.data || "").toString("utf8"),
+  }));
+}
+
+/** Confirma los mensajes procesados (desaparecen de la suscripcion). */
+async function confirmar(ackIds, suscripcion = nombreSuscripcion()) {
+  if (ackIds.length) await obtenerCliente().acknowledge({ subscription: suscripcion, ackIds });
+}
+
+async function cerrar() {
+  if (cliente) await cliente.close();
+  cliente = null;
+}
+
+/** Solo para pruebas: reemplaza el cliente real por uno simulado (null vuelve al real). */
+function usarClienteDePrueba(falso) {
+  cliente = falso;
+}
+
+module.exports = { leer, confirmar, cerrar, nombreSuscripcion, usarClienteDePrueba };

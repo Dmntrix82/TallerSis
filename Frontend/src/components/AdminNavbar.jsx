@@ -18,6 +18,9 @@ function AdminNavbar() {
       <NavLink to="/admin/tablero">Tablero</NavLink>
       <NavLink to="/admin/cierre-diario">Cierre diario</NavLink>
       <NavLink to="/admin/diferencias">Diferencias de caja</NavLink>
+      <NavLink to="/admin/ventas-online">Ventas online</NavLink>
+      <NavLink to="/admin/libro-ventas">Libro de Ventas</NavLink>
+      <NavLink to="/admin/usuarios">Usuarios</NavLink>
 
       <div className="navbar-sesion">
         <span className="navbar-cajero">{administrador?.nombre}</span>

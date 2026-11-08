@@ -286,3 +286,19 @@ CREATE INDEX IF NOT EXISTS idx_diferencias_envios_contabilidad_estado
     ON caja.diferencias_envios_contabilidad (estado);
 
 ALTER TABLE caja.diferencias_envios_contabilidad ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-47/171: perfil de cada cajero (nombre, usuario, estado), igual patron
+-- que caja.administradores -- la cuenta de login (usuario/contrasena) vive en
+-- Supabase Auth, aqui solo se guarda el perfil ligado a ese mismo cajero_id.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS caja.cajeros (
+    id              BIGSERIAL PRIMARY KEY,
+    cajero_id       VARCHAR(60)  NOT NULL UNIQUE, -- id de Supabase Auth (mismo valor que auth.users.id)
+    usuario         VARCHAR(255) NOT NULL UNIQUE, -- email con el que inicia sesion
+    nombre          VARCHAR(150) NOT NULL,
+    activo          BOOLEAN      NOT NULL DEFAULT true,
+    creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+ALTER TABLE caja.cajeros ENABLE ROW LEVEL SECURITY;
