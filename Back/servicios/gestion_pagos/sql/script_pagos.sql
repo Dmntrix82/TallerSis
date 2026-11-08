@@ -384,6 +384,12 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.transacciones DROP CONSTRAINT IF EXISTS transacciones_token_verificacion_key;
 CREATE INDEX IF NOT EXISTS idx_transacciones_token_verificacion
     ON pagos.transacciones (token_verificacion);
+
+-- ==========================================================================
+-- TDSI-50/177: el Libro de Ventas agrupa por mes -- este indice deja la
+-- consulta mensual (date_part sobre fecha) rapida aunque crezca la tabla.
+-- ==========================================================================
+CREATE INDEX IF NOT EXISTS idx_transacciones_fecha ON pagos.transacciones (fecha);
 -- ==========================================================================
 -- TDSI-39/155: cobro con QR. No hay integracion con ningun banco, asi que
 -- esto NO genera un QR de pago real -- es solo el registro interno del
