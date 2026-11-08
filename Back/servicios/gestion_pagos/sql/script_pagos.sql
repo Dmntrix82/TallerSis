@@ -412,6 +412,50 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
 );
 
 -- ==========================================================================
+-- TDSI-51/179: suscripcion al topico "marketplace-ventas". pagos.ventas_online
+-- y pagos.venta_online_items ya existian (TDSI-105/106) pero les faltaba el
+-- NIT/CI del comprador -- necesario para poder facturar la venta despues
+-- (eso lo hace un subtask aparte, aqui solo se recibe y se guarda).
+-- ==========================================================================
+ALTER TABLE pagos.ventas_online
+    ADD COLUMN IF NOT EXISTS nit            VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS tipo_documento VARCHAR(10) CHECK (tipo_documento IN ('NIT', 'CI')),
+    ADD COLUMN IF NOT EXISTS razon_social   VARCHAR(255);
+
+-- TDSI-51/179: "si el mensaje viene mal, no se registra y se guarda el error para revisarlo".
+CREATE TABLE IF NOT EXISTS pagos.marketplace_mensajes_error (
+    id           BIGSERIAL PRIMARY KEY,
+    message_id   VARCHAR(100),
+    error        VARCHAR(500) NOT NULL,
+    payload      TEXT,
+    recibido_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ==========================================================================
+-- TDSI-51/683: cada venta online recibida emite su factura automaticamente
+-- (via el microservicio facturacion, que es el dueno de la numeracion oficial
+-- F-NNNNNN -- NO se reinventa un numerado propio aca). factura_error queda
+-- NULL mientras no haya fallado; si facturacion no responde, la venta se
+-- guarda igual (ya paso TDSI-179) y el error queda aca para poder revisarlo.
+-- ==========================================================================
+ALTER TABLE pagos.ventas_online
+    ADD COLUMN IF NOT EXISTS numero_factura VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS factura_error  VARCHAR(500);
+
+-- ==========================================================================
+-- TDSI-51/684: aviso al Marketplace (topico "pagos-facturas-emitidas") con el
+-- N de orden, el N de factura y el enlace publico "Verificar Factura" -- el
+-- mismo mecanismo de token+QR que ya usan las ventas de mostrador (TDSI-38/527),
+-- aplicado aca a ventas_online. aviso_marketplace_estado queda NULL mientras
+-- no se haya intentado avisar (p.ej. todavia no se pudo emitir la factura).
+-- ==========================================================================
+ALTER TABLE pagos.ventas_online
+    ADD COLUMN IF NOT EXISTS token_verificacion     VARCHAR(48) UNIQUE,
+    ADD COLUMN IF NOT EXISTS aviso_marketplace_estado VARCHAR(20)
+        CHECK (aviso_marketplace_estado IN ('Enviado', 'Error')),
+    ADD COLUMN IF NOT EXISTS aviso_marketplace_error  VARCHAR(500);
+
+-- ==========================================================================
 -- TDSI-48/897: motivo de la anulacion de una venta (elegido entre las
 -- respuestas rapidas del cajero, de facturacion.respuestas_anulacion, o
 -- escrito a mano). Se guarda el texto, no una referencia, para que si la
