@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { registrarPago, registrarPagoMixto, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { registrarPago, registrarPagoMixto, registrarVentaCancelada, contarVentasCanceladas, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
 import { calcularVuelto, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
+import CancelarVentaModal from '../components/CancelarVentaModal.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 // TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
@@ -92,6 +93,13 @@ function formatearTiempoRestante(segundos) {
   return `${minutos}:${String(resto).padStart(2, '0')}`
 }
 
+// El conteo se pide con la fecha local: sin fecha, el backend usa la fecha del servidor de la base,
+// que en UTC ya cambia de dia a las 20:00 de Bolivia.
+function hoyLocal() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function validarFormulario(datos) {
   if (!datos.monto || Number(datos.monto) <= 0) {
     return 'Ingrese un monto válido.'
@@ -135,6 +143,11 @@ function validarFormulario(datos) {
 
 function Pagos() {
   const { cajero } = useAuth()
+
+  // TDSI-45: cancelar una venta que todavia no se cobro.
+  const [mostrarCancelarVenta, setMostrarCancelarVenta] = useState(false)
+  const [mensajeCancelacion, setMensajeCancelacion] = useState(null)
+  const [canceladasHoy, setCanceladasHoy] = useState(null)
   const [datos, setDatos] = useState(ESTADO_INICIAL)
   const [paso, setPaso] = useState('formulario')
   const [errorValidacion, setErrorValidacion] = useState(null)
@@ -189,7 +202,45 @@ function Pagos() {
   }, [cobroQr?.expira_en, cobroQr?.estado])
 
   function actualizarCampo(campo, valor) {
+    setMensajeCancelacion(null)
     setDatos((prev) => ({ ...prev, [campo]: valor }))
+  }
+
+  // TDSI-844: contador "Canceladas hoy". Si no se puede consultar, simplemente no se muestra.
+  async function actualizarCanceladasHoy() {
+    if (!cajero?.nombre) return
+    try {
+      const { data } = await contarVentasCanceladas(cajero.nombre, hoyLocal())
+      setCanceladasHoy(data.total)
+    } catch {
+      setCanceladasHoy(null)
+    }
+  }
+
+  useEffect(() => {
+    actualizarCanceladasHoy()
+  }, [cajero?.nombre])
+
+  // TDSI-843/845: registra la cancelacion, deja la pantalla limpia y avisa.
+  // Si falla, el error se muestra en el modal (que sigue abierto).
+  async function confirmarCancelacion({ motivo, motivo_texto }) {
+    const total = Number(datos.monto)
+    await registrarVentaCancelada({
+      cajero_id: cajero?.nombre,
+      caja_id: cajero?.caja,
+      // La pantalla de Pagos no tiene items de producto (no hay catalogo): se registra lo que
+      // se cargo, que es el monto de la venta.
+      items: [{ descripcion: 'Monto de la venta', monto: total }],
+      total,
+      motivo,
+      motivo_texto,
+    })
+    setMostrarCancelarVenta(false)
+    registrarOtro()
+    setErrorValidacion(null)
+    setErrorApi(null)
+    setMensajeCancelacion(`Venta cancelada (Bs. ${total.toFixed(2)}). Motivo: ${motivo_texto || motivo}.`)
+    actualizarCanceladasHoy()
   }
 
   // TDSI-29/571: apenas hay total + monto recibido validos, se consulta el
@@ -490,7 +541,21 @@ function Pagos() {
 
   return (
     <section>
-      <h1>Método de pago</h1>
+      <div className="pagos-encabezado">
+        <h1>Método de pago</h1>
+        {canceladasHoy !== null && <span className="canceladas-hoy">Canceladas hoy: {canceladasHoy}</span>}
+      </div>
+
+      {mensajeCancelacion && <p className="mensaje-exito pagos-mensaje">{mensajeCancelacion}</p>}
+
+      {mostrarCancelarVenta && (
+        <CancelarVentaModal
+          total={Number(datos.monto)}
+          cajeroId={cajero?.nombre}
+          onConfirmar={confirmarCancelacion}
+          onVolver={() => setMostrarCancelarVenta(false)}
+        />
+      )}
 
       <div className={`pagos-layout${mostrarPanelMixto ? ' pagos-layout--dividido' : ''}`}>
         <div className="pagos-layout-col">
@@ -633,9 +698,19 @@ function Pagos() {
 
               {errorValidacion && <p className="error">{errorValidacion}</p>}
 
-              <button type="submit" className="btn">
-                Continuar
-              </button>
+              <div className="pago-acciones">
+                <button type="submit" className="btn">
+                  Continuar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secundario"
+                  onClick={() => setMostrarCancelarVenta(true)}
+                  disabled={!(Number(datos.monto) > 0)}
+                >
+                  Cancelar venta
+                </button>
+              </div>
             </form>
           )}
 
@@ -680,6 +755,9 @@ function Pagos() {
                   {enviando
                     ? (esQrSimple ? 'Generando QR...' : 'Confirmando...')
                     : (esQrSimple ? 'Generar QR' : 'Confirmar cobro')}
+                </button>
+                <button type="button" className="btn btn-secundario" onClick={() => setMostrarCancelarVenta(true)} disabled={enviando}>
+                  Cancelar venta
                 </button>
               </div>
             </div>
