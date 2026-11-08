@@ -147,3 +147,14 @@ export function obtenerTotalesGenerales({ desde, hasta } = {}) {
   const query = params.toString()
   return apiFetch(`/api/pagos/totales-generales${query ? `?${query}` : ''}`, {}, GESTION_PAGOS_API_BASE_URL)
 }
+
+// TDSI-59/195: resumen de una factura para la ventana de autorización del supervisor.
+// El backend solo lo devuelve al cajero que emitió la factura.
+export function obtenerResumenFactura(id_transaccion, cajero) {
+  const params = new URLSearchParams({ cajero: cajero ?? '' })
+  return apiFetch(
+    `/api/pagos/${encodeURIComponent(id_transaccion)}/resumen-autorizacion?${params.toString()}`,
+    {},
+    GESTION_PAGOS_API_BASE_URL,
+  )
+}
