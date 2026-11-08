@@ -2,8 +2,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
 export async function apiFetch(path, options = {}, baseUrl = API_BASE_URL) {
   const response = await fetch(`${baseUrl}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
   })
 
   if (!response.ok) {
@@ -12,6 +12,7 @@ export async function apiFetch(path, options = {}, baseUrl = API_BASE_URL) {
     if (body) {
       Object.assign(error, body);
     }
+    error.status = response.status
     throw error;
   }
 
