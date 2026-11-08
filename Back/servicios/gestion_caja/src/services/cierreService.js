@@ -2,7 +2,7 @@ const { AppError } = require("../utils/AppError");
 const { aCentavos, aMonto } = require("../utils/money");
 const turnosRepo = require("../data/turnosRepo");
 const diferenciasRepo = require("../data/diferenciasRepo");
-const { obtenerReporteVentas } = require("./pagosProxy");
+const { obtenerReporteVentas, obtenerAnuladasTurno } = require("./pagosProxy");
 const { validarSupervisor } = require("./supervisorProxy");
 
 /**
@@ -40,6 +40,25 @@ async function calcularTotalRecaudado(turnoId) {
       montoAnulado: reporteVentas.montoAnulado,
     },
   };
+}
+
+/**
+ * TDSI-175: lista de facturas anuladas del turno (N° de factura, hora, total,
+ * motivo y supervisor que autorizo), para el boton "Ver anuladas" del cierre
+ * de caja. "hasta" es el cierre del turno si ya esta cerrado, o el momento
+ * actual si todavia esta abierto -- igual que calcularTotalRecaudado.
+ */
+async function listarAnuladas(turnoId) {
+  const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
+  if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
+
+  const hasta = turno.cerrado_en || new Date();
+  const anuladas = await obtenerAnuladasTurno({ caja_id: turno.caja_id, desde: turno.abierto_en, hasta });
+
+  // TDSI-930: suma de lo anulado, para que coincida con "Monto anulado" del resumen de ventas.
+  const montoAnulado = anuladas.reduce((acc, f) => acc + f.total, 0);
+
+  return { turnoId, caja_id: turno.caja_id, cantidadAnuladas: anuladas.length, montoAnulado, anuladas };
 }
 
 /** TDSI-320: compara efectivo inicial + ventas en efectivo - egresos en efectivo, contra lo contado. */
@@ -83,6 +102,8 @@ async function generarReporteCierre(turnoId, efectivoContado = null) {
 
   const recaudado = await calcularTotalRecaudado(turnoId);
   const arqueo = efectivoContado != null ? await compararEfectivo(turnoId, efectivoContado) : null;
+  // TDSI-931: la lista de anuladas (con motivo y supervisor) va en el reporte de cierre.
+  const anuladas = await listarAnuladas(turnoId);
 
   return {
     turnoId,
@@ -98,6 +119,7 @@ async function generarReporteCierre(turnoId, efectivoContado = null) {
     totalRecaudado: recaudado.totalRecaudado,
     operaciones: recaudado.operaciones,
     resumenVentas: recaudado.resumenVentas,
+    anuladas: anuladas.anuladas,
     arqueoEfectivo: arqueo,
   };
 }
@@ -138,6 +160,17 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
     L.push(col("Facturas anuladas", r.resumenVentas.cantidadAnuladas));
     if (r.resumenVentas.cantidadAnuladas > 0) {
       L.push(col("  Monto anulado", r.resumenVentas.montoAnulado.toFixed(2)));
+    }
+  }
+
+  // TDSI-931: detalle de cada factura anulada (N°, hora, total, motivo, supervisor).
+  if (r.anuladas && r.anuladas.length > 0) {
+    L.push(linea());
+    L.push("FACTURAS ANULADAS");
+    for (const f of r.anuladas) {
+      L.push(col(`  ${f.numero_factura} (${new Date(f.hora).toLocaleTimeString("es-BO")})`, f.total.toFixed(2)));
+      L.push(`    Motivo: ${f.motivo || "-"}`);
+      L.push(`    Autorizo: ${f.supervisor || "-"}`);
     }
   }
 
@@ -205,4 +238,4 @@ async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {
   return { turno: turnoCerrado, reporte };
 }
 
-module.exports = { calcularTotalRecaudado, compararEfectivo, generarReporteCierre, generarReporteTexto, cerrarTurno };
+module.exports = { calcularTotalRecaudado, listarAnuladas, compararEfectivo, generarReporteCierre, generarReporteTexto, cerrarTurno };
