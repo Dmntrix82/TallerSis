@@ -22,10 +22,16 @@ async function registrar({ cajero_id, caja_id, turno_id, items, total, motivo, m
   return normalizar(rows[0]);
 }
 
-/** TDSI-839: Cuenta cuántas ventas canceló un cajero hoy (o en una fecha específica). */
+/**
+ * TDSI-839: Cuenta cuántas ventas canceló un cajero hoy (o en una fecha específica).
+ * "Hoy" sin fecha se calcula en hora de Bolivia (America/La_Paz), no con CURRENT_DATE:
+ * la sesión de Postgres corre en UTC, que ya cambia de día 4 horas antes que Bolivia
+ * (a las 20:00). Con CURRENT_DATE, una cancelación hecha entre las 20:00 y la medianoche
+ * en Bolivia no se contaba como "hoy" si se consultaba sin fecha en ese mismo rato.
+ */
 async function contarHoy(cajero_id, fecha = null) {
   const params = [cajero_id];
-  let filtroFecha = `(creado_en AT TIME ZONE 'America/La_Paz')::date = CURRENT_DATE`;
+  let filtroFecha = `(creado_en AT TIME ZONE 'America/La_Paz')::date = (now() AT TIME ZONE 'America/La_Paz')::date`;
 
   if (fecha) {
     params.push(fecha);
