@@ -13,6 +13,7 @@ import VerificarFactura from './pages/VerificarFactura.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
+import ComparativoMensual from './pages/ComparativoMensual.jsx'
 import Supervisores from './pages/Supervisores.jsx'
 import ProductosVendidos from './pages/ProductosVendidos.jsx'
 import DiferenciasCaja from './pages/DiferenciasCaja.jsx'
@@ -57,6 +58,7 @@ function App() {
           <Route path="/admin/clientes" element={<RutaProtegidaAdmin><Clientes /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/cierre-diario" element={<RutaProtegidaAdmin><CierreDiario /></RutaProtegidaAdmin>} />
+          <Route path="/admin/comparativo-mensual" element={<RutaProtegidaAdmin><ComparativoMensual /></RutaProtegidaAdmin>} />
           <Route path="/admin/supervisores" element={<RutaProtegidaAdmin><Supervisores /></RutaProtegidaAdmin>} />
           <Route path="/admin/productos-vendidos" element={<RutaProtegidaAdmin><ProductosVendidos /></RutaProtegidaAdmin>} />
           <Route path="/admin/diferencias" element={<RutaProtegidaAdmin><DiferenciasCaja /></RutaProtegidaAdmin>} />
