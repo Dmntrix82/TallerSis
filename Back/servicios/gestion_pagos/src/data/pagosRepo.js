@@ -251,14 +251,14 @@ async function listarPorCajero(cajero, { desde, hasta, q } = {}) {
 }
 
 /** Anula TODAS las filas de una venta (una si es Simple, varias si es Mixto) en una transaccion SQL. */
-async function anularTransaccion(id_transaccion, { anulado_por }) {
+async function anularTransaccion(id_transaccion, { anulado_por, motivo }) {
   return withTransaction(async (client) => {
     const { rows } = await client.query(
       `UPDATE pagos.transacciones
-          SET estado = 'Anulado', anulado_por = $2, anulado_en = now()
+          SET estado = 'Anulado', anulado_por = $2, anulado_en = now(), motivo_anulacion = $3
         WHERE id_transaccion = $1 AND estado = 'Registrado'
         RETURNING *`,
-      [id_transaccion, anulado_por || null]
+      [id_transaccion, anulado_por || null, motivo || null]
     );
     if (rows.length === 0) return [];
 

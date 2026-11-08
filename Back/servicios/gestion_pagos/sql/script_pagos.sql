@@ -406,6 +406,21 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
 );
 
 -- ==========================================================================
+-- TDSI-48/897: motivo de la anulacion de una venta (elegido entre las
+-- respuestas rapidas del cajero, de facturacion.respuestas_anulacion, o
+-- escrito a mano). Se guarda el texto, no una referencia, para que si la
+-- respuesta rapida despues se edita o se elimina, la venta ya anulada
+-- conserve el motivo que tenia en ese momento.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS motivo_anulacion VARCHAR(100);
+
+-- Idempotente: la columna ya existia (de un intento anterior, hoy sin usar) como
+-- VARCHAR(300); se achica a 100 para que coincida con el limite del ticket.
+ALTER TABLE pagos.transacciones
+    ALTER COLUMN motivo_anulacion TYPE VARCHAR(100);
+
+-- ==========================================================================
 -- TDSI-46: indice para la pantalla "Facturas" del cajero
 -- --------------------------------------------------------------------------
 -- GET /api/pagos/mis-facturas siempre filtra por el cajero de la sesion con
