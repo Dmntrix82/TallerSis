@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { query } = require("../config/db");
 const { detectarPosibleDuplicado } = require("../services/duplicadoService");
+const { registrarPagoMixto } = require("../services/pagoMixtoService");
 
 const CAJERO_ID = "CAJERO-TEST";
 const NIT = "1234567";
@@ -10,6 +11,7 @@ const TOTAL = 150;
 // Función para limpiar la BD antes de cada prueba
 async function limpiar() {
   await query(`DELETE FROM pagos.transacciones WHERE cajero_id = $1`, [CAJERO_ID]);
+  await query(`DELETE FROM pagos.pagos_mixtos WHERE caja_id = 'CAJA-DUP-ROUNDTRIP'`);
 }
 
 test.beforeEach(async () => {
@@ -95,4 +97,27 @@ test("TDSI-832: no da falso positivo si un simple coincide con una fila de un mi
   const res = await detectarPosibleDuplicado({ cajero_id: CAJERO_ID, nit: NIT_UNICO, total: 60 });
   assert.equal(res.esDuplicado, true);
   assert.equal(res.factura, "VTA-SIMPLE-60");
+});
+
+// Round-trip: registra un pago mixto de VERDAD (en vez de insertar filas a mano
+// como las pruebas de arriba) para que una regresion en registrarPagoMixto que
+// rompa cajero_id (como paso una vez) se note aca, no solo en duplicadoService.
+test("TDSI-828/832: un pago mixto registrado de verdad se detecta como duplicado despues", async () => {
+  const r = await registrarPagoMixto({
+    cajaId: "CAJA-DUP-ROUNDTRIP", turnoId: "TUR-DUP-ROUNDTRIP", total: TOTAL,
+    metodos: [{ metodo: "Efectivo", monto: 60 }, { metodo: "Tarjeta", monto: 90 }],
+    tipo_documento: "CI", nit: NIT, razon_social: "Cliente Roundtrip",
+    cajero: "cajero.roundtrip@test.com", cajeroId: CAJERO_ID,
+  });
+
+  const { rows } = await query(
+    `SELECT cajero_id FROM pagos.transacciones WHERE id_transaccion = $1`,
+    [r.pago.id_transaccion]
+  );
+  assert.ok(rows.length >= 2, "el pago mixto debe tener sus 2 filas");
+  assert.ok(rows.every((row) => row.cajero_id === CAJERO_ID), "cajero_id debe guardarse en cada fila del mixto");
+
+  const res = await detectarPosibleDuplicado({ cajero_id: CAJERO_ID, nit: NIT, total: TOTAL });
+  assert.equal(res.esDuplicado, true);
+  assert.equal(res.factura, r.pago.id_transaccion);
 });

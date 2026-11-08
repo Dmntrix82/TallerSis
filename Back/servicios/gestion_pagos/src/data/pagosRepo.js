@@ -565,10 +565,10 @@ async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, tot
     const transacciones = [];
     for (const d of detalle) {
       const { rows } = await client.query(
-        `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, pago_mixto_id, nit, razon_social, tipo_documento, telefono, cajero, caja_id, cobro_duplicado)
-         VALUES ($1, $2, $3, 'Mixto', $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, pago_mixto_id, nit, razon_social, tipo_documento, telefono, cajero, caja_id, cajero_id, cobro_duplicado)
+         VALUES ($1, $2, $3, 'Mixto', $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
-        [pago.id_transaccion, d.metodo, d.monto, pago.id, nit || null, razon_social || null, tipo_documento || null, telefono || null, cajero || null, cajaId || null, cobro_duplicado || false]
+        [pago.id_transaccion, d.metodo, d.monto, pago.id, nit || null, razon_social || null, tipo_documento || null, telefono || null, cajero || null, cajaId || null, cajeroId || null, cobro_duplicado || false]
       );
       transacciones.push(rows[0]);
     }
