@@ -14,6 +14,13 @@ import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
 import HorasPico from './pages/HorasPico.jsx'
+import ComparativoMensual from './pages/ComparativoMensual.jsx'
+import Supervisores from './pages/Supervisores.jsx'
+import ProductosVendidos from './pages/ProductosVendidos.jsx'
+import DiferenciasCaja from './pages/DiferenciasCaja.jsx'
+import VentasOnline from './pages/VentasOnline.jsx'
+import LibroVentas from './pages/LibroVentas.jsx'
+import Usuarios from './pages/Usuarios.jsx'
 import './App.css'
 
 function RutaProtegida({ children }) {
@@ -53,6 +60,13 @@ function App() {
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/cierre-diario" element={<RutaProtegidaAdmin><CierreDiario /></RutaProtegidaAdmin>} />
           <Route path="/admin/horas-pico" element={<RutaProtegidaAdmin><HorasPico /></RutaProtegidaAdmin>} />
+          <Route path="/admin/comparativo-mensual" element={<RutaProtegidaAdmin><ComparativoMensual /></RutaProtegidaAdmin>} />
+          <Route path="/admin/supervisores" element={<RutaProtegidaAdmin><Supervisores /></RutaProtegidaAdmin>} />
+          <Route path="/admin/productos-vendidos" element={<RutaProtegidaAdmin><ProductosVendidos /></RutaProtegidaAdmin>} />
+          <Route path="/admin/diferencias" element={<RutaProtegidaAdmin><DiferenciasCaja /></RutaProtegidaAdmin>} />
+          <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
+          <Route path="/admin/libro-ventas" element={<RutaProtegidaAdmin><LibroVentas /></RutaProtegidaAdmin>} />
+          <Route path="/admin/usuarios" element={<RutaProtegidaAdmin><Usuarios /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

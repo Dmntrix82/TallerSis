@@ -1,11 +1,28 @@
 import { useState } from 'react';
 import { calcularPagoMixto } from '../api/pagos';
+import DesgloseVuelto from './DesgloseVuelto.jsx';
 
 // TDSI-88: División de montos entre 2 métodos de pago. Este componente ya NO
 // finaliza el cobro (eso lo hace el formulario principal de Pagos.jsx con el
 // botón "Continuar" / "Confirmar cobro"): aquí solo se capturan los montos y
 // el botón "Validar montos" únicamente confirma que la suma cuadra con el total.
-export default function PagoMixtoForm({ totalVenta = 0, metodo1, metodo2, monto1, monto2, onCambiarMonto1, onCambiarMonto2 }) {
+// TDSI-793: si uno de los métodos es Efectivo, se captura cuánto dio el cliente y se muestra
+// el desglose del vuelto, que Pagos.jsx pide al backend (no cambia cómo se registra el pago).
+export default function PagoMixtoForm({
+  totalVenta = 0,
+  metodo1,
+  metodo2,
+  monto1,
+  monto2,
+  onCambiarMonto1,
+  onCambiarMonto2,
+  montoRecibido = '',
+  onCambiarMontoRecibido,
+  vuelto = null,
+  desgloseVuelto = [],
+  calculandoVuelto = false,
+  errorVuelto = null,
+}) {
   const [validacion, setValidacion] = useState(null); // { ok, mensaje } | null
   const [validando, setValidando] = useState(false);
 
@@ -14,6 +31,7 @@ export default function PagoMixtoForm({ totalVenta = 0, metodo1, metodo2, monto1
   const sumaTotal = +(numMonto1 + numMonto2).toFixed(2);
   const diferencia = +(totalVenta - sumaTotal).toFixed(2);
   const montosCompletos = numMonto1 > 0 && numMonto2 > 0;
+  const incluyeEfectivo = metodo1 === 'Efectivo' || metodo2 === 'Efectivo';
 
   const evitarCaracteresInvalidos = (e) => {
     if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
@@ -180,6 +198,39 @@ export default function PagoMixtoForm({ totalVenta = 0, metodo1, metodo2, monto1
             )}
           </div>
         </div>
+
+        {incluyeEfectivo && (
+          <div style={{ backgroundColor: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+            <label htmlFor="efectivo-recibido-mixto" style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '0.4rem' }}>
+              Efectivo recibido del cliente (opcional, para calcular el vuelto)
+            </label>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: '10px', top: '9px', fontSize: '0.8rem', fontWeight: 'bold', color: '#94a3b8' }}>Bs.</span>
+              <input
+                id="efectivo-recibido-mixto"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={montoRecibido}
+                onKeyDown={evitarCaracteresInvalidos}
+                onChange={manejarCambioMonto(onCambiarMontoRecibido)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '0.55rem 0.55rem 0.55rem 2rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: '600' }}
+              />
+            </div>
+
+            {montoRecibido && !(diferencia === 0 && montosCompletos) && (
+              <p className="ayuda-mixto" style={{ margin: '0.75rem 0 0' }}>El vuelto se calcula cuando los montos cuadren con el total.</p>
+            )}
+            {calculandoVuelto && <p className="ayuda-mixto" style={{ margin: '0.75rem 0 0' }}>Calculando vuelto...</p>}
+            {errorVuelto && !calculandoVuelto && <p className="error" style={{ margin: '0.75rem 0 0' }}>{errorVuelto}</p>}
+            {vuelto !== null && !calculandoVuelto && (
+              <div style={{ marginTop: '0.75rem' }}>
+                <DesgloseVuelto vuelto={vuelto} desglose={desgloseVuelto} />
+              </div>
+            )}
+          </div>
+        )}
 
         {validacion && (
           <div
