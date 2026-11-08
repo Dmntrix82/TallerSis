@@ -127,7 +127,7 @@ function DiferenciasCaja() {
   }
 
   return (
-    <section>
+    <section className="diferencias-caja">
       <h1>Diferencias de caja</h1>
       <p className="resumen-turno-actual">
         Faltantes y sobrantes detectados al cerrar turnos, y el aviso enviado a Contabilidad al resolverlos.
