@@ -3,6 +3,11 @@ import { apiFetch } from './client.js'
 // Apunta al microservicio Back/servicios/gestion_pagos.
 const GESTION_PAGOS_API_BASE_URL = import.meta.env.VITE_GESTION_PAGOS_API_BASE_URL ?? ''
 
+// TDSI-161: tipo de cambio vigente (Bs por 1 USD). Responde data: { valor, actualizado_en, actualizado_por }.
+export function obtenerTipoCambio() {
+  return apiFetch('/api/pagos/tipo-cambio', {}, GESTION_PAGOS_API_BASE_URL)
+}
+
 export function registrarPago(pago) {
   return apiFetch(
     '/api/pagos/registrar',

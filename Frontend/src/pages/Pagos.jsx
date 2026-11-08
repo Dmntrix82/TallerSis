@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { registrarPago, registrarPagoMixto, calcularPagoMixto, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
-import { calcularVuelto, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
+import { registrarPago, registrarPagoMixto, calcularPagoMixto, obtenerTipoCambio, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { calcularVuelto, calcularCobroUsd, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
 import DesgloseVuelto from '../components/DesgloseVuelto.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -8,6 +8,9 @@ import { useAuth } from '../context/AuthContext.jsx'
 // TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
 const BILLETES_RAPIDOS = [10, 20, 50, 100, 200]
 const MENSAJE_MONTO_INSUFICIENTE = 'El monto recibido es insuficiente: es menor al total a cobrar.'
+
+// TDSI-162: opcion de la pantalla; se registra como metodo "Efectivo" con el monto en Bs.
+const EFECTIVO_USD = 'EfectivoUSD'
 
 const METODOS_PAGO = [
   {
@@ -19,6 +22,16 @@ const METODOS_PAGO = [
         <circle cx="16" cy="10" r="4" />
         <circle cx="5" cy="10" r="1" fill="currentColor" stroke="none" />
         <circle cx="27" cy="10" r="1" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+  },
+  {
+    id: EFECTIVO_USD,
+    etiqueta: 'Efectivo en dólares',
+    icono: (
+      <svg width="32" height="20" viewBox="0 0 32 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="1" y="1" width="30" height="18" rx="2" />
+        <text x="16" y="15" textAnchor="middle" fontSize="13" fontWeight="700" fill="currentColor" stroke="none">$</text>
       </svg>
     ),
   },
@@ -65,6 +78,7 @@ const ESTADO_INICIAL = {
   montoMixto1: '',
   montoMixto2: '',
   montoRecibido: '', // TDSI-29/793: efectivo que dio el cliente (obligatorio en pago simple, opcional en mixto)
+  dolaresRecibidos: '', // TDSI-817: solo aplica a "Efectivo en dólares"
   tipoDocumento: 'NINGUNO',
   numeroDocumento: '',
   razonSocial: '',
@@ -93,6 +107,16 @@ function formatearTiempoRestante(segundos) {
   return `${minutos}:${String(resto).padStart(2, '0')}`
 }
 
+// TDSI-816: total de la venta en dolares. Se redondea hacia arriba al centavo para que
+// el monto que se le pide al cliente siempre cubra el total (100 / 12 = 8.34, no 8.33).
+function totalEnDolares(totalBs, tipoCambio) {
+  return Math.ceil((Math.round(totalBs * 100) * 100) / Math.round(tipoCambio * 100)) / 100
+}
+
+function leyendaPagadoEnUsd(dolares, tipoCambio) {
+  return `Pagado en USD: ${dolares.toFixed(2)} (T.C. ${tipoCambio})`
+}
+
 function validarFormulario(datos) {
   if (!datos.monto || Number(datos.monto) <= 0) {
     return 'Ingrese un monto válido.'
@@ -119,6 +143,9 @@ function validarFormulario(datos) {
     if (Number(datos.montoRecibido) < Number(datos.monto)) {
       return MENSAJE_MONTO_INSUFICIENTE
     }
+  }
+  if (datos.metodos[0] === EFECTIVO_USD && !(Number(datos.dolaresRecibidos) > 0)) {
+    return 'Ingrese cuántos dólares recibió del cliente.'
   }
   if (datos.tipoDocumento !== 'NINGUNO') {
     if (!datos.numeroDocumento.trim() || !datos.razonSocial.trim()) {
@@ -153,10 +180,23 @@ function Pagos() {
   const [errorVuelto, setErrorVuelto] = useState(null)
   const [calculandoVuelto, setCalculandoVuelto] = useState(false)
 
+  // TDSI-42: cobro en dolares. La conversion y el vuelto los calcula el backend.
+  const [tipoCambio, setTipoCambio] = useState(null)
+  const [errorTipoCambio, setErrorTipoCambio] = useState(null)
+  const [intentoTipoCambio, setIntentoTipoCambio] = useState(0)
+  const [cobroUsd, setCobroUsd] = useState(null) // { dolaresRecibidos, tipoCambio, equivalenteBs, vuelto }
+  const [faltanteBs, setFaltanteBs] = useState(null)
+  const [errorCobroUsd, setErrorCobroUsd] = useState(null)
+  const [calculandoCobroUsd, setCalculandoCobroUsd] = useState(false)
+
   const esMixto = datos.metodos.length === 2
   const esQrSimple = datos.metodos.length === 1 && datos.metodos[0] === 'QR'
   const mostrarPanelMixto = esMixto && paso === 'formulario'
   const esEfectivoSimple = datos.metodos.length === 1 && datos.metodos[0] === 'Efectivo'
+  const esEfectivoUsd = datos.metodos[0] === EFECTIVO_USD
+  // TDSI-818: sin un calculo valido del backend no se puede seguir con el cobro.
+  const cobroUsdBloqueado = esEfectivoUsd && (calculandoCobroUsd || faltanteBs !== null || errorCobroUsd !== null)
+  const tipoCambioVigente = cobroUsd?.tipoCambio ?? tipoCambio
   const esMixtoConEfectivo = esMixto && datos.metodos.includes('Efectivo')
 
   // TDSI-39/532: mientras se espera el pago, se consulta el estado cada 4s
@@ -256,6 +296,64 @@ function Pagos() {
     }
   }, [esEfectivoSimple, esMixtoConEfectivo, datos.metodos, datos.monto, datos.montoRecibido, datos.montoMixto1, datos.montoMixto2])
 
+  // TDSI-816: el tipo de cambio se consulta cada vez que se elige "Efectivo en dólares".
+  useEffect(() => {
+    if (!esEfectivoUsd) {
+      setTipoCambio(null)
+      setErrorTipoCambio(null)
+      return
+    }
+    let cancelado = false
+    setErrorTipoCambio(null)
+    obtenerTipoCambio()
+      .then((r) => {
+        if (!cancelado) setTipoCambio(r.data.valor)
+      })
+      .catch((err) => {
+        if (!cancelado) setErrorTipoCambio(err.message)
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [esEfectivoUsd, intentoTipoCambio])
+
+  // TDSI-817/818: equivalente en Bs y vuelto en vivo mientras se escriben los dolares.
+  useEffect(() => {
+    const total = Number(datos.monto)
+    const dolaresRecibidos = Number(datos.dolaresRecibidos)
+    setCobroUsd(null)
+    setFaltanteBs(null)
+    setErrorCobroUsd(null)
+
+    if (!esEfectivoUsd || !(total > 0) || !(dolaresRecibidos > 0)) {
+      setCalculandoCobroUsd(false)
+      return
+    }
+
+    let cancelado = false
+    setCalculandoCobroUsd(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const r = await calcularCobroUsd(total, dolaresRecibidos)
+        if (!cancelado) setCobroUsd(r.data)
+      } catch (err) {
+        if (cancelado) return
+        if (err.detalle?.faltanteBs != null) {
+          setFaltanteBs(err.detalle.faltanteBs)
+        } else {
+          setErrorCobroUsd(err.message)
+        }
+      } finally {
+        if (!cancelado) setCalculandoCobroUsd(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelado = true
+      clearTimeout(timeout)
+    }
+  }, [esEfectivoUsd, datos.monto, datos.dolaresRecibidos])
+
   // TDSI-29/572: cada click suma ese billete al monto recibido (se puede combinar varios).
   function agregarBillete(valor) {
     setDatos((prev) => ({ ...prev, montoRecibido: String((Number(prev.montoRecibido) || 0) + valor) }))
@@ -296,7 +394,7 @@ function Pagos() {
 
     if (actuales.includes(id)) {
       setErrorValidacion(null)
-      setDatos((prev) => ({ ...prev, metodos: prev.metodos.filter((m) => m !== id), montoMixto1: '', montoMixto2: '', montoRecibido: '' }))
+      setDatos((prev) => ({ ...prev, metodos: prev.metodos.filter((m) => m !== id), montoMixto1: '', montoMixto2: '', montoRecibido: '', dolaresRecibidos: '' }))
       return
     }
 
@@ -306,6 +404,11 @@ function Pagos() {
 
     if (actuales.length === 1) {
       const combinacion = [...actuales, id]
+      // El pago mixto del backend solo acepta Efectivo, Tarjeta y QR, en bolivianos.
+      if (combinacion.includes(EFECTIVO_USD)) {
+        setErrorValidacion('El cobro en dólares no se puede combinar con otro método de pago.')
+        return
+      }
       if (combinacion.includes('Tarjeta') && combinacion.includes('QR')) {
         setErrorValidacion('No puede combinar Tarjeta y QR. Un pago con 2 métodos debe incluir Efectivo.')
         return
@@ -313,11 +416,12 @@ function Pagos() {
     }
 
     setErrorValidacion(null)
-    setDatos((prev) => ({ ...prev, metodos: [...prev.metodos, id], montoMixto1: '', montoMixto2: '', montoRecibido: '' }))
+    setDatos((prev) => ({ ...prev, metodos: [...prev.metodos, id], montoMixto1: '', montoMixto2: '', montoRecibido: '', dolaresRecibidos: '' }))
   }
 
   function continuar(event) {
     event.preventDefault()
+    if (cobroUsdBloqueado) return
     const mensaje = validarFormulario(datos)
     if (mensaje) {
       // El formato del NIT/CI ya se avisa abajo del propio campo: no repetirlo aquí.
@@ -404,7 +508,7 @@ function Pagos() {
       } else {
         const payload = {
           ...datosFacturacion,
-          metodo: datos.metodos[0],
+          metodo: esEfectivoUsd ? 'Efectivo' : datos.metodos[0],
           monto: Number(datos.monto),
           caja_id: cajero?.caja,
           cajero: cajero?.nombre,
@@ -412,9 +516,21 @@ function Pagos() {
         if (esEfectivoSimple && datos.montoRecibido) {
           payload.monto_recibido = Number(datos.montoRecibido)
         }
+        // TDSI-813: la venta sigue en Bs (el backend recalcula el vuelto con monto_recibido);
+        // la moneda, el monto en USD y el T.C. son los datos de la leyenda de la factura.
+        if (esEfectivoUsd) {
+          payload.monto_recibido = cobroUsd.equivalenteBs
+          payload.moneda_recibida = 'USD'
+          payload.monto_usd = cobroUsd.dolaresRecibidos
+          payload.tipo_cambio = cobroUsd.tipoCambio
+        }
         const respuesta = await registrarPago(payload)
         idTransaccionRegistrada = respuesta.pago.id_transaccion
-        setPagoRegistrado({ ...respuesta.pago, detalle: null })
+        setPagoRegistrado({
+          ...respuesta.pago,
+          detalle: null,
+          leyendaUsd: esEfectivoUsd ? leyendaPagadoEnUsd(cobroUsd.dolaresRecibidos, cobroUsd.tipoCambio) : null,
+        })
       }
 
       setPaso('listo')
@@ -573,6 +689,62 @@ function Pagos() {
                 </div>
               )}
 
+              {esEfectivoUsd && (
+                <div className="cobro-efectivo">
+                  {errorTipoCambio && (
+                    <p className="error">
+                      No se pudo obtener el tipo de cambio: {errorTipoCambio}{' '}
+                      <button type="button" className="billete-rapido" onClick={() => setIntentoTipoCambio((n) => n + 1)}>
+                        Reintentar
+                      </button>
+                    </p>
+                  )}
+                  {tipoCambioVigente !== null && (
+                    <ul className="cobro-usd-datos">
+                      <li>
+                        <span>Tipo de cambio vigente</span>
+                        <strong>1 USD = Bs. {tipoCambioVigente.toFixed(2)}</strong>
+                      </li>
+                      {Number(datos.monto) > 0 && (
+                        <li>
+                          <span>Total a cobrar</span>
+                          <strong>USD {totalEnDolares(Number(datos.monto), tipoCambioVigente).toFixed(2)}</strong>
+                        </li>
+                      )}
+                    </ul>
+                  )}
+
+                  <label className="campo">
+                    Dólares recibidos (USD)
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={datos.dolaresRecibidos}
+                      onChange={(e) => {
+                        setErrorValidacion(null)
+                        actualizarCampo('dolaresRecibidos', e.target.value)
+                      }}
+                    />
+                  </label>
+
+                  {calculandoCobroUsd && <p className="ayuda-mixto">Calculando vuelto...</p>}
+                  {errorCobroUsd && <p className="error">{errorCobroUsd}</p>}
+                  {faltanteBs !== null && <p className="cobro-usd-faltante">Faltan Bs. {faltanteBs.toFixed(2)}</p>}
+                  {cobroUsd && (
+                    <>
+                      <ul className="cobro-usd-datos">
+                        <li>
+                          <span>Equivalente recibido</span>
+                          <strong>Bs. {cobroUsd.equivalenteBs.toFixed(2)}</strong>
+                        </li>
+                      </ul>
+                      <p className="vuelto-destacado">Vuelto a entregar: Bs. {cobroUsd.vuelto.toFixed(2)}</p>
+                    </>
+                  )}
+                </div>
+              )}
+
               <fieldset style={{ border: 'none', padding: 0 }}>
                 <legend>Datos de facturación</legend>
                 <div className="tipo-venta-opciones">
@@ -652,7 +824,7 @@ function Pagos() {
 
               {errorValidacion && <p className="error">{errorValidacion}</p>}
 
-              <button type="submit" className="btn">
+              <button type="submit" className="btn" disabled={cobroUsdBloqueado}>
                 Continuar
               </button>
             </form>
@@ -668,7 +840,15 @@ function Pagos() {
                     Métodos de pago: {datos.metodos[0]} (Bs. {datos.montoMixto1}) + {datos.metodos[1]} (Bs. {datos.montoMixto2})
                   </li>
                 ) : (
-                  <li>Método de pago: {datos.metodos[0]}</li>
+                  <li>Método de pago: {esEfectivoUsd ? 'Efectivo en dólares' : datos.metodos[0]}</li>
+                )}
+                {esEfectivoUsd && cobroUsd && (
+                  <>
+                    <li>Dólares recibidos: USD {cobroUsd.dolaresRecibidos.toFixed(2)}</li>
+                    <li>Tipo de cambio: 1 USD = Bs. {cobroUsd.tipoCambio.toFixed(2)}</li>
+                    <li>Equivalente recibido: Bs. {cobroUsd.equivalenteBs.toFixed(2)}</li>
+                    <li>Vuelto a entregar: Bs. {cobroUsd.vuelto.toFixed(2)}</li>
+                  </>
                 )}
                 {(esEfectivoSimple || (esMixtoConEfectivo && datos.montoRecibido)) && (
                   <li>{esMixto ? 'Efectivo recibido' : 'Monto recibido'}: Bs. {datos.montoRecibido}</li>
@@ -785,6 +965,7 @@ function Pagos() {
                 ) : (
                   <li>Método de pago: {pagoRegistrado.metodo}</li>
                 )}
+                {pagoRegistrado.leyendaUsd && <li className="leyenda-usd">{pagoRegistrado.leyendaUsd}</li>}
                 <li>Monto: Bs. {pagoRegistrado.monto}</li>
                 {pagoRegistrado.monto_recibido != null && (
                   <>

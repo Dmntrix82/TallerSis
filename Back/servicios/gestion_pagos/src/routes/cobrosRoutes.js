@@ -1,8 +1,9 @@
 const { Router } = require("express");
-const { 
-  calcularVuelto, 
-  validarMontoRecibido, 
-  calcularDesgloseVuelto 
+const {
+  calcularVuelto,
+  validarMontoRecibido,
+  calcularDesgloseVuelto,
+  calcularCobroUsd
 } = require("../services/cobroEfectivoService");
 
 const router = Router();
@@ -28,6 +29,14 @@ router.post("/efectivo/calcular-vuelto", wrap(async (req, res) => {
       desglose 
     } 
   });
+}));
+// TDSI-812: Calcula el vuelto cuando el pago es en dólares (el sistema convierte a Bs y da el vuelto en Bs).
+router.post("/efectivo-usd/calcular-vuelto", wrap(async (req, res) => {
+  const data = await calcularCobroUsd({
+    total: Number(req.body.total),
+    dolaresRecibidos: Number(req.body.dolares_recibidos),
+  });
+  res.json({ ok: true, data });
 }));
 
 module.exports = router;
