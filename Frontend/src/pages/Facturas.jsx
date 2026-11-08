@@ -10,6 +10,10 @@ const ESTADOS = {
   Anulado: { texto: 'Anulada', clase: '' },
 }
 
+// TDSI-48: panel "Mis respuestas de anulación" (va aparte de los imports de arriba para no
+// chocar al unir ramas que tambien los modifican).
+import MisRespuestasAnulacion from '../components/MisRespuestasAnulacion.jsx'
+
 function dentroDelPlazo(fecha) {
   return Date.now() - new Date(fecha).getTime() <= PLAZO_ANULACION_MS
 }
@@ -225,6 +229,7 @@ function Facturas() {
     <section>
       <h1>Facturas</h1>
       <p className="resumen-turno-actual">Ventas emitidas por {cajero ? cajero.nombre : 'sin sesión iniciada'}.</p>
+      {cajero && <MisRespuestasAnulacion cajeroId={cajero.nombre} />}
 
       <div className="filtro-fechas">
         <label className="campo">
