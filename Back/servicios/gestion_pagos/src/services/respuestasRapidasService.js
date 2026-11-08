@@ -1,17 +1,23 @@
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/respuestasRapidasRepo");
 
+const MAXIMO_POR_CAJERO = 8;
+
 /** TDSI-799: Lista las respuestas rápidas de un cajero. */
 async function listar(cajero_id) {
   if (!cajero_id) throw new AppError("Falta el campo 'cajero_id'.", 400);
   return repo.listarPorCajero(cajero_id);
 }
 
-/** TDSI-800: Crea una respuesta rápida validando el texto (5 a 100 caracteres). */
+/** TDSI-800: Crea una respuesta rápida validando el texto (5 a 100 caracteres) y el máximo de 8 por cajero. */
 async function crear({ cajero_id, texto, orden }) {
   if (!cajero_id) throw new AppError("Falta el campo 'cajero_id'.", 400);
   if (!texto || typeof texto !== "string" || texto.trim().length < 5 || texto.trim().length > 100) {
     throw new AppError("El texto debe tener entre 5 y 100 caracteres.", 400);
+  }
+  const actuales = await repo.contarPorCajero(cajero_id);
+  if (actuales >= MAXIMO_POR_CAJERO) {
+    throw new AppError(`Ya tienes el máximo de ${MAXIMO_POR_CAJERO} respuestas rápidas. Elimina una para crear otra.`, 409);
   }
   return repo.crear({ cajero_id, texto: texto.trim(), orden });
 }

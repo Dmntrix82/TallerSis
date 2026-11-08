@@ -19,6 +19,15 @@ async function listarPorCajero(cajero_id) {
   return rows.map(normalizar);
 }
 
+/** TDSI-800: cuántas respuestas rápidas tiene ya el cajero (para el máximo de 8). */
+async function contarPorCajero(cajero_id) {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS total FROM pagos.respuestas_rapidas WHERE cajero_id = $1`,
+    [cajero_id]
+  );
+  return rows[0].total;
+}
+
 /** TDSI-800: Crea una nueva respuesta rápida. */
 async function crear({ cajero_id, texto, orden = 1 }) {
   const { rows } = await query(
@@ -62,4 +71,4 @@ async function obtenerPorId(id) {
   return normalizar(rows[0]);
 }
 
-module.exports = { listarPorCajero, crear, actualizar, eliminar, obtenerPorId };
+module.exports = { listarPorCajero, contarPorCajero, crear, actualizar, eliminar, obtenerPorId };
