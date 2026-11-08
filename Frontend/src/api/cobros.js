@@ -16,6 +16,20 @@ export function calcularVuelto(total, monto_recibido) {
   )
 }
 
+// TDSI-812: convierte los dolares recibidos a Bs y calcula el vuelto en Bs. Responde data:
+// { totalBs, dolaresRecibidos, tipoCambio, equivalenteBs, vuelto }. Si no alcanzan, responde
+// error 400 con detalle: { faltanteBs }.
+export function calcularCobroUsd(total, dolares_recibidos) {
+  return apiFetch(
+    '/api/cobros/efectivo-usd/calcular-vuelto',
+    {
+      method: 'POST',
+      body: JSON.stringify({ total, dolares_recibidos }),
+    },
+    GESTION_PAGOS_API_BASE_URL,
+  )
+}
+
 // TDSI-39/155: URL de la imagen fija del QR de la cuenta del negocio (la misma para todos los cobros).
 export function urlQrCuenta() {
   return `${GESTION_PAGOS_API_BASE_URL}/api/cobros/qr-cuenta.png`
