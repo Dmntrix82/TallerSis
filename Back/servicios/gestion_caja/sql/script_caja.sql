@@ -264,3 +264,49 @@ ALTER TABLE caja.sesiones_cajero
     ADD COLUMN IF NOT EXISTS bloqueada_en TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS desbloqueada_en TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS intentos_desbloqueo INT NOT NULL DEFAULT 0;
+
+-- ==========================================================================
+-- TDSI-52/699: seguimiento del aviso a Contabilidad de cada diferencia resuelta
+-- (TDSI-698 arma y publica el mensaje "diferencia_caja"; esta tabla es donde
+-- queda el registro). Una diferencia tiene a lo sumo un envio (uq mas abajo).
+-- Estado: Pendiente -> Enviado -> Confirmado / Rechazado (texto del ticket).
+-- motivo_rechazo solo se llena si Contabilidad responde Rechazado.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS caja.diferencias_envios_contabilidad (
+    id                  BIGSERIAL PRIMARY KEY,
+    diferencia_id       BIGINT NOT NULL REFERENCES caja.diferencias_resolucion(id) ON DELETE CASCADE,
+    estado              VARCHAR(20) NOT NULL DEFAULT 'Pendiente'
+                         CHECK (estado IN ('Pendiente', 'Enviado', 'Confirmado', 'Rechazado')),
+    intentos            INT          NOT NULL DEFAULT 0,
+    payload             JSONB,
+    pubsub_message_id   VARCHAR(100),
+    ultimo_error        VARCHAR(400),
+    motivo_rechazo      VARCHAR(400),
+    creado_en           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    enviado_en          TIMESTAMPTZ,
+    respondido_en       TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_diferencias_envios_contabilidad_diferencia
+    ON caja.diferencias_envios_contabilidad (diferencia_id);
+
+CREATE INDEX IF NOT EXISTS idx_diferencias_envios_contabilidad_estado
+    ON caja.diferencias_envios_contabilidad (estado);
+
+ALTER TABLE caja.diferencias_envios_contabilidad ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-47/171: perfil de cada cajero (nombre, usuario, estado), igual patron
+-- que caja.administradores -- la cuenta de login (usuario/contrasena) vive en
+-- Supabase Auth, aqui solo se guarda el perfil ligado a ese mismo cajero_id.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS caja.cajeros (
+    id              BIGSERIAL PRIMARY KEY,
+    cajero_id       VARCHAR(60)  NOT NULL UNIQUE, -- id de Supabase Auth (mismo valor que auth.users.id)
+    usuario         VARCHAR(255) NOT NULL UNIQUE, -- email con el que inicia sesion
+    nombre          VARCHAR(150) NOT NULL,
+    activo          BOOLEAN      NOT NULL DEFAULT true,
+    creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+ALTER TABLE caja.cajeros ENABLE ROW LEVEL SECURITY;
