@@ -1,13 +1,19 @@
 import { useEffect, useState } from 'react'
-import { registrarPago, registrarPagoMixto, registrarVentaCancelada, contarVentasCanceladas, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
-import { calcularVuelto, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
+import { registrarPago, registrarPagoMixto, calcularPagoMixto, registrarVentaCancelada, contarVentasCanceladas, consultarPosibleDuplicado, obtenerTipoCambio, listarMisFacturas, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
+import { calcularVuelto, calcularCobroUsd, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
 import CancelarVentaModal from '../components/CancelarVentaModal.jsx'
+import MisRespuestasRapidas from '../components/MisRespuestasRapidas.jsx'
+import AvisoCobroDuplicadoModal from '../components/AvisoCobroDuplicadoModal.jsx'
+import DesgloseVuelto from '../components/DesgloseVuelto.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 // TDSI-29/572: botones rápidos de billetes para armar el monto recibido en efectivo.
 const BILLETES_RAPIDOS = [10, 20, 50, 100, 200]
 const MENSAJE_MONTO_INSUFICIENTE = 'El monto recibido es insuficiente: es menor al total a cobrar.'
+
+// TDSI-162: opcion de la pantalla; se registra como metodo "Efectivo" con el monto en Bs.
+const EFECTIVO_USD = 'EfectivoUSD'
 
 const METODOS_PAGO = [
   {
@@ -19,6 +25,16 @@ const METODOS_PAGO = [
         <circle cx="16" cy="10" r="4" />
         <circle cx="5" cy="10" r="1" fill="currentColor" stroke="none" />
         <circle cx="27" cy="10" r="1" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+  },
+  {
+    id: EFECTIVO_USD,
+    etiqueta: 'Efectivo en dólares',
+    icono: (
+      <svg width="32" height="20" viewBox="0 0 32 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="1" y="1" width="30" height="18" rx="2" />
+        <text x="16" y="15" textAnchor="middle" fontSize="13" fontWeight="700" fill="currentColor" stroke="none">$</text>
       </svg>
     ),
   },
@@ -64,7 +80,8 @@ const ESTADO_INICIAL = {
   metodos: [], // 1 metodo = pago simple, 2 metodos = pago mixto
   montoMixto1: '',
   montoMixto2: '',
-  montoRecibido: '', // TDSI-29: solo aplica a pago simple en Efectivo
+  montoRecibido: '', // TDSI-29/793: efectivo que dio el cliente (obligatorio en pago simple, opcional en mixto)
+  dolaresRecibidos: '', // TDSI-817: solo aplica a "Efectivo en dólares"
   tipoDocumento: 'NINGUNO',
   numeroDocumento: '',
   razonSocial: '',
@@ -100,6 +117,25 @@ function hoyLocal() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// TDSI-831: datos del cobro que se esta por repetir. mis-facturas filtra por dia ("YYYY-MM-DD"):
+// se pide desde ayer para no perderlo cerca de medianoche o por la zona horaria del servidor.
+async function buscarCobroAnterior(cajero, factura) {
+  const ayer = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const desde = `${ayer.getFullYear()}-${String(ayer.getMonth() + 1).padStart(2, '0')}-${String(ayer.getDate()).padStart(2, '0')}`
+  const { data } = await listarMisFacturas(cajero, { desde })
+  return data.find((f) => f.id_transaccion === factura) ?? null
+}
+
+// TDSI-816: total de la venta en dolares. Se redondea hacia arriba al centavo para que
+// el monto que se le pide al cliente siempre cubra el total (100 / 12 = 8.34, no 8.33).
+function totalEnDolares(totalBs, tipoCambio) {
+  return Math.ceil((Math.round(totalBs * 100) * 100) / Math.round(tipoCambio * 100)) / 100
+}
+
+function leyendaPagadoEnUsd(dolares, tipoCambio) {
+  return `Pagado en USD: ${dolares.toFixed(2)} (T.C. ${tipoCambio})`
+}
+
 function validarFormulario(datos) {
   if (!datos.monto || Number(datos.monto) <= 0) {
     return 'Ingrese un monto válido.'
@@ -127,6 +163,9 @@ function validarFormulario(datos) {
       return MENSAJE_MONTO_INSUFICIENTE
     }
   }
+  if (datos.metodos[0] === EFECTIVO_USD && !(Number(datos.dolaresRecibidos) > 0)) {
+    return 'Ingrese cuántos dólares recibió del cliente.'
+  }
   if (datos.tipoDocumento !== 'NINGUNO') {
     if (!datos.numeroDocumento.trim() || !datos.razonSocial.trim()) {
       return `Complete el número de ${datos.tipoDocumento} y la razón social.`
@@ -148,6 +187,7 @@ function Pagos() {
   const [mostrarCancelarVenta, setMostrarCancelarVenta] = useState(false)
   const [mensajeCancelacion, setMensajeCancelacion] = useState(null)
   const [canceladasHoy, setCanceladasHoy] = useState(null)
+  const [mostrarRespuestasRapidas, setMostrarRespuestasRapidas] = useState(false) // TDSI-44
   const [datos, setDatos] = useState(ESTADO_INICIAL)
   const [paso, setPaso] = useState('formulario')
   const [errorValidacion, setErrorValidacion] = useState(null)
@@ -161,13 +201,33 @@ function Pagos() {
 
   // TDSI-29: vuelto calculado por el backend (endpoint dedicado), en vivo mientras se escribe.
   const [vuelto, setVuelto] = useState(null)
+  const [desgloseVuelto, setDesgloseVuelto] = useState([]) // TDSI-160: [{ denominacion, cantidad }]
   const [errorVuelto, setErrorVuelto] = useState(null)
   const [calculandoVuelto, setCalculandoVuelto] = useState(false)
+
+  // TDSI-43: aviso de posible cobro repetido.
+  const [avisoDuplicado, setAvisoDuplicado] = useState(null) // { factura, segundos, anterior } | null
+  // En QR la venta se registra despues de generar el QR, asi que la decision se guarda hasta entonces.
+  const [cobroDuplicado, setCobroDuplicado] = useState(false)
+
+  // TDSI-42: cobro en dolares. La conversion y el vuelto los calcula el backend.
+  const [tipoCambio, setTipoCambio] = useState(null)
+  const [errorTipoCambio, setErrorTipoCambio] = useState(null)
+  const [intentoTipoCambio, setIntentoTipoCambio] = useState(0)
+  const [cobroUsd, setCobroUsd] = useState(null) // { dolaresRecibidos, tipoCambio, equivalenteBs, vuelto }
+  const [faltanteBs, setFaltanteBs] = useState(null)
+  const [errorCobroUsd, setErrorCobroUsd] = useState(null)
+  const [calculandoCobroUsd, setCalculandoCobroUsd] = useState(false)
 
   const esMixto = datos.metodos.length === 2
   const esQrSimple = datos.metodos.length === 1 && datos.metodos[0] === 'QR'
   const mostrarPanelMixto = esMixto && paso === 'formulario'
   const esEfectivoSimple = datos.metodos.length === 1 && datos.metodos[0] === 'Efectivo'
+  const esEfectivoUsd = datos.metodos[0] === EFECTIVO_USD
+  // TDSI-818: sin un calculo valido del backend no se puede seguir con el cobro.
+  const cobroUsdBloqueado = esEfectivoUsd && (calculandoCobroUsd || faltanteBs !== null || errorCobroUsd !== null)
+  const tipoCambioVigente = cobroUsd?.tipoCambio ?? tipoCambio
+  const esMixtoConEfectivo = esMixto && datos.metodos.includes('Efectivo')
 
   // TDSI-39/532: mientras se espera el pago, se consulta el estado cada 4s
   // (el backend es quien decide si ya expiro o si se confirmo).
@@ -245,17 +305,24 @@ function Pagos() {
 
   // TDSI-29/571: apenas hay total + monto recibido validos, se consulta el
   // vuelto al backend (nunca se calcula "de mentira" solo en el navegador).
+  // TDSI-791/793: se recalcula con cada cambio; en pago mixto, solo si los montos ya cuadran
+  // con el total (el backend rechaza el calculo si no).
   useEffect(() => {
-    if (!esEfectivoSimple || !datos.monto || !datos.montoRecibido) {
-      setVuelto(null)
-      setErrorVuelto(null)
-      return
-    }
     const total = Number(datos.monto)
     const montoRecibido = Number(datos.montoRecibido)
-    if (!(total > 0) || !(montoRecibido > 0)) {
+    const montoMixto1 = Number(datos.montoMixto1)
+    const montoMixto2 = Number(datos.montoMixto2)
+    const mixtoCuadra =
+      esMixtoConEfectivo &&
+      montoMixto1 > 0 &&
+      montoMixto2 > 0 &&
+      Math.round((montoMixto1 + montoMixto2) * 100) === Math.round(total * 100)
+
+    if (!(esEfectivoSimple || mixtoCuadra) || !(total > 0) || !(montoRecibido > 0)) {
       setVuelto(null)
+      setDesgloseVuelto([])
       setErrorVuelto(null)
+      setCalculandoVuelto(false)
       return
     }
 
@@ -263,9 +330,19 @@ function Pagos() {
     setCalculandoVuelto(true)
     const timeout = setTimeout(async () => {
       try {
-        const r = await calcularVuelto(total, montoRecibido)
+        const { data } = esEfectivoSimple
+          ? await calcularVuelto(total, montoRecibido)
+          : await calcularPagoMixto({
+              total,
+              metodos: [
+                { metodo: datos.metodos[0], monto: montoMixto1 },
+                { metodo: datos.metodos[1], monto: montoMixto2 },
+              ],
+              efectivoRecibido: montoRecibido,
+            })
         if (!cancelado) {
-          setVuelto(r.data.vuelto)
+          setVuelto(esEfectivoSimple ? data.vuelto : data.cambio)
+          setDesgloseVuelto(esEfectivoSimple ? data.desglose : data.desgloseVuelto)
           setErrorVuelto(null)
           // TDSI-573: el monto ya alcanza, asi que el aviso de "insuficiente" deja de aplicar
           setErrorValidacion((actual) => (actual === MENSAJE_MONTO_INSUFICIENTE ? null : actual))
@@ -273,6 +350,7 @@ function Pagos() {
       } catch (err) {
         if (!cancelado) {
           setVuelto(null)
+          setDesgloseVuelto([])
           setErrorVuelto(err.message)
         }
       } finally {
@@ -284,7 +362,65 @@ function Pagos() {
       cancelado = true
       clearTimeout(timeout)
     }
-  }, [esEfectivoSimple, datos.monto, datos.montoRecibido])
+  }, [esEfectivoSimple, esMixtoConEfectivo, datos.metodos, datos.monto, datos.montoRecibido, datos.montoMixto1, datos.montoMixto2])
+
+  // TDSI-816: el tipo de cambio se consulta cada vez que se elige "Efectivo en dólares".
+  useEffect(() => {
+    if (!esEfectivoUsd) {
+      setTipoCambio(null)
+      setErrorTipoCambio(null)
+      return
+    }
+    let cancelado = false
+    setErrorTipoCambio(null)
+    obtenerTipoCambio()
+      .then((r) => {
+        if (!cancelado) setTipoCambio(r.data.valor)
+      })
+      .catch((err) => {
+        if (!cancelado) setErrorTipoCambio(err.message)
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [esEfectivoUsd, intentoTipoCambio])
+
+  // TDSI-817/818: equivalente en Bs y vuelto en vivo mientras se escriben los dolares.
+  useEffect(() => {
+    const total = Number(datos.monto)
+    const dolaresRecibidos = Number(datos.dolaresRecibidos)
+    setCobroUsd(null)
+    setFaltanteBs(null)
+    setErrorCobroUsd(null)
+
+    if (!esEfectivoUsd || !(total > 0) || !(dolaresRecibidos > 0)) {
+      setCalculandoCobroUsd(false)
+      return
+    }
+
+    let cancelado = false
+    setCalculandoCobroUsd(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const r = await calcularCobroUsd(total, dolaresRecibidos)
+        if (!cancelado) setCobroUsd(r.data)
+      } catch (err) {
+        if (cancelado) return
+        if (err.detalle?.faltanteBs != null) {
+          setFaltanteBs(err.detalle.faltanteBs)
+        } else {
+          setErrorCobroUsd(err.message)
+        }
+      } finally {
+        if (!cancelado) setCalculandoCobroUsd(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelado = true
+      clearTimeout(timeout)
+    }
+  }, [esEfectivoUsd, datos.monto, datos.dolaresRecibidos])
 
   // TDSI-29/572: cada click suma ese billete al monto recibido (se puede combinar varios).
   function agregarBillete(valor) {
@@ -326,7 +462,7 @@ function Pagos() {
 
     if (actuales.includes(id)) {
       setErrorValidacion(null)
-      setDatos((prev) => ({ ...prev, metodos: prev.metodos.filter((m) => m !== id), montoMixto1: '', montoMixto2: '', montoRecibido: '' }))
+      setDatos((prev) => ({ ...prev, metodos: prev.metodos.filter((m) => m !== id), montoMixto1: '', montoMixto2: '', montoRecibido: '', dolaresRecibidos: '' }))
       return
     }
 
@@ -336,6 +472,11 @@ function Pagos() {
 
     if (actuales.length === 1) {
       const combinacion = [...actuales, id]
+      // El pago mixto del backend solo acepta Efectivo, Tarjeta y QR, en bolivianos.
+      if (combinacion.includes(EFECTIVO_USD)) {
+        setErrorValidacion('El cobro en dólares no se puede combinar con otro método de pago.')
+        return
+      }
       if (combinacion.includes('Tarjeta') && combinacion.includes('QR')) {
         setErrorValidacion('No puede combinar Tarjeta y QR. Un pago con 2 métodos debe incluir Efectivo.')
         return
@@ -343,11 +484,12 @@ function Pagos() {
     }
 
     setErrorValidacion(null)
-    setDatos((prev) => ({ ...prev, metodos: [...prev.metodos, id], montoMixto1: '', montoMixto2: '', montoRecibido: '' }))
+    setDatos((prev) => ({ ...prev, metodos: [...prev.metodos, id], montoMixto1: '', montoMixto2: '', montoRecibido: '', dolaresRecibidos: '' }))
   }
 
   function continuar(event) {
     event.preventDefault()
+    if (cobroUsdBloqueado) return
     const mensaje = validarFormulario(datos)
     if (mensaje) {
       // El formato del NIT/CI ya se avisa abajo del propio campo: no repetirlo aquí.
@@ -396,7 +538,43 @@ function Pagos() {
     }
   }
 
+  // TDSI-164: antes de registrar se revisa si esta venta repite un cobro reciente. Sin NIT/CI no
+  // hay cliente con el cual comparar. Si la consulta falla, no se traba la venta: es solo un aviso.
   async function confirmarCobro() {
+    setErrorApi(null)
+    setCobroDuplicado(false)
+
+    if (datos.tipoDocumento !== 'NINGUNO') {
+      setEnviando(true)
+      try {
+        const { data } = await consultarPosibleDuplicado({
+          cajero_id: cajero?.nombre,
+          nit: datos.numeroDocumento.trim(),
+          total: Number(datos.monto),
+        })
+        if (data.esDuplicado) {
+          const anterior = await buscarCobroAnterior(cajero?.nombre, data.factura).catch(() => null)
+          setAvisoDuplicado({ factura: data.factura, segundos: data.segundos, anterior })
+          return
+        }
+      } catch {
+        // Se sigue con el cobro normal.
+      } finally {
+        setEnviando(false)
+      }
+    }
+
+    await ejecutarCobro(false)
+  }
+
+  // TDSI-830: "Cobrar igual" registra el cobro normalmente y deja constancia de la decision.
+  async function cobrarIgual() {
+    setAvisoDuplicado(null)
+    setCobroDuplicado(true)
+    await ejecutarCobro(true)
+  }
+
+  async function ejecutarCobro(esCobroDuplicado) {
     // El QR no se registra como venta todavia: primero hay que generarlo y
     // esperar a que el cajero confirme que vio llegar el pago (ver abajo).
     if (esQrSimple) {
@@ -407,6 +585,9 @@ function Pagos() {
     setEnviando(true)
     setErrorApi(null)
     const datosFacturacion = construirDatosFacturacion()
+    if (esCobroDuplicado) {
+      datosFacturacion.cobro_duplicado = true
+    }
 
     try {
       let idTransaccionRegistrada
@@ -434,7 +615,7 @@ function Pagos() {
       } else {
         const payload = {
           ...datosFacturacion,
-          metodo: datos.metodos[0],
+          metodo: esEfectivoUsd ? 'Efectivo' : datos.metodos[0],
           monto: Number(datos.monto),
           caja_id: cajero?.caja,
           cajero: cajero?.nombre,
@@ -442,9 +623,21 @@ function Pagos() {
         if (esEfectivoSimple && datos.montoRecibido) {
           payload.monto_recibido = Number(datos.montoRecibido)
         }
+        // TDSI-813: la venta sigue en Bs (el backend recalcula el vuelto con monto_recibido);
+        // la moneda, el monto en USD y el T.C. son los datos de la leyenda de la factura.
+        if (esEfectivoUsd) {
+          payload.monto_recibido = cobroUsd.equivalenteBs
+          payload.moneda_recibida = 'USD'
+          payload.monto_usd = cobroUsd.dolaresRecibidos
+          payload.tipo_cambio = cobroUsd.tipoCambio
+        }
         const respuesta = await registrarPago(payload)
         idTransaccionRegistrada = respuesta.pago.id_transaccion
-        setPagoRegistrado({ ...respuesta.pago, detalle: null })
+        setPagoRegistrado({
+          ...respuesta.pago,
+          detalle: null,
+          leyendaUsd: esEfectivoUsd ? leyendaPagadoEnUsd(cobroUsd.dolaresRecibidos, cobroUsd.tipoCambio) : null,
+        })
       }
 
       setPaso('listo')
@@ -479,6 +672,7 @@ function Pagos() {
       monto: Number(datos.monto),
       caja_id: cajero?.caja,
       cajero: cajero?.nombre,
+      ...(cobroDuplicado && { cobro_duplicado: true }),
     }
     const respuesta = await registrarPago(payload)
     setPagoRegistrado({ ...respuesta.pago, detalle: null })
@@ -544,6 +738,9 @@ function Pagos() {
       <div className="pagos-encabezado">
         <h1>Método de pago</h1>
         {canceladasHoy !== null && <span className="canceladas-hoy">Canceladas hoy: {canceladasHoy}</span>}
+        <button type="button" className="btn btn-secundario" onClick={() => setMostrarRespuestasRapidas(true)}>
+          Mis respuestas rápidas
+        </button>
       </div>
 
       {mensajeCancelacion && <p className="mensaje-exito pagos-mensaje">{mensajeCancelacion}</p>}
@@ -555,6 +752,10 @@ function Pagos() {
           onConfirmar={confirmarCancelacion}
           onVolver={() => setMostrarCancelarVenta(false)}
         />
+      )}
+
+      {mostrarRespuestasRapidas && (
+        <MisRespuestasRapidas cajeroId={cajero?.nombre} onCerrar={() => setMostrarRespuestasRapidas(false)} />
       )}
 
       <div className={`pagos-layout${mostrarPanelMixto ? ' pagos-layout--dividido' : ''}`}>
@@ -613,8 +814,62 @@ function Pagos() {
                   {calculandoVuelto && <p className="ayuda-mixto">Calculando vuelto...</p>}
                   {/* TDSI-573: si ya se muestra la validacion del formulario, no repetir el aviso */}
                   {errorVuelto && !errorValidacion && <p className="error">{errorVuelto}</p>}
-                  {vuelto !== null && !calculandoVuelto && (
-                    <p className="vuelto-destacado">Vuelto a entregar: Bs. {vuelto.toFixed(2)}</p>
+                  {vuelto !== null && !calculandoVuelto && <DesgloseVuelto vuelto={vuelto} desglose={desgloseVuelto} />}
+                </div>
+              )}
+
+              {esEfectivoUsd && (
+                <div className="cobro-efectivo">
+                  {errorTipoCambio && (
+                    <p className="error">
+                      No se pudo obtener el tipo de cambio: {errorTipoCambio}{' '}
+                      <button type="button" className="billete-rapido" onClick={() => setIntentoTipoCambio((n) => n + 1)}>
+                        Reintentar
+                      </button>
+                    </p>
+                  )}
+                  {tipoCambioVigente !== null && (
+                    <ul className="cobro-usd-datos">
+                      <li>
+                        <span>Tipo de cambio vigente</span>
+                        <strong>1 USD = Bs. {tipoCambioVigente.toFixed(2)}</strong>
+                      </li>
+                      {Number(datos.monto) > 0 && (
+                        <li>
+                          <span>Total a cobrar</span>
+                          <strong>USD {totalEnDolares(Number(datos.monto), tipoCambioVigente).toFixed(2)}</strong>
+                        </li>
+                      )}
+                    </ul>
+                  )}
+
+                  <label className="campo">
+                    Dólares recibidos (USD)
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={datos.dolaresRecibidos}
+                      onChange={(e) => {
+                        setErrorValidacion(null)
+                        actualizarCampo('dolaresRecibidos', e.target.value)
+                      }}
+                    />
+                  </label>
+
+                  {calculandoCobroUsd && <p className="ayuda-mixto">Calculando vuelto...</p>}
+                  {errorCobroUsd && <p className="error">{errorCobroUsd}</p>}
+                  {faltanteBs !== null && <p className="cobro-usd-faltante">Faltan Bs. {faltanteBs.toFixed(2)}</p>}
+                  {cobroUsd && (
+                    <>
+                      <ul className="cobro-usd-datos">
+                        <li>
+                          <span>Equivalente recibido</span>
+                          <strong>Bs. {cobroUsd.equivalenteBs.toFixed(2)}</strong>
+                        </li>
+                      </ul>
+                      <p className="vuelto-destacado">Vuelto a entregar: Bs. {cobroUsd.vuelto.toFixed(2)}</p>
+                    </>
                   )}
                 </div>
               )}
@@ -699,7 +954,7 @@ function Pagos() {
               {errorValidacion && <p className="error">{errorValidacion}</p>}
 
               <div className="pago-acciones">
-                <button type="submit" className="btn">
+                <button type="submit" className="btn" disabled={cobroUsdBloqueado}>
                   Continuar
                 </button>
                 <button
@@ -724,13 +979,18 @@ function Pagos() {
                     Métodos de pago: {datos.metodos[0]} (Bs. {datos.montoMixto1}) + {datos.metodos[1]} (Bs. {datos.montoMixto2})
                   </li>
                 ) : (
-                  <li>Método de pago: {datos.metodos[0]}</li>
+                  <li>Método de pago: {esEfectivoUsd ? 'Efectivo en dólares' : datos.metodos[0]}</li>
                 )}
-                {esEfectivoSimple && (
+                {esEfectivoUsd && cobroUsd && (
                   <>
-                    <li>Monto recibido: Bs. {datos.montoRecibido}</li>
-                    <li>Vuelto a entregar: Bs. {vuelto !== null ? vuelto.toFixed(2) : '-'}</li>
+                    <li>Dólares recibidos: USD {cobroUsd.dolaresRecibidos.toFixed(2)}</li>
+                    <li>Tipo de cambio: 1 USD = Bs. {cobroUsd.tipoCambio.toFixed(2)}</li>
+                    <li>Equivalente recibido: Bs. {cobroUsd.equivalenteBs.toFixed(2)}</li>
+                    <li>Vuelto a entregar: Bs. {cobroUsd.vuelto.toFixed(2)}</li>
                   </>
+                )}
+                {(esEfectivoSimple || (esMixtoConEfectivo && datos.montoRecibido)) && (
+                  <li>{esMixto ? 'Efectivo recibido' : 'Monto recibido'}: Bs. {datos.montoRecibido}</li>
                 )}
                 <li>
                   Datos de facturación:{' '}
@@ -744,6 +1004,7 @@ function Pagos() {
                   {datos.enviarCorreo ? `Sí, a ${datos.email}` : 'No'}
                 </li>
               </ul>
+              {vuelto !== null && !calculandoVuelto && <DesgloseVuelto vuelto={vuelto} desglose={desgloseVuelto} />}
 
               {errorApi && <p className="error">Error: {errorApi}</p>}
 
@@ -846,6 +1107,7 @@ function Pagos() {
                 ) : (
                   <li>Método de pago: {pagoRegistrado.metodo}</li>
                 )}
+                {pagoRegistrado.leyendaUsd && <li className="leyenda-usd">{pagoRegistrado.leyendaUsd}</li>}
                 <li>Monto: Bs. {pagoRegistrado.monto}</li>
                 {pagoRegistrado.monto_recibido != null && (
                   <>
@@ -893,10 +1155,27 @@ function Pagos() {
               monto2={datos.montoMixto2}
               onCambiarMonto1={(valor) => actualizarCampo('montoMixto1', valor)}
               onCambiarMonto2={(valor) => actualizarCampo('montoMixto2', valor)}
+              montoRecibido={datos.montoRecibido}
+              onCambiarMontoRecibido={(valor) => actualizarCampo('montoRecibido', valor)}
+              vuelto={vuelto}
+              desgloseVuelto={desgloseVuelto}
+              calculandoVuelto={calculandoVuelto}
+              errorVuelto={errorVuelto}
             />
           </div>
         )}
       </div>
+
+      {avisoDuplicado && (
+        <AvisoCobroDuplicadoModal
+          factura={avisoDuplicado.factura}
+          segundos={avisoDuplicado.segundos}
+          anterior={avisoDuplicado.anterior}
+          actual={{ total: Number(datos.monto), metodos: datos.metodos, razonSocial: datos.razonSocial.trim() }}
+          onCancelar={() => setAvisoDuplicado(null)}
+          onCobrarIgual={cobrarIgual}
+        />
+      )}
     </section>
   )
 }
