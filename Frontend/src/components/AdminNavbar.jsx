@@ -17,6 +17,7 @@ function AdminNavbar() {
       <NavLink to="/admin/clientes">Clientes</NavLink>
       <NavLink to="/admin/tablero">Tablero</NavLink>
       <NavLink to="/admin/cierre-diario">Cierre diario</NavLink>
+      <NavLink to="/admin/horas-pico">Horas pico</NavLink>
       <NavLink to="/admin/comparativo-mensual">Comparativo mensual</NavLink>
       <NavLink to="/admin/supervisores">Supervisores</NavLink>
       <NavLink to="/admin/productos-vendidos">Productos Vendidos</NavLink>
