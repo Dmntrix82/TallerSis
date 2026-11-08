@@ -1,11 +1,9 @@
 const { Router } = require("express");
 const { autenticarCajero } = require("../services/authService");
 const { validarCajaDisponible } = require("../services/cajaService");
-const { registrarInicioSesion, cerrarSesionesInactivas } = require("../services/sesionCajeroService");
+const { registrarInicioSesion, cerrarSesionesInactivas, desbloquear } = require("../services/sesionCajeroService");
 const { verificarCajaLibreParaCajero } = require("../services/turnosService");
 const { autenticarAdministrador } = require("../services/administradorAuthService");
-const { desbloquear } = require("../services/sesionCajeroService");
-
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);

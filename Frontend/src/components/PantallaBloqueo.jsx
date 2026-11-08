@@ -6,11 +6,9 @@ import './PantallaBloqueo.css'
 
 const MAXIMO_INTENTOS = 3
 
-// Mensajes con los que el backend avisa que la sesion ya no se puede desbloquear.
+// 404: no hay sesión activa para este cajero (p.ej. la cerró otra pestaña).
+// 401 + este mensaje: ya se había cerrado por demasiados intentos fallidos.
 const SESION_TERMINADA = /sesi[oó]n cerrada|inicie sesi[oó]n|no hay sesi[oó]n activa/i
-// El backend todavia responde "Error interno del servidor" ante una contraseña incorrecta
-// (lanza Error sin status), asi que ese mensaje se toma como un intento fallido.
-const ERROR_GENERICO = /error interno del servidor/i
 
 // TDSI-856: pantalla de bloqueo con el nombre del cajero y su caja.
 // TDSI-858: mensajes de contraseña incorrecta y cierre de sesión al tercer intento fallido.
@@ -46,7 +44,7 @@ function PantallaBloqueo({ intentos, onIntentoFallido, onDesbloqueada }) {
         setError('No se pudo conectar con el servidor. Intente de nuevo.')
         return
       }
-      if (SESION_TERMINADA.test(err.message)) {
+      if (err.status === 404 || SESION_TERMINADA.test(err.message)) {
         terminarSesion('Demasiados intentos fallidos. Inicie sesión nuevamente.')
         return
       }
@@ -57,8 +55,7 @@ function PantallaBloqueo({ intentos, onIntentoFallido, onDesbloqueada }) {
       }
       onIntentoFallido(fallidos)
       const restantes = MAXIMO_INTENTOS - fallidos
-      const motivo = ERROR_GENERICO.test(err.message) ? 'Contraseña incorrecta.' : err.message
-      setError(`${motivo} ${restantes === 1 ? 'Le queda 1 intento.' : `Le quedan ${restantes} intentos.`}`)
+      setError(`${err.message} ${restantes === 1 ? 'Le queda 1 intento.' : `Le quedan ${restantes} intentos.`}`)
     }
   }
 
