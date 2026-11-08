@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/auth.test.js src/tests/estadoTransaccion.test.js src/tests/monitoreo.test.js src/tests/monitoreoEndpoint.test.js src/tests/revision.test.js src/tests/revisionSemilla.test.js src/tests/revisionEndpoint.test.js src/tests/historialCajeros.test.js src/tests/historialCajerosEndpoint.test.js src/tests/historialSemilla.test.js src/tests/metodosPago.test.js src/tests/metodosPagoEndpoint.test.js src/tests/metodosSemilla.test.js src/tests/desgloseVuelto.test.js src/tests/cobroUsd.test.js src/tests/duplicado.test.js src/tests/respuestasRapidas.test.js src/tests/ventasCanceladas.test.js",
+    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/auth.test.js src/tests/estadoTransaccion.test.js src/tests/monitoreo.test.js src/tests/monitoreoEndpoint.test.js src/tests/revision.test.js src/tests/revisionSemilla.test.js src/tests/revisionEndpoint.test.js src/tests/historialCajeros.test.js src/tests/historialCajerosEndpoint.test.js src/tests/historialSemilla.test.js src/tests/metodosPago.test.js src/tests/metodosPagoEndpoint.test.js src/tests/metodosSemilla.test.js src/tests/desgloseVuelto.test.js src/tests/cobroUsd.test.js src/tests/duplicado.test.js src/tests/respuestasRapidas.test.js src/tests/ventasCanceladas.test.js src/tests/misFacturasBusqueda.test.js",
     "crear-cliente": "node scripts/crearSistemaCliente.js"
   },
   "license": "ISC",

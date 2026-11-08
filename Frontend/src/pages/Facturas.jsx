@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listarMisFacturas, anularVenta, modificarVenta, urlFacturaPdf } from '../api/pagos.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import BuscadorFacturas from '../components/BuscadorFacturas.jsx'
+import useDebounce from '../hooks/useDebounce.js'
 
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000 // 2 horas
 
@@ -46,6 +48,13 @@ function Facturas() {
   const [filtroDesde, setFiltroDesde] = useState('')
   const [filtroHasta, setFiltroHasta] = useState('')
 
+  // TDSI-46: buscador por número, NIT/CI o nombre. La búsqueda la resuelve el backend
+  // (parámetro "q"); aquí solo se espera 400 ms tras dejar de escribir (TDSI-868).
+  const [busqueda, setBusqueda] = useState('')
+  const busquedaDebounced = useDebounce(busqueda, 400)
+  const termino = busqueda.trim() === '' ? '' : busquedaDebounced.trim() // vacío = todo al instante
+  const peticionActual = useRef(0) // evita que una respuesta vieja pise a una más nueva
+
   // Paso 1: factura elegida + ventana emergente de credenciales del supervisor.
   const [facturaParaAnular, setFacturaParaAnular] = useState(null)
   const [credenciales, setCredenciales] = useState(CREDENCIALES_INICIAL)
@@ -66,26 +75,32 @@ function Facturas() {
 
   async function cargarFacturas() {
     if (!cajero) return
+    const numeroPeticion = ++peticionActual.current
     setCargando(true)
     try {
-      const respuesta = await listarMisFacturas(cajero.nombre, { desde: filtroDesde, hasta: filtroHasta })
+      // TDSI-869: la búsqueda (q) viaja junto al rango de fechas, no lo reemplaza.
+      const respuesta = await listarMisFacturas(cajero.nombre, { desde: filtroDesde, hasta: filtroHasta, q: termino })
+      if (numeroPeticion !== peticionActual.current) return
       setFacturas(respuesta.data)
       setErrorCarga(null)
     } catch (err) {
+      if (numeroPeticion !== peticionActual.current) return
       setErrorCarga(err.message)
     } finally {
-      setCargando(false)
+      if (numeroPeticion === peticionActual.current) setCargando(false)
     }
   }
 
   useEffect(() => {
     cargarFacturas()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cajero, filtroDesde, filtroHasta])
+  }, [cajero, filtroDesde, filtroHasta, termino])
 
+  // TDSI-870: "Limpiar" también vacía el buscador.
   function limpiarFiltro() {
     setFiltroDesde('')
     setFiltroHasta('')
+    setBusqueda('')
   }
 
   function abrirVentanaCredenciales(factura) {
@@ -235,9 +250,14 @@ function Facturas() {
           Hasta
           <input type="date" value={filtroHasta} min={filtroDesde || undefined} onChange={(e) => setFiltroHasta(e.target.value)} />
         </label>
-        {(filtroDesde || filtroHasta) && (
+        {/* TDSI-170: buscador con lupa junto al filtro de fechas */}
+        <label className="campo">
+          Buscar
+          <BuscadorFacturas valor={busqueda} onChange={setBusqueda} />
+        </label>
+        {(filtroDesde || filtroHasta || busqueda) && (
           <button type="button" className="btn btn-secundario" onClick={limpiarFiltro}>
-            Quitar filtro
+            Limpiar
           </button>
         )}
       </div>
@@ -248,7 +268,13 @@ function Facturas() {
       {errorCarga && <p className="error">Error: {errorCarga}</p>}
 
       {!cargando && !errorCarga && facturas.length === 0 && (
-        <p>{filtroDesde || filtroHasta ? 'No hay facturas en ese rango de fechas.' : 'Todavía no emitiste ninguna factura.'}</p>
+        <p className={termino ? 'facturas-sin-resultados' : undefined}>
+          {termino
+            ? 'No se encontraron facturas' // TDSI-871
+            : filtroDesde || filtroHasta
+              ? 'No hay facturas en ese rango de fechas.'
+              : 'Todavía no emitiste ninguna factura.'}
+        </p>
       )}
 
       {facturas.length > 0 && (

@@ -406,6 +406,17 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
 );
 
 -- ==========================================================================
+-- TDSI-46: indice para la pantalla "Facturas" del cajero
+-- --------------------------------------------------------------------------
+-- GET /api/pagos/mis-facturas siempre filtra por el cajero de la sesion con
+-- lower(trim(cajero)) (TDSI-866) y ordena por fecha; con el buscador se llama
+-- cada vez que el cajero deja de escribir. Sin este indice cada busqueda
+-- recorre todas las ventas de todos los cajeros. Idempotente.
+-- ==========================================================================
+CREATE INDEX IF NOT EXISTS idx_transacciones_cajero_sesion_fecha
+    ON pagos.transacciones (lower(trim(cajero)), fecha DESC);
+
+-- ==========================================================================
 -- TDSI-44/165: respuestas rápidas del cajero para justificar la cancelación
 -- de una venta. Cada cajero tiene sus propias frases guardadas.
 -- ==========================================================================

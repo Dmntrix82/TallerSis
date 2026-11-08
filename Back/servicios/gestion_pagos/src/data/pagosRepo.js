@@ -154,22 +154,66 @@ async function buscarPosibleDuplicado({ cajero_id, nit, total, segundos_ventana 
 }
 
 
+/** Escapa %, _ y \ para que el texto del buscador se tome literal dentro de un LIKE. */
+const escaparLike = (texto) => texto.replace(/[\\%_]/g, "\\$&");
+
+// TDSI-864: el buscador no distingue mayusculas ni tildes ("jose perez" encuentra a "José Pérez").
+// Las mayusculas con tilde tambien van en la lista por si la BD usa un locale que no las baja con lower().
+const CON_TILDE = "ÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑáàäâéèëêíìïîóòöôúùüûñ";
+const SIN_TILDE = "aaaaeeeeiiiioooouuuunaaaaeeeeiiiioooouuuun";
+const sinTildesSql = (columna) => `translate(lower(${columna}), '${CON_TILDE}', '${SIN_TILDE}')`;
+const sinTildes = (texto) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * TDSI-169: condicion del buscador de "Facturas".
+ * - Solo digitos, hasta 6 (ej. "54" o "000054"), o con el prefijo ("VTA-54", "vta 54"):
+ *   N° de factura -> VTA-000054 exacto.
+ * - Solo digitos, 7 o mas: NIT (10 digitos) o CI (7-8), por prefijo.
+ * - Cualquier otro texto: parte del N° de factura ("VTA-0000") o del nombre del cliente.
+ */
+function agregarBusqueda(q, condiciones, params) {
+  // "VTA-54", "vta 54" o "VTA54" tambien son el N° de factura 54. Con ceros a la izquierda
+  // y menos de 6 digitos ("VTA-0000") se deja como busqueda parcial, por si sigue escribiendo.
+  const conPrefijo = /^vta[-\s]?(\d{1,6})$/i.exec(q);
+  if (conPrefijo && (conPrefijo[1].length === 6 || !conPrefijo[1].startsWith("0"))) {
+    q = conPrefijo[1];
+  }
+  if (/^\d{1,6}$/.test(q)) {
+    // Se compara como texto sin ceros a la izquierda (no ::bigint): un id con mas de 19
+    // digitos al final (ej. uno importado) hacia fallar toda la busqueda con "out of range".
+    params.push(q.replace(/^0+/, "") || "0");
+    condiciones.push(`COALESCE(NULLIF(ltrim(substring(id_transaccion from '(\\d+)$'), '0'), ''), '0') = $${params.length}`);
+  } else if (/^\d{7,}$/.test(q)) {
+    params.push(`${q}%`);
+    condiciones.push(`nit LIKE $${params.length}`);
+  } else {
+    params.push(`%${escaparLike(sinTildes(q))}%`);
+    const i = params.length;
+    condiciones.push(`(lower(id_transaccion) LIKE $${i} OR ${sinTildesSql("razon_social")} LIKE $${i})`);
+  }
+}
+
 /**
  * TDSI-306: lista "una fila por venta" (agrupa por id_transaccion, asi un pago
  * mixto con 2 metodos aparece una sola vez) de las ventas de un cajero.
- * TDSI-307: desde/hasta (objetos Date) filtran por rango de fecha de emision.
+ * TDSI-307/865: desde/hasta ("YYYY-MM-DD") filtran por dia de emision en hora de Bolivia,
+ * "hasta" inclusive.
+ * TDSI-169: q (opcional) agrega la condicion del buscador; se combina con las fechas.
+ * TDSI-866: cajero llega en minusculas. Todas las condiciones van unidas con AND, asi
+ * la busqueda solo achica la lista: nunca devuelve ventas de otro cajero.
  */
-async function listarPorCajero(cajero, { desde, hasta } = {}) {
-  const condiciones = ["cajero = $1"];
+async function listarPorCajero(cajero, { desde, hasta, q } = {}) {
+  const condiciones = ["lower(trim(cajero)) = $1"];
   const params = [cajero];
   if (desde) {
     params.push(desde);
-    condiciones.push(`fecha >= $${params.length}`);
+    condiciones.push(`fecha >= ($${params.length}::date)::timestamp AT TIME ZONE 'America/La_Paz'`);
   }
   if (hasta) {
     params.push(hasta);
-    condiciones.push(`fecha <= $${params.length}`);
+    condiciones.push(`fecha < ($${params.length}::date + 1)::timestamp AT TIME ZONE 'America/La_Paz'`);
   }
+  if (q) agregarBusqueda(q, condiciones, params);
 
   const { rows } = await query(
     `SELECT id_transaccion,

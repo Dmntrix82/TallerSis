@@ -2501,6 +2501,31 @@
   .mp-grid { grid-template-columns: 1fr; }
 }
 
+/*TDSI-46*/
+.buscador-facturas {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 240px;
+}
+.buscador-facturas-icono {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  pointer-events: none;
+}
+.buscador-facturas input {
+  width: 100%;
+  padding-left: 38px;
+}
+.facturas-sin-resultados {
+  padding: 24px 16px;
+  color: #64748b;
+  text-align: center;
+}
+
 /* Cancelar una venta sin cobrar (TDSI-45 / TDSI-168, 842 a 845) */
 /* Respuestas rapidas del cajero (TDSI-44) */
 .pagos-encabezado {
