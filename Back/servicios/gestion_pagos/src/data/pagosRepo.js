@@ -10,19 +10,26 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * correlativo de la propia tabla (nextval de su secuencia), asi queda unico
  * por construccion, sin depender de que el cajero no repita un numero.
  */
-async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto }) {
+async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto, moneda_recibida, monto_usd, tipo_cambio }) {
   const { rows } = await query(
     `WITH nuevo AS (
        SELECT nextval(pg_get_serial_sequence('pagos.transacciones', 'id')) AS id
      )
      INSERT INTO pagos.transacciones
-       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto)
-     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto, moneda_recibida, monto_usd, tipo_cambio)
+     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
      FROM nuevo
      RETURNING *`,
-    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, monto_recibido ?? null, vuelto ?? null]
+    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, monto_recibido ?? null, vuelto ?? null, moneda_recibida || null, monto_usd ?? null, tipo_cambio ?? null]
   );
-  return { ...rows[0], monto: num(rows[0].monto), monto_recibido: num(rows[0].monto_recibido), vuelto: num(rows[0].vuelto) };
+  return {
+    ...rows[0],
+    monto: num(rows[0].monto),
+    monto_recibido: num(rows[0].monto_recibido),
+    vuelto: num(rows[0].vuelto),
+    monto_usd: num(rows[0].monto_usd),
+    tipo_cambio: num(rows[0].tipo_cambio),
+  };
 }
 
 // ---------- Cobro con QR (TDSI-39/155) ----------
@@ -109,7 +116,7 @@ async function buscarTodasTransaccionesPorIdTransaccion(id_transaccion) {
     `SELECT * FROM pagos.transacciones WHERE id_transaccion = $1 ORDER BY fecha, id`,
     [id_transaccion]
   );
-  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
+  return rows.map((r) => ({ ...r, monto: num(r.monto), monto_usd: num(r.monto_usd), tipo_cambio: num(r.tipo_cambio) }));
 }
 
 /** Autocompletado de razon social: busca el ultimo pago (simple o mixto) que uso ese mismo documento. */

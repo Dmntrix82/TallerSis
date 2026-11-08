@@ -3,7 +3,7 @@ const repo = require("../data/pagosRepo");
 const { guardarClienteEnFacturacion } = require("./clientesProxy");
 const { emitirActualizacion } = require("../utils/tableroEvents");
 const { TIPOS_DOCUMENTO_VALIDOS, validarFormatoDocumento } = require("../utils/documento");
-const { calcularVuelto, validarMontoRecibido } = require("./cobroEfectivoService");
+const { calcularVuelto, validarMontoRecibido, calcularCobroUsd } = require("./cobroEfectivoService");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
 
@@ -17,7 +17,7 @@ const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
  * TDSI-423: cajero_id identifica a quien hizo la operacion (para el monitoreo).
  * Si el front todavia no lo manda, se usa "cajero" (hoy es el email del cajero).
  */
-async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_social, telefono, email, caja_id, turno_id, cajero, cajero_id, monto_recibido }) {
+async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_social, telefono, email, caja_id, turno_id, cajero, cajero_id, monto_recibido, moneda_recibida, monto_usd }) {
   if (!metodo || monto === undefined) {
     throw new AppError("Los campos metodo y monto son obligatorios.", 400);
   }
@@ -31,10 +31,29 @@ async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_s
   // TDSI-29/550: si pagan en efectivo y mandan cuanto entregó el cliente, se
   // vuelve a validar y calcular el vuelto aquí mismo (nunca se confía en un
   // vuelto que mande el frontend ya calculado) y se guarda junto al cobro.
+  //
+  // TDSI-813: si pagaron en dólares, el equivalente en Bs y el vuelto se
+  // recalculan con calcularCobroUsd (la misma función que usa la vista
+  // previa de TDSI-812) usando el tipo de cambio vigente -- nunca se confía
+  // en el monto_recibido/tipo_cambio que mande el frontend, igual que con
+  // el vuelto normal. Así, lo que queda guardado nunca puede diferir de lo
+  // que el cajero vio en pantalla antes de confirmar.
   let vuelto = null;
-  if (metodo === "Efectivo" && monto_recibido !== undefined && monto_recibido !== null) {
-    validarMontoRecibido(monto, monto_recibido);
-    vuelto = calcularVuelto(monto, monto_recibido);
+  let montoRecibidoEfectivo = monto_recibido;
+  let monedaRecibida = null;
+  let montoUsdGuardado = null;
+  let tipoCambioUsado = null;
+
+  if (metodo === "Efectivo" && moneda_recibida === "USD") {
+    const cobroUsd = await calcularCobroUsd({ total: monto, dolaresRecibidos: Number(monto_usd) });
+    montoRecibidoEfectivo = cobroUsd.equivalenteBs;
+    vuelto = cobroUsd.vuelto;
+    monedaRecibida = "USD";
+    montoUsdGuardado = cobroUsd.dolaresRecibidos;
+    tipoCambioUsado = cobroUsd.tipoCambio;
+  } else if (metodo === "Efectivo" && montoRecibidoEfectivo !== undefined && montoRecibidoEfectivo !== null) {
+    validarMontoRecibido(monto, montoRecibidoEfectivo);
+    vuelto = calcularVuelto(monto, montoRecibidoEfectivo);
   }
 
   const tipoDocumento = tipo_documento || null;
@@ -68,8 +87,11 @@ async function registrarPagoSimple({ metodo, monto, tipo_documento, nit, razon_s
     turno_id,
     cajero,
     cajero_id: cajero_id || cajero,
-    monto_recibido: metodo === "Efectivo" ? monto_recibido ?? null : null,
+    monto_recibido: metodo === "Efectivo" ? montoRecibidoEfectivo ?? null : null,
     vuelto,
+    moneda_recibida: monedaRecibida,
+    monto_usd: montoUsdGuardado,
+    tipo_cambio: tipoCambioUsado,
   });
   const totalTransacciones = await repo.contarTransacciones();
   emitirActualizacion();
