@@ -21,7 +21,8 @@ async function procesarVentas() {
   enCurso = true;
   const resultados = [];
   try {
-    const mensajes = await subscriber.leer(50);
+    const suscripcion = subscriber.nombreSuscripcion(cfg.VENTAS_SUBSCRIPTION);
+    const mensajes = await subscriber.leer(50, suscripcion);
     const confirmar = [];
     for (const m of mensajes) {
       confirmar.push(m.ackId);
@@ -40,7 +41,7 @@ async function procesarVentas() {
         console.error(`[marketplace] Mensaje ${m.messageId} invalido, se guardo el error:`, e.message);
       }
     }
-    await subscriber.confirmar(confirmar);
+    await subscriber.confirmar(confirmar, suscripcion);
     ultimoError = null;
   } catch (e) {
     if (e.message !== ultimoError) console.error("[marketplace] No se pudieron leer las ventas:", e.message);
@@ -53,15 +54,16 @@ async function procesarVentas() {
 
 function iniciar() {
   if (!cfg.VENTAS_SUBSCRIPTION) return;
+  let suscripcion;
   try {
-    subscriber.nombreSuscripcion();
+    suscripcion = subscriber.nombreSuscripcion(cfg.VENTAS_SUBSCRIPTION);
   } catch (e) {
     console.error(`[marketplace] No se leen las ventas: ${e.message}`); // configuracion invalida: el servicio sigue
     return;
   }
   const timer = setInterval(procesarVentas, cfg.VENTAS_INTERVALO_SEG * 1000);
   timer.unref();
-  console.log(`[marketplace] Leyendo ventas de ${subscriber.nombreSuscripcion()} cada ${cfg.VENTAS_INTERVALO_SEG} s`);
+  console.log(`[marketplace] Leyendo ventas de ${suscripcion} cada ${cfg.VENTAS_INTERVALO_SEG} s`);
 }
 
 module.exports = { iniciar, procesarVentas };

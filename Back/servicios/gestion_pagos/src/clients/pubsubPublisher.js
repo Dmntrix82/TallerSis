@@ -1,6 +1,10 @@
-// TDSI-51/684: publica el aviso de factura emitida en "pagos-facturas-emitidas", para
-// que el Marketplace se lo muestre al comprador. No espera a que el Marketplace lo lea:
-// Pub/Sub confirma que guardo el mensaje y devuelve su messageId. Mismo patron que el
+// Publicador Pub/Sub generico de gestion_pagos, compartido por las integraciones con
+// el Marketplace (TDSI-51/684, topico "pagos-facturas-emitidas") y con Compras
+// (TDSI-54/682, topico "pagos-productos-vendidos"): cada una pasa su propio topico a
+// publicar(). Las credenciales (GOOGLE_CREDENTIALS_JSON) y el timeout (PUBSUB_TIMEOUT_MS)
+// son los mismos para todo el servicio -- da igual de que config se lean, marketplace.js
+// y compras.js definen las mismas variables. No espera a que lo procesen: Pub/Sub
+// confirma que guardo el mensaje y devuelve su messageId. Mismo patron que el
 // publicador de facturacion hacia Contabilidad (src/clients/pubsubPublisher.js).
 const { PubSub } = require("@google-cloud/pubsub");
 const cfg = require("../config/marketplace");
@@ -17,12 +21,12 @@ function crearCliente() {
   });
 }
 
-function obtenerTopico() {
+function obtenerTopico(nombreTopico) {
   if (!cliente) cliente = crearCliente();
-  if (!topicos.has(cfg.FACTURAS_TOPIC)) {
-    topicos.set(cfg.FACTURAS_TOPIC, cliente.topic(cfg.FACTURAS_TOPIC, { batching: { maxMessages: 1, maxMilliseconds: 0 } }));
+  if (!topicos.has(nombreTopico)) {
+    topicos.set(nombreTopico, cliente.topic(nombreTopico, { batching: { maxMessages: 1, maxMilliseconds: 0 } }));
   }
-  return topicos.get(cfg.FACTURAS_TOPIC);
+  return topicos.get(nombreTopico);
 }
 
 function conTiempoLimite(promesa, ms) {
@@ -33,15 +37,15 @@ function conTiempoLimite(promesa, ms) {
   return Promise.race([promesa, limite]).finally(() => clearTimeout(timer));
 }
 
-/** Publica `mensaje` como JSON. Devuelve { ok: true, messageId } o { ok: false, error }. */
-async function publicar(mensaje, atributos = {}) {
-  if (!cfg.FACTURAS_TOPIC) return { ok: false, error: "MARKETPLACE_FACTURAS_TOPIC no esta configurado" };
+/** Publica `mensaje` como JSON en `nombreTopico`. Devuelve { ok: true, messageId } o { ok: false, error }. */
+async function publicar(nombreTopico, mensaje, atributos = {}) {
+  if (!nombreTopico) return { ok: false, error: "El topico de Pub/Sub no esta configurado" };
 
   const attributes = Object.fromEntries(
     Object.entries(atributos).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => [k, String(v)])
   );
   try {
-    const messageId = await conTiempoLimite(obtenerTopico().publishMessage({ json: mensaje, attributes }), cfg.PUBSUB_TIMEOUT_MS);
+    const messageId = await conTiempoLimite(obtenerTopico(nombreTopico).publishMessage({ json: mensaje, attributes }), cfg.PUBSUB_TIMEOUT_MS);
     return { ok: true, messageId };
   } catch (e) {
     return { ok: false, error: `Pub/Sub: ${e.message}`.slice(0, 400) };

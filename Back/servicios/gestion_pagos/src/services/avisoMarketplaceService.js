@@ -20,7 +20,7 @@ async function avisarFacturaEmitida({ id, orden_id, numero_factura }) {
     enlaceVerificacion: urlVerificacion(token),
   };
 
-  const r = await publicar(mensaje, { tipo: "FACTURA_EMITIDA", orden_id, numero_factura });
+  const r = await publicar(cfg.FACTURAS_TOPIC, mensaje, { tipo: "FACTURA_EMITIDA", orden_id, numero_factura });
   await repo.guardarAvisoMarketplace(id, { estado: r.ok ? "Enviado" : "Error", error: r.ok ? null : r.error });
   return { publicado: r.ok, ...(r.ok ? { messageId: r.messageId } : { error: r.error }) };
 }

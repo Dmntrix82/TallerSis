@@ -412,6 +412,32 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
 );
 
 -- ==========================================================================
+-- TDSI-54/687: seguimiento del envio a Compras del reporte de productos vendidos
+-- (TDSI-682 arma y publica el mensaje "PV-<fecha>"; esta tabla es donde queda el
+-- registro). Una fecha tiene a lo sumo un envio (UNIQUE): "cada dia se envia una
+-- sola vez, salvo que el envio haya quedado en Error" (reenviar reusa la misma fila).
+-- Estado: Enviado -> Recibido (acuse de Compras) / Error -- tal como pide el ticket.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.envios_compras (
+    id                 BIGSERIAL PRIMARY KEY,
+    fecha              DATE         NOT NULL UNIQUE,
+    reporte_id         VARCHAR(20)  NOT NULL,
+    estado             VARCHAR(20)  NOT NULL DEFAULT 'Enviado'
+                        CHECK (estado IN ('Enviado', 'Recibido', 'Error')),
+    intentos           INT          NOT NULL DEFAULT 0,
+    payload            JSONB,
+    pubsub_message_id  VARCHAR(100),
+    ultimo_error       VARCHAR(400),
+    creado_en          TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    enviado_en         TIMESTAMPTZ,
+    recibido_en        TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_envios_compras_estado ON pagos.envios_compras (estado);
+
+ALTER TABLE pagos.envios_compras ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
 -- TDSI-51/179: suscripcion al topico "marketplace-ventas". pagos.ventas_online
 -- y pagos.venta_online_items ya existian (TDSI-105/106) pero les faltaba el
 -- NIT/CI del comprador -- necesario para poder facturar la venta despues
