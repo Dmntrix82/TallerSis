@@ -6,6 +6,9 @@ const { validarFormatoDocumento } = require("../utils/documento");
 
 // TDSI-306: mismo plazo de 2 horas que la anulacion de facturas en facturacion.
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000;
+// TDSI-48/897: mismos limites que facturacion.respuestas_anulacion (TDSI-891).
+const MOTIVO_ANULACION_MIN = 10;
+const MOTIVO_ANULACION_MAX = 100;
 
 function dentroDelPlazo(fecha) {
   return Date.now() - new Date(fecha).getTime() <= PLAZO_ANULACION_MS;
@@ -38,9 +41,13 @@ async function listarMisFacturas(cajero, { desde, hasta } = {}) {
  * un supervisor de caja (validado contra facturacion) y que este dentro del
  * plazo de 2 horas desde la emision. Solo el cajero que la emitio puede pedirlo.
  */
-async function anularVenta({ id_transaccion, cajero, supervisor_id, pin }) {
+async function anularVenta({ id_transaccion, cajero, supervisor_id, pin, motivo }) {
   if (!supervisor_id || !String(supervisor_id).trim() || !pin || !String(pin).trim()) {
     throw new AppError("Ingrese el usuario y el PIN del supervisor.", 400);
+  }
+  const motivoLimpio = String(motivo ?? "").trim();
+  if (motivoLimpio.length < MOTIVO_ANULACION_MIN || motivoLimpio.length > MOTIVO_ANULACION_MAX) {
+    throw new AppError(`El motivo de la anulación debe tener entre ${MOTIVO_ANULACION_MIN} y ${MOTIVO_ANULACION_MAX} caracteres.`, 400);
   }
 
   const filas = await repo.buscarTransaccionesPorIdTransaccion(id_transaccion);
@@ -62,10 +69,10 @@ async function anularVenta({ id_transaccion, cajero, supervisor_id, pin }) {
 
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
-  const anuladas = await repo.anularTransaccion(id_transaccion, { anulado_por: supervisor.supervisor_id });
+  const anuladas = await repo.anularTransaccion(id_transaccion, { anulado_por: supervisor.supervisor_id, motivo: motivoLimpio });
   emitirActualizacion();
 
-  return { id_transaccion, autorizado_por: supervisor, filas: anuladas };
+  return { id_transaccion, autorizado_por: supervisor, motivo: motivoLimpio, filas: anuladas };
 }
 
 /**

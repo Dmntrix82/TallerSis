@@ -5,8 +5,7 @@ import { apiFetch } from './client.js'
 // Cada respuesta es { id, cajero_id, texto, orden, creado_en }.
 const BASE = '/api/facturas/respuestas-anulacion'
 
-// Reglas del ticket. El backend acepta hasta 300 caracteres y no limita la cantidad,
-// asi que el maximo de 100 y el de 8 respuestas los controla el frontend.
+// Reglas del ticket (tambien aplicadas por el backend: 10 a 100 caracteres y maximo 8 por cajero).
 export const MAXIMO_RESPUESTAS_ANULACION = 8
 export const LARGO_MINIMO_ANULACION = 10 // Contabilidad rechaza motivos mas cortos
 export const LARGO_MAXIMO_ANULACION = 100

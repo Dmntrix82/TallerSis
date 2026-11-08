@@ -215,14 +215,20 @@ ALTER TABLE facturacion.factura_envios_contabilidad
 
 -- ==========================================================================
 -- TDSI-48/173: respuestas rápidas para anular facturas (mismo enfoque que TDSI-44).
+-- El texto es de 10 a 100 caracteres (regla del ticket); el maximo de 100 lo
+-- aplica el propio VARCHAR(100), igual que en pagos.respuestas_rapidas (TDSI-44).
 -- ==========================================================================
 CREATE TABLE IF NOT EXISTS facturacion.respuestas_anulacion (
     id          BIGSERIAL PRIMARY KEY,
     cajero_id   VARCHAR(60)  NOT NULL,
-    texto       VARCHAR(300) NOT NULL CHECK (char_length(texto) >= 10),
+    texto       VARCHAR(100) NOT NULL CHECK (char_length(texto) >= 10),
     orden       SMALLINT     NOT NULL DEFAULT 1,
     creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+
+-- Idempotente: si la tabla ya existia con VARCHAR(300) (version original de TDSI-48,
+-- que no aplicaba el limite de 100 del ticket), se achica la columna.
+ALTER TABLE facturacion.respuestas_anulacion ALTER COLUMN texto TYPE VARCHAR(100);
 
 CREATE INDEX IF NOT EXISTS idx_respuestas_anulacion_cajero ON facturacion.respuestas_anulacion (cajero_id);
 

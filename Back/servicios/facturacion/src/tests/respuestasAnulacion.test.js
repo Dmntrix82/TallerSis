@@ -26,16 +26,30 @@ test("TDSI-891: crea una respuesta válida (10+ caracteres)", async () => {
 test("TDSI-891: rechaza texto con menos de 10 caracteres", async () => {
   await assert.rejects(
     () => service.crear({ cajero_id: CAJERO_ID, texto: "Muy corto" }),
-    (e) => e.status === 400 && e.message.includes("10 y 300")
+    (e) => e.status === 400 && e.message.includes("10 y 100")
   );
 });
 
-test("TDSI-891: rechaza texto con más de 300 caracteres", async () => {
-  const textoLargo = "a".repeat(301);
+test("TDSI-891: rechaza texto con más de 100 caracteres", async () => {
+  const textoLargo = "a".repeat(101);
   await assert.rejects(
     () => service.crear({ cajero_id: CAJERO_ID, texto: textoLargo }),
-    (e) => e.status === 400 && e.message.includes("10 y 300")
+    (e) => e.status === 400 && e.message.includes("10 y 100")
   );
+});
+
+test("TDSI-891: no deja crear una novena respuesta (máximo 8 por cajero)", async () => {
+  for (let i = 1; i <= 8; i++) {
+    await service.crear({ cajero_id: CAJERO_ID, texto: `Motivo numero ${i} del cajero` });
+  }
+  await assert.rejects(
+    () => service.crear({ cajero_id: CAJERO_ID, texto: "Este seria el noveno motivo" }),
+    (e) => e.status === 409
+  );
+
+  // el limite es por cajero: otro cajero sigue pudiendo crear las suyas
+  const deOtro = await service.crear({ cajero_id: OTRO_CAJERO, texto: "Motivo del otro cajero" });
+  assert.ok(deOtro.id);
 });
 
 test("TDSI-892: no permite editar la respuesta de otro cajero", async () => {

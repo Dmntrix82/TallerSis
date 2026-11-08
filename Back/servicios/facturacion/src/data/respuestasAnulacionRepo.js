@@ -17,6 +17,15 @@ async function listarPorCajero(cajero_id) {
   return rows.map(normalizar);
 }
 
+/** TDSI-891: Cuenta cuantas respuestas tiene guardadas un cajero (para el maximo de 8). */
+async function contarPorCajero(cajero_id) {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS total FROM facturacion.respuestas_anulacion WHERE cajero_id = $1`,
+    [cajero_id]
+  );
+  return rows[0].total;
+}
+
 /** TDSI-891: Crea una nueva respuesta. */
 async function crear({ cajero_id, texto, orden = 1 }) {
   const { rows } = await query(
@@ -60,4 +69,4 @@ async function obtenerPorId(id) {
   return normalizar(rows[0]);
 }
 
-module.exports = { listarPorCajero, crear, actualizar, eliminar, obtenerPorId };
+module.exports = { listarPorCajero, contarPorCajero, crear, actualizar, eliminar, obtenerPorId };

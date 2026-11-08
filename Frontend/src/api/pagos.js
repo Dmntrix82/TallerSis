@@ -70,13 +70,14 @@ export function listarMisFacturas(cajero, { desde, hasta } = {}) {
   return apiFetch(`/api/pagos/mis-facturas?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
 }
 
-// TDSI-306: anula una venta propia con el usuario + PIN de un supervisor de caja.
-export function anularVenta(id_transaccion, { cajero, supervisor_id, pin }) {
+// TDSI-306/897: anula una venta propia con el usuario + PIN de un supervisor de caja
+// y el motivo de la anulación (elegido entre las respuestas rápidas o escrito a mano).
+export function anularVenta(id_transaccion, { cajero, supervisor_id, pin, motivo }) {
   return apiFetch(
     `/api/pagos/${encodeURIComponent(id_transaccion)}/anular`,
     {
       method: 'POST',
-      body: JSON.stringify({ cajero, supervisor_id, pin }),
+      body: JSON.stringify({ cajero, supervisor_id, pin, motivo }),
     },
     GESTION_PAGOS_API_BASE_URL,
   )
