@@ -404,6 +404,12 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
     confirmado_en  TIMESTAMPTZ,
     confirmado_por VARCHAR(255)
 );
+-- ==========================================================================
+-- TDSI-826: registrar si el cajero decidió "Cobrar igual" a pesar del aviso
+-- de posible duplicado. Un valor true indica que forzó el cobro.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS cobro_duplicado BOOLEAN NOT NULL DEFAULT false;
 
 -- ==========================================================================
 -- TDSI-42/161: tabla de parametros para el cobro en dolares. Guarda el tipo

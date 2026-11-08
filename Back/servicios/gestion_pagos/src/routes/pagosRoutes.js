@@ -10,6 +10,7 @@ const {
   totalesGenerales,
   listarCajeros,
 } = require("../services/ventasCajeroService");
+const duplicadoService = require("../services/duplicadoService");
 const tipoCambioService = require("../services/tipoCambioService");
 
 const router = Router();
@@ -99,6 +100,16 @@ router.get("/totales-generales", wrap(async (req, res) => {
   const r = await totalesGenerales({ desde: req.query.desde, hasta: req.query.hasta });
   res.json({ ok: true, data: r });
 }));
+// TDSI-163/825: detecta si el mismo cajero ya cobró lo mismo al mismo cliente en los últimos 2 minutos.
+router.get("/posible-duplicado", wrap(async (req, res) => {
+  const r = await duplicadoService.detectarPosibleDuplicado({
+    cajero_id: req.query.cajero_id,
+    nit: req.query.nit,
+    total: Number(req.query.total),
+  });
+  res.json({ ok: true, data: r });
+}));
+
 // TDSI-161: el cajero necesita saber el tipo de cambio vigente para el cobro en dólares.
 router.get("/tipo-cambio", wrap(async (req, res) => {
   const data = await tipoCambioService.obtenerTipoCambio();
