@@ -15,7 +15,8 @@ async function procesarAcuses() {
   enCurso = true;
   const resultados = [];
   try {
-    const mensajes = await subscriber.leer(50);
+    const suscripcion = subscriber.nombreSuscripcion(cfg.ACUSES_SUBSCRIPTION);
+    const mensajes = await subscriber.leer(50, suscripcion);
     const confirmar = [];
     const liberar = [];
     for (const m of mensajes) {
@@ -31,8 +32,8 @@ async function procesarAcuses() {
         console.error(`[compras] No se pudo procesar el acuse ${m.messageId}:`, e.message);
       }
     }
-    await subscriber.confirmar(confirmar);
-    await subscriber.liberar(liberar);
+    await subscriber.confirmar(confirmar, suscripcion);
+    await subscriber.liberar(liberar, suscripcion);
     ultimoError = null;
   } catch (e) {
     if (e.message !== ultimoError) console.error("[compras] No se pudieron leer los acuses:", e.message);
@@ -45,15 +46,16 @@ async function procesarAcuses() {
 
 function iniciar() {
   if (!cfg.ACUSES_SUBSCRIPTION) return;
+  let suscripcion;
   try {
-    subscriber.nombreSuscripcion();
+    suscripcion = subscriber.nombreSuscripcion(cfg.ACUSES_SUBSCRIPTION);
   } catch (e) {
     console.error(`[compras] No se leen los acuses: ${e.message}`); // configuracion invalida: el servicio sigue
     return;
   }
   const timer = setInterval(procesarAcuses, cfg.ACUSES_INTERVALO_SEG * 1000);
   timer.unref();
-  console.log(`[compras] Leyendo acuses de ${subscriber.nombreSuscripcion()} cada ${cfg.ACUSES_INTERVALO_SEG} s`);
+  console.log(`[compras] Leyendo acuses de ${suscripcion} cada ${cfg.ACUSES_INTERVALO_SEG} s`);
 }
 
 module.exports = { iniciar, procesarAcuses };

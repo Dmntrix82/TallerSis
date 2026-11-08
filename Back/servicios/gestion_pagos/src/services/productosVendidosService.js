@@ -2,6 +2,7 @@ const { AppError } = require("../utils/AppError");
 const repo = require("../data/productosVendidosRepo");
 const enviosRepo = require("../data/enviosComprasRepo");
 const { publicar } = require("../clients/pubsubPublisher");
+const cfg = require("../config/compras");
 
 /**
  * TDSI-54/185: productos vendidos de un dia (fecha "YYYY-MM-DD"), agrupados por
@@ -45,7 +46,7 @@ async function publicarProductosVendidos(fecha) {
     generado_en: new Date().toISOString(),
   };
 
-  const resultado = await publicar(mensaje, {
+  const resultado = await publicar(cfg.PUBSUB_TOPIC, mensaje, {
     tipo: "PRODUCTOS_VENDIDOS",
     fecha,
     reporte_id: reporteId,
