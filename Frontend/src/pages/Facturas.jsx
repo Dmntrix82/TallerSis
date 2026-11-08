@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { listarMisFacturas, anularVenta, solicitarAnulacionPendiente, modificarVenta, urlFacturaPdf } from '../api/pagos.js'
+import { listarMisFacturas, anularVenta, modificarVenta, urlFacturaPdf } from '../api/pagos.js'
+import { validarMotivoAnulacion, LARGO_MAXIMO_ANULACION } from '../api/respuestasAnulacion.js'
+import RespuestasAnulacionBotones from '../components/RespuestasAnulacionBotones.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import BuscadorFacturas from '../components/BuscadorFacturas.jsx'
 import useDebounce from '../hooks/useDebounce.js'
@@ -8,13 +10,16 @@ import ResumenFactura from '../components/ResumenFactura.jsx'
 import ComparacionModificacion from '../components/ComparacionModificacion.jsx'
 
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000 // 2 horas
-const MOTIVO_MAX = 300
 
 const ESTADOS = {
   Registrado: { texto: 'Emitida', clase: 'badge-estado--emitida' },
   AnulacionSolicitada: { texto: 'Anulación solicitada', clase: 'badge-estado--solicitada' },
   Anulado: { texto: 'Anulada', clase: '' },
 }
+
+// TDSI-48: panel "Mis respuestas de anulación" (va aparte de los imports de arriba para no
+// chocar al unir ramas que tambien los modifican).
+import MisRespuestasAnulacion from '../components/MisRespuestasAnulacion.jsx'
 
 function dentroDelPlazo(fecha) {
   return Date.now() - new Date(fecha).getTime() <= PLAZO_ANULACION_MS
@@ -63,18 +68,14 @@ function Facturas() {
   const [facturaParaAnular, setFacturaParaAnular] = useState(null)
   const [credenciales, setCredenciales] = useState(CREDENCIALES_INICIAL)
   const [errorCredenciales, setErrorCredenciales] = useState(null)
+  // TDSI-48/896-897: motivo de la anulación -- con un clic en una respuesta guardada se
+  // completa solo; si ninguna sirve, el cajero lo escribe a mano (10 a 100 caracteres).
+  const [motivoAnulacion, setMotivoAnulacion] = useState('')
 
   // Paso 2: pregunta de seguridad final, antes de anular de verdad.
   const [pidiendoConfirmacion, setPidiendoConfirmacion] = useState(false)
   const [anulando, setAnulando] = useState(false)
 
-  // TDSI-28/133: alternativa para cuando NO hay un supervisor presente -- la
-  // venta queda "en espera" y un supervisor la resuelve despues (bandeja de
-  // Anulaciones pendientes del administrador), sin pedir PIN al toque.
-  const [pidiendoMotivoSolicitud, setPidiendoMotivoSolicitud] = useState(false)
-  const [motivoSolicitud, setMotivoSolicitud] = useState('')
-  const [errorSolicitud, setErrorSolicitud] = useState(null)
-  const [enviandoSolicitud, setEnviandoSolicitud] = useState(false)
   // TDSI-37: modificar los datos de facturacion de una venta ya registrada
   // (ej. un NIT mal escrito), autorizado por un supervisor, dentro de 2 horas.
   const [facturaParaModificar, setFacturaParaModificar] = useState(null)
@@ -138,6 +139,7 @@ function Facturas() {
     setFacturaParaAnular(factura)
     setCredenciales(CREDENCIALES_INICIAL)
     setErrorCredenciales(null)
+    setMotivoAnulacion('')
     setPidiendoConfirmacion(false)
     setMensaje(null)
   }
@@ -146,40 +148,7 @@ function Facturas() {
     setFacturaParaAnular(null)
     setPidiendoConfirmacion(false)
     setErrorCredenciales(null)
-    setPidiendoMotivoSolicitud(false)
-    setMotivoSolicitud('')
-    setErrorSolicitud(null)
-  }
-
-  function irASolicitarSinSupervisor() {
-    setPidiendoMotivoSolicitud(true)
-    setErrorCredenciales(null)
-  }
-
-  async function enviarSolicitudAnulacion(event) {
-    event.preventDefault()
-    if (!motivoSolicitud.trim()) {
-      setErrorSolicitud('Escriba el motivo de la anulación.')
-      return
-    }
-    setEnviandoSolicitud(true)
-    setErrorSolicitud(null)
-    try {
-      await solicitarAnulacionPendiente(facturaParaAnular.id_transaccion, {
-        cajero: cajero?.nombre,
-        motivo: motivoSolicitud.trim(),
-      })
-      setMensaje({
-        ok: true,
-        texto: `Solicitud enviada para la factura ${facturaParaAnular.id_transaccion}. Queda pendiente de que un supervisor la revise.`,
-      })
-      cerrarTodo()
-      await cargarFacturas()
-    } catch (err) {
-      setErrorSolicitud(err.message)
-    } finally {
-      setEnviandoSolicitud(false)
-    }
+    setMotivoAnulacion('')
   }
 
   function actualizarCredencial(campo, valor) {
@@ -190,6 +159,11 @@ function Facturas() {
   // "¿está seguro?" y recién ahí se llama al backend con el PIN.
   function aceptarCredenciales(event) {
     event.preventDefault()
+    const errorMotivo = validarMotivoAnulacion(motivoAnulacion)
+    if (errorMotivo) {
+      setErrorCredenciales(errorMotivo)
+      return
+    }
     if (!credenciales.supervisor_id.trim() || !credenciales.pin.trim()) {
       setErrorCredenciales('Ingrese el usuario y el PIN del supervisor.')
       return
@@ -205,6 +179,7 @@ function Facturas() {
         cajero: cajero?.nombre,
         supervisor_id: credenciales.supervisor_id.trim(),
         pin: credenciales.pin.trim(),
+        motivo: motivoAnulacion.trim(),
       })
       setMensaje({ ok: true, texto: `La factura ${facturaParaAnular.id_transaccion} fue anulada.` })
       cerrarTodo()
@@ -305,6 +280,7 @@ function Facturas() {
     <section>
       <h1>Facturas</h1>
       <p className="resumen-turno-actual">Ventas emitidas por {cajero ? cajero.nombre : 'sin sesión iniciada'}.</p>
+      {cajero && <MisRespuestasAnulacion cajeroId={cajero.nombre} />}
 
       <div className="filtro-fechas">
         <label className="campo">
@@ -398,7 +374,7 @@ function Facturas() {
       )}
 
       {/* Ventana emergente 1: usuario + PIN del supervisor de caja */}
-      {facturaParaAnular && !pidiendoConfirmacion && !pidiendoMotivoSolicitud && (
+      {facturaParaAnular && !pidiendoConfirmacion && (
         <div className="modal-overlay">
           <form className="modal-caja modal-caja-ancho" onSubmit={aceptarCredenciales}>
             <h2>Autorización de supervisor</h2>
@@ -414,6 +390,26 @@ function Facturas() {
             />
 
             <p>Para anular esta factura se necesita el usuario y el PIN de un supervisor de caja.</p>
+
+            <RespuestasAnulacionBotones
+              cajeroId={cajero?.nombre}
+              onElegir={(texto) => setMotivoAnulacion(texto)}
+              disabled={anulando}
+            />
+
+            <label className="campo">
+              Motivo de la anulación
+              <textarea
+                rows={2}
+                maxLength={LARGO_MAXIMO_ANULACION}
+                value={motivoAnulacion}
+                onChange={(e) => setMotivoAnulacion(e.target.value)}
+                placeholder="Elegí una respuesta de arriba o escribí el motivo (mínimo 10 caracteres)"
+              />
+              <span className="respuestas-contador">
+                {motivoAnulacion.trim().length}/{LARGO_MAXIMO_ANULACION}
+              </span>
+            </label>
 
             <label className="campo">
               Usuario del supervisor
@@ -447,49 +443,6 @@ function Facturas() {
                 Aceptar
               </button>
             </div>
-
-            {/* TDSI-28: para cuando no hay un supervisor a la mano en este momento. */}
-            <button type="button" className="link-discreto" onClick={irASolicitarSinSupervisor}>
-              ¿No hay un supervisor disponible ahora? Solicitar anulación
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* TDSI-28/133: solicitud de anulación sin supervisor presente -- queda en espera. */}
-      {facturaParaAnular && pidiendoMotivoSolicitud && (
-        <div className="modal-overlay">
-          <form className="modal-caja" onSubmit={enviarSolicitudAnulacion}>
-            <h2>Solicitar anulación</h2>
-            <p>
-              La factura <strong>{numeroFactura ?? facturaParaAnular.id_transaccion}</strong> quedará en espera hasta que un supervisor
-              la revise y la apruebe o la rechace desde su panel.
-            </p>
-
-            <label className="campo">
-              Motivo de la anulación
-              <textarea
-                rows={4}
-                maxLength={MOTIVO_MAX}
-                value={motivoSolicitud}
-                onChange={(e) => {
-                  setMotivoSolicitud(e.target.value)
-                  setErrorSolicitud(null)
-                }}
-                autoFocus
-              />
-            </label>
-
-            {errorSolicitud && <p className="error">{errorSolicitud}</p>}
-
-            <div className="pago-exito-acciones">
-              <button type="button" className="btn btn-secundario" onClick={cerrarTodo} disabled={enviandoSolicitud}>
-                Cancelar
-              </button>
-              <button type="submit" className="btn" disabled={enviandoSolicitud}>
-                {enviandoSolicitud ? 'Enviando...' : 'Enviar solicitud'}
-              </button>
-            </div>
           </form>
         </div>
       )}
@@ -503,6 +456,7 @@ function Facturas() {
               ¿Desea anular la factura número <strong>{numeroFactura ?? facturaParaAnular.id_transaccion}</strong>? Esta acción no se
               puede deshacer.
             </p>
+            <p>Motivo: «{motivoAnulacion.trim()}»</p>
 
             <div className="pago-exito-acciones">
               <button type="button" className="btn btn-secundario" onClick={cerrarTodo} disabled={anulando}>

@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const { autenticarCajero } = require("../services/authService");
 const { validarCajaDisponible } = require("../services/cajaService");
-const { registrarInicioSesion, cerrarSesionesInactivas } = require("../services/sesionCajeroService");
+const { registrarInicioSesion, cerrarSesionesInactivas, desbloquear } = require("../services/sesionCajeroService");
 const { verificarCajaLibreParaCajero } = require("../services/turnosService");
 const { autenticarAdministrador } = require("../services/administradorAuthService");
 
@@ -31,6 +31,11 @@ router.post("/login-administrador", wrap(async (req, res) => {
 router.post("/cerrar-inactivas", wrap(async (req, res) => {
   const cerradas = await cerrarSesionesInactivas();
   res.json({ ok: true, mensaje: `${cerradas.length} sesion(es) cerrada(s) por inactividad.`, data: cerradas });
+}));
+// TDSI-183: desbloquear pantalla
+router.post("/desbloquear", wrap(async (req, res) => {
+  const data = await desbloquear(req.body);
+  res.json({ ok: true, mensaje: "Pantalla desbloqueada", data });
 }));
 
 module.exports = router;

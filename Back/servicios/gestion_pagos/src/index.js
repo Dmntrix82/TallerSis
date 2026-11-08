@@ -3,7 +3,6 @@ const express = require("express");
 const cors = require("cors");
 const pagosRoutes = require("./routes/pagosRoutes");
 const pagoMixtoRoutes = require("./routes/pagoMixtoRoutes");
-const ventaOnlineRoutes = require("./routes/ventaOnlineRoutes");
 const authRoutes = require("./routes/authRoutes");
 const tableroRoutes = require("./routes/tableroRoutes");
 const facturaDocumentoRoutes = require("./routes/facturaDocumentoRoutes");
@@ -15,6 +14,9 @@ const historialCajerosRoutes = require("./routes/historialCajerosRoutes");
 const metodosPagoRoutes = require("./routes/metodosPagoRoutes");
 const cobrosRoutes = require("./routes/cobrosRoutes");
 const cobroQrRoutes = require("./routes/cobroQrRoutes");
+const productosVendidosRoutes = require("./routes/productosVendidosRoutes");
+const ventaOnlineRoutes = require("./routes/ventaOnlineRoutes");
+const libroVentasRoutes = require("./routes/libroVentasRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
 
@@ -42,7 +44,6 @@ app.use("/api/pagos/metodos", metodosPagoRoutes); // TDSI-34/438 (antes de /api/
 app.use("/api/pagos", require("./routes/resumenAutorizacionRoutes")); // TDSI-59/195
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/pagos", pagoMixtoRoutes);
-app.use("/api/pagos", ventaOnlineRoutes);
 app.use("/api/pagos/resumen-turno", resumenVentasRoutes); // TDSI-101
 app.use("/auth", authRoutes);
 app.use("/transacciones", require("./routes/transaccionesEstadoRoutes")); // TDSI-14
@@ -51,9 +52,14 @@ app.use("/api/facturas", facturaDocumentoRoutes); // TDSI-108
 app.use("/api/cobros", cobrosRoutes); // TDSI-29/549
 app.use("/api/cobros", cobroQrRoutes); // TDSI-39/531
 app.use("/api/facturas", calculoFacturaRoutes); // TDSI-40/537
+app.use("/api", productosVendidosRoutes); // TDSI-54/702
+app.use("/api/pagos", ventaOnlineRoutes); // TDSI-51/685
+app.use("/api/libro-ventas", libroVentasRoutes); // TDSI-50/748/749
 
 app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`Microservicio de Pagos corriendo en el puerto ${port}`);
+  require("./jobs/marketplaceVentas").iniciar(); // TDSI-51/179
+  require("./jobs/acusesCompras").iniciar(); // TDSI-54/697
 });

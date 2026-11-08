@@ -3,7 +3,6 @@ const express = require("express");
 const cors = require("cors");
 const facturacionRoutes = require("./routes/facturacionRoutes");
 const clientesRoutes = require("./routes/clientesRoutes");
-const anulacionesRoutes = require("./routes/anulacionesRoutes");
 const supervisoresRoutes = require("./routes/supervisoresRoutes");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { query } = require("./config/db");
@@ -30,7 +29,6 @@ app.get("/health", async (req, res) => {
 
 app.use("/api/facturas", facturacionRoutes);
 app.use("/api/clientes", clientesRoutes);
-app.use("/anulaciones", anulacionesRoutes);
 app.use("/api/supervisores", supervisoresRoutes);
 
 app.use(errorHandler);

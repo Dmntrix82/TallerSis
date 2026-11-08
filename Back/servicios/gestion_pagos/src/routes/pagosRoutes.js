@@ -5,30 +5,19 @@ const { generarFacturaPdfBuffer } = require("../services/facturaPdfService");
 const {
   listarMisFacturas,
   anularVenta,
-  solicitarAnulacionPendiente,
-  listarAnulacionesPendientes,
-  autorizarAnulacionPendiente,
   reporteTurno,
+  anuladasTurno,
   historialCliente,
   totalesGenerales,
   listarCajeros,
 } = require("../services/ventasCajeroService");
+const ventasCanceladasService = require("../services/ventasCanceladasService");
+const respuestasRapidasService = require("../services/respuestasRapidasService");
+const duplicadoService = require("../services/duplicadoService");
+const tipoCambioService = require("../services/tipoCambioService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
-
-// TDSI-539: bandeja de solicitudes de anulación en espera de un supervisor.
-router.get("/anulaciones/pendientes", wrap(async (req, res) => {
-  const r = await listarAnulacionesPendientes();
-  res.json({ ok: true, data: r });
-}));
-
-// TDSI-540/541: el supervisor aprueba o rechaza una solicitud con su PIN.
-router.post("/anulaciones/:id/autorizar", wrap(async (req, res) => {
-  const r = await autorizarAnulacionPendiente(req.params.id, req.body);
-  const mensaje = r.estado === "Autorizada" ? "Anulación aprobada: la venta quedó Anulada." : "Solicitud rechazada.";
-  res.json({ ok: true, mensaje, data: r });
-}));
 
 // TDSI-303: PDF de la factura, en formato tirilla, listo para ver/imprimir desde el navegador.
 router.get("/:id_transaccion/factura.pdf", wrap(async (req, res) => {
@@ -93,16 +82,15 @@ router.post("/:id_transaccion/anular", wrap(async (req, res) => {
   res.json({ ok: true, mensaje: `La venta ${req.params.id_transaccion} fue anulada.`, data: r });
 }));
 
-// TDSI-28/133: para cuando NO hay un supervisor presente -- deja la venta en
-// espera en vez de pedir el PIN al toque.
-router.post("/:id_transaccion/solicitar-anulacion", wrap(async (req, res) => {
-  const r = await solicitarAnulacionPendiente({ id_transaccion: req.params.id_transaccion, ...req.body });
-  res.status(201).json({ ok: true, mensaje: "Solicitud de anulación registrada, queda pendiente de un supervisor.", data: r });
-}));
-
 // TDSI-323: reporte de ventas de una caja (usado por gestion_caja para el cierre de turno).
 router.get("/reporte-turno", wrap(async (req, res) => {
   const r = await reporteTurno({ caja_id: req.query.caja_id, desde: req.query.desde, hasta: req.query.hasta });
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-929: facturas anuladas de una caja en un rango (usado por gestion_caja para "Ver anuladas" del cierre).
+router.get("/anuladas-turno", wrap(async (req, res) => {
+  const r = await anuladasTurno({ caja_id: req.query.caja_id, desde: req.query.desde, hasta: req.query.hasta });
   res.json({ ok: true, data: r });
 }));
 
@@ -123,5 +111,55 @@ router.get("/totales-generales", wrap(async (req, res) => {
   const r = await totalesGenerales({ desde: req.query.desde, hasta: req.query.hasta });
   res.json({ ok: true, data: r });
 }));
+// TDSI-838: Registrar venta cancelada antes de cobrar (no genera transacción).
+router.post("/canceladas", wrap(async (req, res) => {
+  const data = await ventasCanceladasService.registrar(req.body);
+  res.status(201).json({ ok: true, data });
+}));
 
+// TDSI-839: Obtener conteo de ventas canceladas hoy por el cajero.
+router.get("/canceladas/conteo", wrap(async (req, res) => {
+  const data = await ventasCanceladasService.obtenerConteoHoy(req.query.cajero_id, req.query.fecha);
+  res.json({ ok: true, data });
+}));
+
+// TDSI-799: Obtener las respuestas rápidas del cajero
+router.get("/respuestas-rapidas", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.listar(req.query.cajero_id);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-800: Crear una respuesta rápida
+router.post("/respuestas-rapidas", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.crear(req.body);
+  res.status(201).json({ ok: true, data: r });
+}));
+
+// TDSI-800: Editar una respuesta rápida
+router.put("/respuestas-rapidas/:id", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.actualizar(req.params.id, req.body.cajero_id, req.body);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-801: Eliminar una respuesta rápida
+router.delete("/respuestas-rapidas/:id", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.eliminar(req.params.id, req.query.cajero_id);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-163/825: detecta si el mismo cajero ya cobró lo mismo al mismo cliente en los últimos 2 minutos.
+router.get("/posible-duplicado", wrap(async (req, res) => {
+  const r = await duplicadoService.detectarPosibleDuplicado({
+    cajero_id: req.query.cajero_id,
+    nit: req.query.nit,
+    total: Number(req.query.total),
+  });
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-161: el cajero necesita saber el tipo de cambio vigente para el cobro en dólares.
+router.get("/tipo-cambio", wrap(async (req, res) => {
+  const data = await tipoCambioService.obtenerTipoCambio();
+  res.json({ ok: true, data });
+}));
 module.exports = router;

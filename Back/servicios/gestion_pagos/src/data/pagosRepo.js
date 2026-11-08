@@ -10,19 +10,26 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * correlativo de la propia tabla (nextval de su secuencia), asi queda unico
  * por construccion, sin depender de que el cajero no repita un numero.
  */
-async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto }) {
+async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto, cobro_duplicado, moneda_recibida, monto_usd, tipo_cambio }) {
   const { rows } = await query(
     `WITH nuevo AS (
        SELECT nextval(pg_get_serial_sequence('pagos.transacciones', 'id')) AS id
      )
      INSERT INTO pagos.transacciones
-       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto)
-     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto, cobro_duplicado, moneda_recibida, monto_usd, tipo_cambio)
+     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
      FROM nuevo
      RETURNING *`,
-    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, monto_recibido ?? null, vuelto ?? null]
+    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, monto_recibido ?? null, vuelto ?? null, cobro_duplicado || false, moneda_recibida || null, monto_usd ?? null, tipo_cambio ?? null]
   );
-  return { ...rows[0], monto: num(rows[0].monto), monto_recibido: num(rows[0].monto_recibido), vuelto: num(rows[0].vuelto) };
+  return {
+    ...rows[0],
+    monto: num(rows[0].monto),
+    monto_recibido: num(rows[0].monto_recibido),
+    vuelto: num(rows[0].vuelto),
+    monto_usd: num(rows[0].monto_usd),
+    tipo_cambio: num(rows[0].tipo_cambio),
+  };
 }
 
 // ---------- Cobro con QR (TDSI-39/155) ----------
@@ -109,7 +116,7 @@ async function buscarTodasTransaccionesPorIdTransaccion(id_transaccion) {
     `SELECT * FROM pagos.transacciones WHERE id_transaccion = $1 ORDER BY fecha, id`,
     [id_transaccion]
   );
-  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
+  return rows.map((r) => ({ ...r, monto: num(r.monto), monto_usd: num(r.monto_usd), tipo_cambio: num(r.tipo_cambio) }));
 }
 
 /** Autocompletado de razon social: busca el ultimo pago (simple o mixto) que uso ese mismo documento. */
@@ -122,6 +129,30 @@ async function buscarRazonSocialPorDocumento(tipo_documento, numero) {
   );
   return rows[0]?.razon_social || null;
 }
+/**
+ * TDSI-163/825/827: Busca si el mismo cajero ya cobró el mismo monto al mismo
+ * NIT/CI en los últimos 2 minutos (120 segundos). No cuenta ventas anuladas.
+ * Agrupa por id_transaccion para manejar pagos mixtos (varias filas) y compara la SUMA.
+ */
+async function buscarPosibleDuplicado({ cajero_id, nit, total, segundos_ventana = 120 }) {
+  const { rows } = await query(
+    `SELECT id_transaccion, MAX(fecha) AS fecha,
+            EXTRACT(EPOCH FROM (now() - MAX(fecha)))::int AS segundos,
+            SUM(monto) AS total_agrupado
+       FROM pagos.transacciones
+      WHERE cajero_id = $1
+        AND nit = $2
+        AND estado = 'Registrado'
+        AND fecha >= now() - ($3 || ' seconds')::interval
+      GROUP BY id_transaccion
+      HAVING SUM(monto) = $4
+      ORDER BY MAX(fecha) DESC
+      LIMIT 1`,
+    [cajero_id, nit, segundos_ventana, total]
+  );
+  return rows[0] || null;
+}
+
 
 /** Escapa %, _ y \ para que el texto del buscador se tome literal dentro de un LIKE. */
 const escaparLike = (texto) => texto.replace(/[\\%_]/g, "\\$&");
@@ -219,15 +250,19 @@ async function listarPorCajero(cajero, { desde, hasta, q } = {}) {
   }));
 }
 
-/** Anula TODAS las filas de una venta (una si es Simple, varias si es Mixto) en una transaccion SQL. */
-async function anularTransaccion(id_transaccion, { anulado_por }) {
+/**
+ * Anula TODAS las filas de una venta (una si es Simple, varias si es Mixto) en una
+ * transaccion SQL. TDSI-929: ademas de quien autorizo (anulado_por = su id), guarda
+ * su NOMBRE y el motivo, para poder mostrarlos en el cierre de caja.
+ */
+async function anularTransaccion(id_transaccion, { anulado_por, anulado_por_nombre, motivo }) {
   return withTransaction(async (client) => {
     const { rows } = await client.query(
       `UPDATE pagos.transacciones
-          SET estado = 'Anulado', anulado_por = $2, anulado_en = now()
+          SET estado = 'Anulado', anulado_por = $2, anulado_por_nombre = $3, motivo_anulacion = $4, anulado_en = now()
         WHERE id_transaccion = $1 AND estado = 'Registrado'
         RETURNING *`,
-      [id_transaccion, anulado_por || null]
+      [id_transaccion, anulado_por || null, anulado_por_nombre || null, motivo || null]
     );
     if (rows.length === 0) return [];
 
@@ -237,92 +272,6 @@ async function anularTransaccion(id_transaccion, { anulado_por }) {
     );
 
     return rows.map((r) => ({ ...r, monto: num(r.monto) }));
-  });
-}
-
-/**
- * TDSI-28/133: deja la venta "en espera" de que un supervisor la revise despues,
- * para cuando no hay ninguno presente en la caja. Convive con anularTransaccion
- * (autorizacion inmediata, TDSI-306): el cajero elige una u otra.
- */
-async function crearSolicitudAnulacion({ id_transaccion, motivo, solicitado_por }, validar) {
-  return withTransaction(async (client) => {
-    const { rows: filas } = await client.query(
-      `SELECT id_transaccion, estado, cajero, fecha FROM pagos.transacciones
-        WHERE id_transaccion = $1 FOR UPDATE`,
-      [id_transaccion]
-    );
-    validar(filas);
-
-    await client.query(
-      `UPDATE pagos.transacciones SET estado = 'AnulacionSolicitada' WHERE id_transaccion = $1`,
-      [id_transaccion]
-    );
-
-    const { rows } = await client.query(
-      `INSERT INTO pagos.solicitudes_anulacion (id_transaccion, motivo, solicitado_por)
-       VALUES ($1, $2, $3)
-       RETURNING id, id_transaccion, motivo, solicitado_por, solicitado_en, estado`,
-      [id_transaccion, motivo, solicitado_por || null]
-    );
-    return rows[0];
-  });
-}
-
-/** TDSI-539: ventas con una solicitud de anulacion todavia sin resolver. */
-async function listarSolicitudesAnulacionPendientes() {
-  const { rows } = await query(
-    `SELECT sa.id, sa.id_transaccion, sa.motivo, sa.solicitado_por, sa.solicitado_en,
-            MAX(t.razon_social) AS razon_social, SUM(t.monto) AS monto
-       FROM pagos.solicitudes_anulacion sa
-       JOIN pagos.transacciones t ON t.id_transaccion = sa.id_transaccion
-      WHERE sa.estado = 'Solicitada'
-      GROUP BY sa.id, sa.id_transaccion, sa.motivo, sa.solicitado_por, sa.solicitado_en
-      ORDER BY sa.solicitado_en ASC`
-  );
-  return rows.map((r) => ({ ...r, monto: num(r.monto) }));
-}
-
-async function buscarSolicitudAnulacion(id) {
-  const { rows } = await query(
-    `SELECT id, id_transaccion, estado FROM pagos.solicitudes_anulacion WHERE id = $1`,
-    [id]
-  );
-  return rows[0] || null;
-}
-
-/** TDSI-540/541: aprueba (-> Anulado) o rechaza (-> Registrado) la solicitud, con el PIN ya validado. */
-async function resolverSolicitudAnulacion(id, { aprobar, supervisor, observacion }, validar) {
-  return withTransaction(async (client) => {
-    const { rows } = await client.query(
-      `SELECT id, id_transaccion, estado FROM pagos.solicitudes_anulacion WHERE id = $1 FOR UPDATE`,
-      [id]
-    );
-    validar(rows[0] || null);
-    const idTransaccion = rows[0].id_transaccion;
-
-    await client.query(
-      `UPDATE pagos.transacciones
-          SET estado = $2, anulado_por = $3, anulado_en = CASE WHEN $4::boolean THEN now() ELSE NULL END
-        WHERE id_transaccion = $1`,
-      [idTransaccion, aprobar ? "Anulado" : "Registrado", aprobar ? supervisor.supervisor_id : null, aprobar]
-    );
-
-    if (aprobar) {
-      await client.query(
-        `UPDATE pagos.pagos_mixtos SET estado = 'Anulado' WHERE id_transaccion = $1`,
-        [idTransaccion]
-      );
-    }
-
-    const upd = await client.query(
-      `UPDATE pagos.solicitudes_anulacion
-          SET estado = $2, autorizado_por = $3, autorizado_nombre = $4, autorizado_en = now(), observacion = $5
-        WHERE id = $1
-        RETURNING id, id_transaccion, estado, autorizado_por, autorizado_nombre, autorizado_en, observacion`,
-      [id, aprobar ? "Autorizada" : "Rechazada", supervisor.supervisor_id, supervisor.nombre, observacion || null]
-    );
-    return upd.rows[0];
   });
 }
 
@@ -447,6 +396,37 @@ async function reporteTurno(caja_id, desde, hasta) {
     cantidadAnuladas,
     montoAnulado,
   };
+}
+
+/**
+ * TDSI-929: lista (una fila por venta, igual que listarPorCajero) de las facturas
+ * anuladas de una caja en un rango de tiempo (el turno), con su motivo y el
+ * supervisor que autorizo -- para "Ver anuladas" en el cierre de caja (TDSI-49).
+ * Se filtra por "fecha" (la de la venta, no la de la anulacion): una factura
+ * emitida dentro del turno y anulada despues igual pertenece a ese turno.
+ */
+async function listarAnuladasTurno(caja_id, desde, hasta) {
+  const { rows } = await query(
+    `SELECT id_transaccion,
+            MIN(fecha) AS fecha,
+            SUM(monto) AS total,
+            MAX(motivo_anulacion) AS motivo,
+            COALESCE(MAX(anulado_por_nombre), MAX(anulado_por)) AS supervisor,
+            MAX(anulado_en) AS anulado_en
+       FROM pagos.transacciones
+      WHERE caja_id = $1 AND estado = 'Anulado' AND fecha >= $2 AND fecha <= $3
+      GROUP BY id_transaccion
+      ORDER BY MIN(fecha)`,
+    [caja_id, desde, hasta]
+  );
+  return rows.map((r) => ({
+    numero_factura: r.id_transaccion,
+    hora: r.fecha,
+    total: num(r.total),
+    motivo: r.motivo,
+    supervisor: r.supervisor,
+    anulado_en: r.anulado_en,
+  }));
 }
 
 /**
@@ -639,7 +619,7 @@ async function existePagoMixto(id_transaccion) {
  * Si no se pasa id_transaccion (caso normal desde la pantalla de Pagos), se genera aqui
  * con el mismo correlativo VTA-000NNN que usa el pago simple, asi queda unico por construccion.
  */
-async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, total, metodos, nit, razon_social, tipo_documento, telefono, cajero, cajeroId }) {
+async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, total, metodos, nit, razon_social, tipo_documento, telefono, cajero, cajeroId, cobro_duplicado }) {
   return withTransaction(async (client) => {
     let idTransaccion = id_transaccion;
     if (!idTransaccion) {
@@ -671,10 +651,10 @@ async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, tot
     const transacciones = [];
     for (const d of detalle) {
       const { rows } = await client.query(
-        `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, pago_mixto_id, nit, razon_social, tipo_documento, telefono, cajero, caja_id, cajero_id)
-         VALUES ($1, $2, $3, 'Mixto', $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, pago_mixto_id, nit, razon_social, tipo_documento, telefono, cajero, caja_id, cajero_id, cobro_duplicado)
+         VALUES ($1, $2, $3, 'Mixto', $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
-        [pago.id_transaccion, d.metodo, d.monto, pago.id, nit || null, razon_social || null, tipo_documento || null, telefono || null, cajero || null, cajaId || null, cajeroId || null]
+        [pago.id_transaccion, d.metodo, d.monto, pago.id, nit || null, razon_social || null, tipo_documento || null, telefono || null, cajero || null, cajaId || null, cajeroId || null, cobro_duplicado || false]
       );
       transacciones.push(rows[0]);
     }
@@ -733,7 +713,35 @@ async function buscarPorTokenVerificacion(token) {
   return rows.map((r) => ({ ...r, monto: num(r.monto) }));
 }
 
+/**
+ * TDSI-50/177: una fila por factura (no por metodo de pago) para el Libro de
+ * Ventas del mes -- una venta Mixto tiene varias filas en pagos.transacciones
+ * (una por metodo) que comparten id_transaccion, asi que se agrupan y se suma
+ * el monto. El mes/anio se evalua en hora de Bolivia, igual que el resto del
+ * sistema (ver utils/fechaLocal.js).
+ */
+async function listarFacturasDelMes(mes, anio) {
+  const { rows } = await query(
+    `SELECT
+       id_transaccion,
+       MIN(fecha) AS fecha,
+       nit,
+       razon_social,
+       tipo_documento,
+       estado,
+       SUM(monto) AS total
+     FROM pagos.transacciones
+     WHERE date_part('month', fecha AT TIME ZONE 'America/La_Paz') = $1
+       AND date_part('year',  fecha AT TIME ZONE 'America/La_Paz') = $2
+     GROUP BY id_transaccion, nit, razon_social, tipo_documento, estado
+     ORDER BY MIN(fecha), id_transaccion`,
+    [mes, anio]
+  );
+  return rows.map((r) => ({ ...r, total: num(r.total) }));
+}
+
 module.exports = {
+  listarFacturasDelMes,
   crearCobroQr,
   obtenerCobroQrPorId,
   confirmarCobroQr,
@@ -747,13 +755,10 @@ module.exports = {
   buscarPorTokenVerificacion,
   listarPorCajero,
   anularTransaccion,
-  crearSolicitudAnulacion,
-  listarSolicitudesAnulacionPendientes,
-  buscarSolicitudAnulacion,
-  resolverSolicitudAnulacion,
   actualizarDatosVenta,
   listarBitacoraModificaciones,
   reporteTurno,
+  listarAnuladasTurno,
   listarCajeros,
   rankingCajas,
   rankingCajeros,
@@ -765,4 +770,5 @@ module.exports = {
   existePagoMixto,
   registrarPagoMixtoCompleto,
   obtenerPagoMixtoPorTransaccion,
+  buscarPosibleDuplicado,
 };

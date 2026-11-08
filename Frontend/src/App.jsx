@@ -6,27 +6,22 @@ import Login from './pages/Login.jsx'
 import Cajeros from './pages/Cajeros.jsx'
 import Pagos from './pages/Pagos.jsx'
 import Clientes from './pages/Clientes.jsx'
-import VentasOnline from './pages/VentasOnline';
 import Facturas from './pages/Facturas.jsx'
 import TableroIngresos from './pages/TableroIngresos.jsx'
 import CierreCaja from './pages/CierreCaja.jsx'
-import EstadoCajas from './pages/EstadoCajas.jsx'
-import ReportesCaja from './pages/ReportesCaja.jsx'
-import RecaudadoCajas from './pages/RecaudadoCajas.jsx'
-import ComparacionMontos from './pages/ComparacionMontos.jsx'
-import DiferenciasCaja from './pages/DiferenciasCaja.jsx'
-import SolicitudesApertura from './pages/SolicitudesApertura.jsx'
-import SolicitudesCierre from './pages/SolicitudesCierre.jsx'
-import OperacionesAprobacion from './pages/OperacionesAprobacion.jsx'
-import AnulacionesPendientes from './pages/AnulacionesPendientes.jsx'
 import VerificarFactura from './pages/VerificarFactura.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
-import MonitoreoCajeros from './pages/MonitoreoCajeros'
-import RevisionTransacciones from './pages/RevisionTransacciones'
-import HistorialOperaciones from './pages/HistorialOperaciones'
-import MetodosPago from './pages/MetodosPago.jsx'
+import MetasVenta from './pages/MetasVenta.jsx'
+import HorasPico from './pages/HorasPico.jsx'
+import ComparativoMensual from './pages/ComparativoMensual.jsx'
+import Supervisores from './pages/Supervisores.jsx'
+import ProductosVendidos from './pages/ProductosVendidos.jsx'
+import DiferenciasCaja from './pages/DiferenciasCaja.jsx'
+import VentasOnline from './pages/VentasOnline.jsx'
+import LibroVentas from './pages/LibroVentas.jsx'
+import Usuarios from './pages/Usuarios.jsx'
 import './App.css'
 
 function RutaProtegida({ children }) {
@@ -59,26 +54,21 @@ function App() {
           <Route path="/pagos" element={<RutaProtegida><Pagos /></RutaProtegida>} />
           <Route path="/facturas" element={<RutaProtegida><Facturas /></RutaProtegida>} />
           <Route path="/cierre-caja" element={<RutaProtegida><CierreCaja /></RutaProtegida>} />
-          
+
           {/* Panel de Administración */}
           <Route path="/admin/cajeros" element={<RutaProtegidaAdmin><Cajeros /></RutaProtegidaAdmin>} />
           <Route path="/admin/clientes" element={<RutaProtegidaAdmin><Clientes /></RutaProtegidaAdmin>} />
-          <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/cierre-diario" element={<RutaProtegidaAdmin><CierreDiario /></RutaProtegidaAdmin>} />
-          <Route path="/admin/monitoreo-cajeros" element={<RutaProtegidaAdmin><MonitoreoCajeros /></RutaProtegidaAdmin>} />
-          <Route path="/admin/cajas" element={<RutaProtegidaAdmin><EstadoCajas /></RutaProtegidaAdmin>} />
-          <Route path="/admin/reportes" element={<RutaProtegidaAdmin><ReportesCaja /></RutaProtegidaAdmin>} />
-          <Route path="/admin/recaudado" element={<RutaProtegidaAdmin><RecaudadoCajas /></RutaProtegidaAdmin>} />
-          <Route path="/admin/comparacion" element={<RutaProtegidaAdmin><ComparacionMontos /></RutaProtegidaAdmin>} />
+          <Route path="/admin/metas-venta" element={<RutaProtegidaAdmin><MetasVenta /></RutaProtegidaAdmin>} />
+          <Route path="/admin/horas-pico" element={<RutaProtegidaAdmin><HorasPico /></RutaProtegidaAdmin>} />
+          <Route path="/admin/comparativo-mensual" element={<RutaProtegidaAdmin><ComparativoMensual /></RutaProtegidaAdmin>} />
+          <Route path="/admin/supervisores" element={<RutaProtegidaAdmin><Supervisores /></RutaProtegidaAdmin>} />
+          <Route path="/admin/productos-vendidos" element={<RutaProtegidaAdmin><ProductosVendidos /></RutaProtegidaAdmin>} />
           <Route path="/admin/diferencias" element={<RutaProtegidaAdmin><DiferenciasCaja /></RutaProtegidaAdmin>} />
-          <Route path="/admin/solicitudes-apertura" element={<RutaProtegidaAdmin><SolicitudesApertura /></RutaProtegidaAdmin>} />
-          <Route path="/admin/solicitudes-cierre" element={<RutaProtegidaAdmin><SolicitudesCierre /></RutaProtegidaAdmin>} />
-          <Route path="/admin/aprobaciones" element={<RutaProtegidaAdmin><OperacionesAprobacion /></RutaProtegidaAdmin>} />
-          <Route path="/admin/revision-transacciones" element={<RutaProtegidaAdmin><RevisionTransacciones /></RutaProtegidaAdmin>} />
-          <Route path="/admin/historial-operaciones" element={<RutaProtegidaAdmin><HistorialOperaciones /></RutaProtegidaAdmin>} />
-          <Route path="/admin/metodos-pago" element={<RutaProtegidaAdmin><MetodosPago /></RutaProtegidaAdmin>} />
-          <Route path="/admin/anulaciones-pendientes" element={<RutaProtegidaAdmin><AnulacionesPendientes /></RutaProtegidaAdmin>} />
+          <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
+          <Route path="/admin/libro-ventas" element={<RutaProtegidaAdmin><LibroVentas /></RutaProtegidaAdmin>} />
+          <Route path="/admin/usuarios" element={<RutaProtegidaAdmin><Usuarios /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>

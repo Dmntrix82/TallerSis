@@ -7,6 +7,9 @@ const { validarFechaDia } = require("../utils/fechaLocal");
 
 // TDSI-306: mismo plazo de 2 horas que la anulacion de facturas en facturacion.
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000;
+// TDSI-48/897: mismos limites que facturacion.respuestas_anulacion (TDSI-891).
+const MOTIVO_ANULACION_MIN = 10;
+const MOTIVO_ANULACION_MAX = 100;
 // TDSI-169: largo maximo del texto del buscador de "Facturas".
 const BUSQUEDA_MAX = 100;
 // TDSI-866: mismo largo que la columna pagos.transacciones.cajero.
@@ -59,10 +62,14 @@ async function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
  * un supervisor de caja (validado contra facturacion) y que este dentro del
  * plazo de 2 horas desde la emision. Solo el cajero que la emitio puede pedirlo.
  */
-async function anularVenta({ id_transaccion, cajero, supervisor_id, pin }) {
+async function anularVenta({ id_transaccion, cajero, supervisor_id, pin, motivo }) {
   if (!supervisor_id || !String(supervisor_id).trim() || !pin || !String(pin).trim()) {
     throw new AppError("Ingrese el usuario y el PIN del supervisor.", 400);
   }
+  const motivoLimpio = String(motivo ?? "").trim();
+  if (motivoLimpio.length < MOTIVO_ANULACION_MIN || motivoLimpio.length > MOTIVO_ANULACION_MAX) {
+    throw new AppError(`El motivo de la anulación debe tener entre ${MOTIVO_ANULACION_MIN} y ${MOTIVO_ANULACION_MAX} caracteres.`, 400);
+  }
 
   const filas = await repo.buscarTransaccionesPorIdTransaccion(id_transaccion);
   if (!filas.length) {
@@ -83,98 +90,37 @@ async function anularVenta({ id_transaccion, cajero, supervisor_id, pin }) {
 
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
-  const anuladas = await repo.anularTransaccion(id_transaccion, { anulado_por: supervisor.supervisor_id });
+  const anuladas = await repo.anularTransaccion(id_transaccion, {
+    anulado_por: supervisor.supervisor_id,
+    anulado_por_nombre: supervisor.nombre,
+    motivo: motivoLimpio,
+  });
   emitirActualizacion();
 
-  return { id_transaccion, autorizado_por: supervisor, filas: anuladas };
-}
-
-const DECISIONES_ANULACION = ["APROBAR", "RECHAZAR"];
-
-/**
- * TDSI-28/133: para cuando NO hay un supervisor presente en la caja. En vez de
- * pedir el PIN al toque (anularVenta), deja la venta bloqueada en espera y el
- * supervisor la resuelve despues desde "Anulaciones pendientes".
- */
-async function solicitarAnulacionPendiente({ id_transaccion, cajero, motivo }) {
-  if (typeof motivo !== "string" || !motivo.trim()) {
-    throw new AppError("Indique el motivo de la anulación.", 400);
-  }
-  if (motivo.trim().length > 300) {
-    throw new AppError("El motivo debe tener máximo 300 caracteres.", 400);
-  }
-
-  const filas = await repo.buscarTransaccionesPorIdTransaccion(id_transaccion);
-  if (!filas.length) {
-    throw new AppError(`No existe una venta registrada con el número "${id_transaccion}", o ya fue anulada.`, 404);
-  }
-  if (cajero && filas[0].cajero !== cajero) {
-    throw new AppError("Solo el cajero que emitió esta venta puede solicitar su anulación.", 403);
-  }
-  if (!dentroDelPlazo(filas[0].fecha)) {
-    throw new AppError(
-      `La venta "${id_transaccion}" ya superó el plazo de 2 horas para poder anularse.`,
-      409,
-      { fecha_emision: filas[0].fecha }
-    );
-  }
-
-  const solicitud = await repo.crearSolicitudAnulacion(
-    { id_transaccion, motivo: motivo.trim(), solicitado_por: cajero },
-    (filasActuales) => {
-      if (!filasActuales.length) throw new AppError("La venta no existe.", 404);
-      if (filasActuales[0].estado !== "Registrado") {
-        throw new AppError(`Esta venta ya está "${filasActuales[0].estado}", no se puede solicitar de nuevo.`, 409);
-      }
-    }
-  );
-  emitirActualizacion();
-  return solicitud;
-}
-
-/** TDSI-539: bandeja de ventas en espera de que un supervisor las resuelva. */
-async function listarAnulacionesPendientes() {
-  return repo.listarSolicitudesAnulacionPendientes();
+  return { id_transaccion, autorizado_por: supervisor, motivo: motivoLimpio, filas: anuladas };
 }
 
 /**
- * TDSI-540/541: el supervisor aprueba o rechaza, reutilizando la misma validación
- * de PIN que la autorización inmediata (TDSI-17/306).
+ * TDSI-929: facturas anuladas de una caja en un rango de tiempo (el turno), con su
+ * motivo y el supervisor que autorizo -- usado por gestion_caja para "Ver anuladas"
+ * en el cierre de caja (TDSI-49/175). Mismo contrato de parametros que reporteTurno.
  */
-async function autorizarAnulacionPendiente(id, { supervisor_id, pin, decision, observacion } = {}) {
-  const solicitudId = String(id ?? "").trim();
-  if (!/^\d{1,18}$/.test(solicitudId) || Number(solicitudId) === 0) {
-    throw new AppError("El id de la solicitud debe ser un número entero positivo.", 400);
+async function anuladasTurno({ caja_id, desde, hasta }) {
+  if (!caja_id) {
+    throw new AppError("Falta 'caja_id' para listar las anuladas del turno.", 400);
   }
-
-  const dec = typeof decision === "string" ? decision.trim().toUpperCase() : "";
-  if (!DECISIONES_ANULACION.includes(dec)) {
-    throw new AppError("La decisión debe ser APROBAR o RECHAZAR.", 400);
+  if (!desde) {
+    throw new AppError("Falta 'desde' para listar las anuladas del turno.", 400);
   }
-
-  const solicitud = await repo.buscarSolicitudAnulacion(solicitudId);
-  if (!solicitud) throw new AppError("Solicitud de anulación no encontrada.", 404);
-  if (solicitud.estado !== "Solicitada") {
-    throw new AppError(`La solicitud ya fue resuelta (${solicitud.estado}).`, 409);
+  const desdeFecha = new Date(desde);
+  const hastaFecha = hasta ? new Date(hasta) : new Date();
+  if (Number.isNaN(desdeFecha.getTime())) {
+    throw new AppError("'desde' no es una fecha valida.", 400);
   }
-
-  // El PIN se valida FUERA de la transaccion (consulta a facturacion por HTTP),
-  // igual que en anularVenta: si el supervisor no existe o el PIN es incorrecto,
-  // no se toca nada todavia.
-  const supervisor = await validarSupervisor({ supervisor_id, pin });
-
-  const resultado = await repo.resolverSolicitudAnulacion(
-    solicitudId,
-    { aprobar: dec === "APROBAR", supervisor, observacion },
-    (actual) => {
-      if (!actual) throw new AppError("Solicitud de anulación no encontrada.", 404);
-      if (actual.estado !== "Solicitada") {
-        throw new AppError(`La solicitud ya fue resuelta (${actual.estado}).`, 409);
-      }
-    }
-  );
-  emitirActualizacion();
-  return resultado;
+  if (Number.isNaN(hastaFecha.getTime())) {
+    throw new AppError("'hasta' no es una fecha valida.", 400);
+  }
+  return repo.listarAnuladasTurno(caja_id, desdeFecha, hastaFecha);
 }
 
 /**
@@ -306,12 +252,10 @@ async function listarBitacoraModificaciones(id_transaccion) {
 module.exports = {
   listarMisFacturas,
   anularVenta,
-  solicitarAnulacionPendiente,
-  listarAnulacionesPendientes,
-  autorizarAnulacionPendiente,
   modificarVenta,
   listarBitacoraModificaciones,
   reporteTurno,
+  anuladasTurno,
   historialCliente,
   totalesGenerales,
   listarCajeros,

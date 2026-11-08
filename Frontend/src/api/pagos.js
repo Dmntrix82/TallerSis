@@ -3,6 +3,37 @@ import { apiFetch } from './client.js'
 // Apunta al microservicio Back/servicios/gestion_pagos.
 const GESTION_PAGOS_API_BASE_URL = import.meta.env.VITE_GESTION_PAGOS_API_BASE_URL ?? ''
 
+// TDSI-838: registra una venta cancelada antes de cobrar (no crea transaccion ni factura).
+// motivo: 'El cliente desistió' | 'Fondos insuficientes' | 'Error al cargar ítems' | 'Otro' (con motivo_texto).
+export function registrarVentaCancelada({ cajero_id, caja_id, items, total, motivo, motivo_texto }) {
+  return apiFetch(
+    '/api/pagos/canceladas',
+    {
+      method: 'POST',
+      body: JSON.stringify({ cajero_id, caja_id, items, total, motivo, motivo_texto }),
+    },
+    GESTION_PAGOS_API_BASE_URL,
+  )
+}
+
+// TDSI-839: cuantas ventas cancelo el cajero en el dia (fecha "YYYY-MM-DD"). Responde data: { total }.
+export function contarVentasCanceladas(cajero_id, fecha) {
+  const params = new URLSearchParams({ cajero_id, fecha })
+  return apiFetch(`/api/pagos/canceladas/conteo?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
+}
+
+// TDSI-163/825: revisa si este cajero ya le cobro ese total a ese NIT/CI en los ultimos 2 minutos.
+// Responde data: { esDuplicado: false } o { esDuplicado: true, factura, segundos }.
+export function consultarPosibleDuplicado({ cajero_id, nit, total }) {
+  const params = new URLSearchParams({ cajero_id, nit, total })
+  return apiFetch(`/api/pagos/posible-duplicado?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
+}
+
+// TDSI-161: tipo de cambio vigente (Bs por 1 USD). Responde data: { valor, actualizado_en, actualizado_por }.
+export function obtenerTipoCambio() {
+  return apiFetch('/api/pagos/tipo-cambio', {}, GESTION_PAGOS_API_BASE_URL)
+}
+
 export function registrarPago(pago) {
   return apiFetch(
     '/api/pagos/registrar',
@@ -71,43 +102,14 @@ export function listarMisFacturas(cajero, { desde, hasta, q } = {}) {
   return apiFetch(`/api/pagos/mis-facturas?${params.toString()}`, {}, GESTION_PAGOS_API_BASE_URL)
 }
 
-// TDSI-306: anula una venta propia con el usuario + PIN de un supervisor de caja.
-export function anularVenta(id_transaccion, { cajero, supervisor_id, pin }) {
+// TDSI-306/897: anula una venta propia con el usuario + PIN de un supervisor de caja
+// y el motivo de la anulación (elegido entre las respuestas rápidas o escrito a mano).
+export function anularVenta(id_transaccion, { cajero, supervisor_id, pin, motivo }) {
   return apiFetch(
     `/api/pagos/${encodeURIComponent(id_transaccion)}/anular`,
     {
       method: 'POST',
-      body: JSON.stringify({ cajero, supervisor_id, pin }),
-    },
-    GESTION_PAGOS_API_BASE_URL,
-  )
-}
-
-// TDSI-28/133: solicita la anulacion de una venta SIN pedir el PIN al toque, para
-// cuando no hay un supervisor presente -- queda en espera (bandeja del administrador).
-export function solicitarAnulacionPendiente(id_transaccion, { cajero, motivo }) {
-  return apiFetch(
-    `/api/pagos/${encodeURIComponent(id_transaccion)}/solicitar-anulacion`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ cajero, motivo }),
-    },
-    GESTION_PAGOS_API_BASE_URL,
-  )
-}
-
-// TDSI-539: bandeja de solicitudes de anulacion pendientes, para el administrador.
-export function listarAnulacionesPendientes() {
-  return apiFetch('/api/pagos/anulaciones/pendientes', {}, GESTION_PAGOS_API_BASE_URL)
-}
-
-// TDSI-540/541: el supervisor aprueba o rechaza una solicitud con su usuario + PIN.
-export function autorizarAnulacionPendiente(id, { supervisor_id, pin, decision, observacion }) {
-  return apiFetch(
-    `/api/pagos/anulaciones/${id}/autorizar`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ supervisor_id, pin, decision, observacion }),
+      body: JSON.stringify({ cajero, supervisor_id, pin, motivo }),
     },
     GESTION_PAGOS_API_BASE_URL,
   )
