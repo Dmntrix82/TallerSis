@@ -405,6 +405,22 @@ CREATE TABLE IF NOT EXISTS pagos.cobros_qr (
     confirmado_por VARCHAR(255)
 );
 -- ==========================================================================
+-- TDSI-44/165: respuestas rápidas del cajero para justificar la cancelación
+-- de una venta. Cada cajero tiene sus propias frases guardadas.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.respuestas_rapidas (
+    id          BIGSERIAL PRIMARY KEY,
+    cajero_id   VARCHAR(60)  NOT NULL,
+    texto       VARCHAR(100) NOT NULL CHECK (char_length(texto) >= 5),
+    orden       SMALLINT     NOT NULL DEFAULT 1,
+    creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_respuestas_rapidas_cajero ON pagos.respuestas_rapidas (cajero_id);
+
+ALTER TABLE pagos.respuestas_rapidas ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
 -- TDSI-826: registrar si el cajero decidió "Cobrar igual" a pesar del aviso
 -- de posible duplicado. Un valor true indica que forzó el cobro.
 -- ==========================================================================

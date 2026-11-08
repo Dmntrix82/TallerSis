@@ -10,6 +10,7 @@ const {
   totalesGenerales,
   listarCajeros,
 } = require("../services/ventasCajeroService");
+const respuestasRapidasService = require("../services/respuestasRapidasService");
 const duplicadoService = require("../services/duplicadoService");
 const tipoCambioService = require("../services/tipoCambioService");
 
@@ -100,6 +101,30 @@ router.get("/totales-generales", wrap(async (req, res) => {
   const r = await totalesGenerales({ desde: req.query.desde, hasta: req.query.hasta });
   res.json({ ok: true, data: r });
 }));
+// TDSI-799: Obtener las respuestas rápidas del cajero
+router.get("/respuestas-rapidas", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.listar(req.query.cajero_id);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-800: Crear una respuesta rápida
+router.post("/respuestas-rapidas", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.crear(req.body);
+  res.status(201).json({ ok: true, data: r });
+}));
+
+// TDSI-800: Editar una respuesta rápida
+router.put("/respuestas-rapidas/:id", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.actualizar(req.params.id, req.body.cajero_id, req.body);
+  res.json({ ok: true, data: r });
+}));
+
+// TDSI-801: Eliminar una respuesta rápida
+router.delete("/respuestas-rapidas/:id", wrap(async (req, res) => {
+  const r = await respuestasRapidasService.eliminar(req.params.id, req.query.cajero_id);
+  res.json({ ok: true, data: r });
+}));
+
 // TDSI-163/825: detecta si el mismo cajero ya cobró lo mismo al mismo cliente en los últimos 2 minutos.
 router.get("/posible-duplicado", wrap(async (req, res) => {
   const r = await duplicadoService.detectarPosibleDuplicado({

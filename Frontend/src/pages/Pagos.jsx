@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { registrarPago, registrarPagoMixto, calcularPagoMixto, consultarPosibleDuplicado, obtenerTipoCambio, listarMisFacturas, enviarFacturaPorCorreo, urlFacturaPdf, buscarClientePorDocumento } from '../api/pagos.js'
 import { calcularVuelto, calcularCobroUsd, crearCobroQr, consultarEstadoCobroQr, confirmarCobroQr, urlQrCuenta } from '../api/cobros.js'
 import PagoMixtoForm from '../components/PagoMixtoForm.jsx'
+import MisRespuestasRapidas from '../components/MisRespuestasRapidas.jsx'
 import AvisoCobroDuplicadoModal from '../components/AvisoCobroDuplicadoModal.jsx'
 import DesgloseVuelto from '../components/DesgloseVuelto.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -173,6 +174,7 @@ function validarFormulario(datos) {
 
 function Pagos() {
   const { cajero } = useAuth()
+  const [mostrarRespuestasRapidas, setMostrarRespuestasRapidas] = useState(false) // TDSI-44
   const [datos, setDatos] = useState(ESTADO_INICIAL)
   const [paso, setPaso] = useState('formulario')
   const [errorValidacion, setErrorValidacion] = useState(null)
@@ -682,7 +684,16 @@ function Pagos() {
 
   return (
     <section>
-      <h1>Método de pago</h1>
+      <div className="pagos-encabezado">
+        <h1>Método de pago</h1>
+        <button type="button" className="btn btn-secundario" onClick={() => setMostrarRespuestasRapidas(true)}>
+          Mis respuestas rápidas
+        </button>
+      </div>
+
+      {mostrarRespuestasRapidas && (
+        <MisRespuestasRapidas cajeroId={cajero?.nombre} onCerrar={() => setMostrarRespuestasRapidas(false)} />
+      )}
 
       <div className={`pagos-layout${mostrarPanelMixto ? ' pagos-layout--dividido' : ''}`}>
         <div className="pagos-layout-col">
