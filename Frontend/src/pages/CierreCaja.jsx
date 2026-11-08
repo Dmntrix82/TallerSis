@@ -22,6 +22,7 @@ function CierreCaja() {
   const [paso, setPaso] = useState('ingreso') // ingreso, reporte, listo
   const [supervisorId, setSupervisorId] = useState('')
   const [pin, setPin] = useState('')
+  const [efectivoContado, setEfectivoContado] = useState('')
   const [reporte, setReporte] = useState(null)
   const [error, setError] = useState(null)
   const [cargando, setCargando] = useState(false)
@@ -47,11 +48,15 @@ function CierreCaja() {
       setError('Ingrese el usuario y el PIN de un supervisor de caja para poder cerrar la caja.')
       return
     }
+    if (!efectivoContado || Number(efectivoContado) < 0) {
+      setError('Ingrese el efectivo contado en caja para poder cerrarla.')
+      return
+    }
 
     setCargando(true)
     setError(null)
     try {
-      const { data } = await generarReporteCierre(turnoId)
+      const { data } = await generarReporteCierre(turnoId, Number(efectivoContado))
       setReporte(data)
       setPaso('reporte')
     } catch (err) {
@@ -65,10 +70,10 @@ function CierreCaja() {
     setCargando(true)
     setError(null)
     try {
-      await cerrarTurno(turnoId, { supervisor_id: supervisorId.trim(), pin: pin.trim() })
+      await cerrarTurno(turnoId, { supervisor_id: supervisorId.trim(), pin: pin.trim(), efectivo_contado: Number(efectivoContado) })
       // El reporte en PDF (con firma del cajero) se abre en una pestaña nueva
       // apenas se cierra la caja, para que se pueda imprimir o guardar al toque.
-      window.open(urlReporteCierrePdf(turnoId), '_blank', 'noopener,noreferrer')
+      window.open(urlReporteCierrePdf(turnoId, Number(efectivoContado)), '_blank', 'noopener,noreferrer')
       setPaso('listo')
     } catch (err) {
       // Si el PIN es incorrecto (o vencio el intento), se vuelve a la pantalla de
@@ -142,6 +147,21 @@ function CierreCaja() {
               />
             </label>
 
+            <label className="campo" style={{ display: 'block', marginBottom: '1rem' }}>
+              Efectivo contado en caja (Bs.)
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={efectivoContado}
+                onChange={(e) => {
+                  setEfectivoContado(e.target.value)
+                  setError(null)
+                }}
+                style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+              />
+            </label>
+
             <button type="submit" className="btn" disabled={cargando} style={{ width: '100%' }}>
               {cargando ? 'Generando Reporte...' : 'Continuar al Reporte'}
             </button>
@@ -186,6 +206,24 @@ function CierreCaja() {
                 ))}
               </ul>
             </div>
+
+            {reporte.arqueoEfectivo && (
+              <div
+                style={{
+                  marginTop: '1rem',
+                  padding: '1rem',
+                  borderRadius: '8px',
+                  backgroundColor: reporte.arqueoEfectivo.tipoDiferencia === 'CUADRA' ? '#ecfdf5' : '#fef3c7',
+                }}
+              >
+                <h4 style={{ marginTop: 0 }}>Arqueo de efectivo</h4>
+                <p style={{ margin: '0.25rem 0' }}>Esperado: Bs. {reporte.arqueoEfectivo.efectivoEsperado}</p>
+                <p style={{ margin: '0.25rem 0' }}>Contado: Bs. {reporte.arqueoEfectivo.efectivoContado}</p>
+                <p style={{ margin: '0.25rem 0', fontWeight: 'bold' }}>
+                  {reporte.arqueoEfectivo.tipoDiferencia}: Bs. {reporte.arqueoEfectivo.diferencia}
+                </p>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
               <button

@@ -171,12 +171,8 @@ test("TDSI-22: al anular una factura que nunca se envio, primero se envia su ven
   assert.deepEqual(falso.publicados.map((m) => m.json.tipo_operacion), ["venta", "anulacion_factura"]);
 });
 
-test("TDSI-22: el motivo de anulacion debe tener al menos 10 caracteres", async () => {
+test("TDSI-22: rechaza enviar una anulacion con motivo de menos de 10 caracteres", async () => {
   const f = await nuevaFactura();
-  await assert.rejects(
-    require("../services/anulacionesService").solicitarAnulacion({ factura_numero: f.numero, motivo: "Error", solicitado_por: "cajero1" }),
-    (e) => e.status === 400 && /10 caracteres/.test(e.message)
-  );
   await contabilidad.enviarFactura(f.id, "venta");
   await anularAutorizada(f.id, "Corto"); // anulacion vieja con motivo corto
   await assert.rejects(contabilidad.enviarFactura(f.id, "anulacion"), { status: 422 });

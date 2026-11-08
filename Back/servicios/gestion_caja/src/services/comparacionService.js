@@ -1,6 +1,5 @@
 const { AppError } = require("../utils/AppError");
 const turnosRepo = require("../data/turnosRepo");
-const autorizacionesRepo = require("../data/autorizacionesRepo");
 const cierreService = require("./cierreService");
 const { hoyLocal, validarDia } = require("../utils/fechas");
 
@@ -18,12 +17,11 @@ function validarTipo(valor) {
 
 /**
  * Monto registrado (esperado) y monto disponible (contado) de un turno:
- *  1. Turno CERRADO con arqueo guardado (TDSI-473/487) -> se usan esos montos.
- *  2. Si no, y el cajero ya declaro el efectivo en una solicitud de cierre (pendiente o
- *     aprobada) -> se compara ese contado con compararEfectivo (TDSI-320), tambien en
- *     turnos abiertos (TDSI-484).
- *  3. Si nadie conto el efectivo todavia -> se informa el esperado, sin contado ni
- *     diferencia (SIN_ARQUEO). Nunca se asume contado = 0: eso inventaria un faltante.
+ *  1. Turno CERRADO con arqueo guardado (el cajero declaro el efectivo contado en
+ *     persona, al cerrar, junto con el PIN del supervisor) -> se usan esos montos.
+ *  2. Si nadie conto el efectivo todavia (turno abierto, o cerrado sin arqueo) ->
+ *     se informa el esperado, sin contado ni diferencia (SIN_ARQUEO). Nunca se
+ *     asume contado = 0: eso inventaria un faltante.
  * Si gestion_pagos no responde, el error se propaga (no se muestra un CUADRA falso).
  */
 async function compararTurno(t) {
@@ -34,18 +32,6 @@ async function compararTurno(t) {
       diferencia: Number(t.diferencia),
       tipo_diferencia: t.tipo_diferencia,
       fuente_contado: "CIERRE",
-    };
-  }
-
-  const solicitud = await autorizacionesRepo.buscarUltimaSolicitudCierre(t.id);
-  if (solicitud && solicitud.efectivo_contado != null) {
-    const c = await cierreService.compararEfectivo(t.id, solicitud.efectivo_contado);
-    return {
-      efectivo_esperado: c.efectivoEsperado,
-      efectivo_contado: c.efectivoContado,
-      diferencia: c.diferencia,
-      tipo_diferencia: c.tipoDiferencia,
-      fuente_contado: `SOLICITUD_${solicitud.estado}`,
     };
   }
 

@@ -3,7 +3,6 @@ const express = require("express");
 const cors = require("cors");
 const pagosRoutes = require("./routes/pagosRoutes");
 const pagoMixtoRoutes = require("./routes/pagoMixtoRoutes");
-const ventaOnlineRoutes = require("./routes/ventaOnlineRoutes");
 const authRoutes = require("./routes/authRoutes");
 const tableroRoutes = require("./routes/tableroRoutes");
 const facturaDocumentoRoutes = require("./routes/facturaDocumentoRoutes");
@@ -41,7 +40,6 @@ app.use("/api/pagos/historial-cajeros", historialCajerosRoutes); // TDSI-33/434 
 app.use("/api/pagos/metodos", metodosPagoRoutes); // TDSI-34/438 (antes de /api/pagos)
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/pagos", pagoMixtoRoutes);
-app.use("/api/pagos", ventaOnlineRoutes);
 app.use("/api/pagos/resumen-turno", resumenVentasRoutes); // TDSI-101
 app.use("/auth", authRoutes);
 app.use("/transacciones", require("./routes/transaccionesEstadoRoutes")); // TDSI-14

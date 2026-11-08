@@ -5,7 +5,6 @@ const tirilla = require("../services/tirillaService");
 const impresion = require("../services/impresoraService");
 const documentos = require("../services/documentosService");
 const contabilidad = require("../services/contabilidadService");
-const { buscarFacturaPorNumero } = require("../data/anulacionesRepo");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -44,7 +43,7 @@ router.post("/:numero/reimprimir", wrap(async (req, res) => res.json({ ok: true,
 // TDSI-22: envia a Contabilidad una factura ya existente (p. ej. emitida antes de configurar el topico).
 // body: { tipo: "venta" | "anulacion" }. Si ya tiene ese envio, lo devuelve sin publicar de nuevo.
 router.post("/:numero/enviar-contabilidad", wrap(async (req, res) => {
-  const factura = await buscarFacturaPorNumero(req.params.numero);
+  const factura = await facturasRepo.obtenerFacturaCompleta(req.params.numero);
   if (!factura) return res.status(404).json({ ok: false, mensaje: "Factura no encontrada" });
   const envio = await contabilidad.enviarFactura(factura.id, (req.body && req.body.tipo) || "venta");
   res.json({ ok: true, data: envio });
