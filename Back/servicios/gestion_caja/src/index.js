@@ -10,6 +10,7 @@ const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
 const recaudadoRoutes = require("./routes/recaudadoRoutes");
 const comparacionRoutes = require("./routes/comparacionRoutes");
 const reportesRoutes = require("./routes/reportesRoutes");
+const metasVentaRoutes = require("./routes/metasVentaRoutes");
 const diferenciasRoutes = require("./routes/diferenciasRoutes");
 const usuariosRoutes = require("./routes/usuariosRoutes");
 const { requireAdministrador } = require("./middlewares/requireAdministrador");
@@ -44,6 +45,7 @@ app.use("/api/caja/comparacion", comparacionRoutes);
 app.use("/api/caja/reportes", reportesRoutes); // TDSI-36 (antes de /api/caja)
 app.use("/api/caja", turnosRoutes);
 app.use("/api/caja", cajasRoutes);
+app.use("/api/metas", metasVentaRoutes); // TDSI-58/773
 app.use("/api/caja", diferenciasRoutes); // TDSI-52/698
 app.use("/api/usuarios", requireAdministrador, usuariosRoutes); // TDSI-47/171/919
 app.use(errorHandler);
