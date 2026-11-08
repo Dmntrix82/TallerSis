@@ -11,6 +11,14 @@ function hoyLocal() {
 
 const bs = (v) => Number(v ?? 0).toFixed(2)
 
+// TDSI-58: la tarjeta muestra "Vendido hoy" solo si la fecha elegida es hoy; para
+// cualquier otra fecha muestra el dia elegido, para no decir "hoy" de un dia pasado.
+function etiquetaVendido(fecha) {
+  if (fecha === hoyLocal()) return 'Vendido hoy'
+  const [anio, mes, dia] = fecha.split('-')
+  return `Vendido el ${dia}/${mes}/${anio}`
+}
+
 function colorAvance(porcentaje) {
   if (porcentaje >= 100) return '#166534' // verde
   if (porcentaje >= 50) return '#92400e' // amarillo/ambar
@@ -105,7 +113,7 @@ function MetasVenta() {
                   <span className="caja-card-nombre">{c.caja_nombre || 'Sin nombre'}</span>
                 </div>
 
-                <p className="caja-card-detalle">Vendido hoy: Bs. {bs(c.vendido)}</p>
+                <p className="caja-card-detalle">{etiquetaVendido(fecha)}: Bs. {bs(c.vendido)}</p>
 
                 {sinMeta ? (
                   <>
