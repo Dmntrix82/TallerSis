@@ -4,14 +4,16 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/ventaOnline.test.js src/tests/anulacion.test.js src/tests/anulacionPendiente.test.js src/tests/auth.test.js src/tests/estadoTransaccion.test.js src/tests/monitoreo.test.js src/tests/monitoreoEndpoint.test.js src/tests/revision.test.js src/tests/revisionSemilla.test.js src/tests/revisionEndpoint.test.js src/tests/historialCajeros.test.js src/tests/historialCajerosEndpoint.test.js src/tests/historialSemilla.test.js src/tests/metodosPago.test.js src/tests/metodosPagoEndpoint.test.js src/tests/metodosSemilla.test.js",
+    "test": "node --test src/tests/pagoSimple.test.js src/tests/pagoMixto.test.js src/tests/auth.test.js src/tests/estadoTransaccion.test.js src/tests/monitoreo.test.js src/tests/monitoreoEndpoint.test.js src/tests/revision.test.js src/tests/revisionSemilla.test.js src/tests/revisionEndpoint.test.js src/tests/historialCajeros.test.js src/tests/historialCajerosEndpoint.test.js src/tests/historialSemilla.test.js src/tests/metodosPago.test.js src/tests/metodosPagoEndpoint.test.js src/tests/metodosSemilla.test.js src/tests/anularVenta.test.js src/tests/desgloseVuelto.test.js src/tests/cobroUsd.test.js src/tests/duplicado.test.js src/tests/respuestasRapidas.test.js src/tests/ventasCanceladas.test.js src/tests/misFacturasBusqueda.test.js src/tests/libroVentas.test.js src/tests/marketplaceVentas.test.js src/tests/ventaOnlineRoutes.test.js src/tests/productosVendidos.test.js src/tests/acusesCompras.test.js src/tests/productosVendidosRoutes.test.js",
     "crear-cliente": "node scripts/crearSistemaCliente.js"
   },
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google-cloud/pubsub": "^4.11.0",
     "cors": "^2.8.6",
     "dotenv": "^18.0.0",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^6.9.14",

@@ -75,6 +75,26 @@ async function crearSupervisor({ usuario, nombre, pin } = {}) {
   return aPublico(creado);
 }
 
+/**
+ * TDSI-47/917: "Editar" en la pantalla "Usuarios" -- cambia nombre y usuario.
+ * El PIN no se toca aqui (eso sigue siendo "Restablecer PIN" en "Supervisores").
+ */
+async function editarSupervisor(id, { usuario, nombre } = {}) {
+  const supId = validarId(id);
+  const usuarioLimpio = textoObligatorio(usuario, "usuario", 60);
+  const nombreLimpio = textoObligatorio(nombre, "nombre", 150);
+
+  let actualizado;
+  try {
+    actualizado = await repo.actualizar(supId, { supervisor_id: usuarioLimpio, nombre: nombreLimpio });
+  } catch (e) {
+    if (e.code === "23505") throw err(`Ya existe un supervisor con el usuario '${usuarioLimpio}'`, 409);
+    throw e;
+  }
+  if (!actualizado) throw err("Supervisor no encontrado", 404);
+  return aPublico(actualizado);
+}
+
 /** TDSI-722: "Restablecer PIN": asigna un PIN nuevo y desbloquea si estaba bloqueado */
 async function restablecerPin(id, { pin } = {}) {
   const supId = validarId(id);
@@ -97,6 +117,6 @@ async function cambiarEstadoSupervisor(id, { activo } = {}) {
 }
 
 module.exports = {
-  listarSupervisores, crearSupervisor, restablecerPin, cambiarEstadoSupervisor,
+  listarSupervisores, crearSupervisor, editarSupervisor, restablecerPin, cambiarEstadoSupervisor,
   estadoDe, aPublico, validarFormatoPin, validarId,
 };

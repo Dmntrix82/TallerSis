@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import { useBloqueo } from '../context/BloqueoContext.jsx'
 
 // "Cerrar sesión" y "Cerrar caja" son 2 acciones distintas: cerrar sesión solo
 // vuelve al login (el turno sigue activo, se puede volver a entrar); cerrar caja
@@ -8,6 +9,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 // desplegable para que no se confundan con un link de navegación más.
 function Navbar() {
   const { cajero, cerrarSesion } = useAuth()
+  const { bloquear } = useBloqueo()
   const navigate = useNavigate()
   const [menuAbierto, setMenuAbierto] = useState(false)
   const menuRef = useRef(null)
@@ -45,6 +47,12 @@ function Navbar() {
       )}
 
       <div className="navbar-sesion">
+        {cajero && (
+          // TDSI-855: bloquear la terminal al alejarse, sin cerrar sesión ni el turno.
+          <button type="button" className="btn btn-logout" onClick={bloquear}>
+            Bloquear pantalla
+          </button>
+        )}
         {cajero ? (
           <div className="navbar-menu" ref={menuRef}>
             <button type="button" className="navbar-menu-boton" onClick={() => setMenuAbierto((v) => !v)}>
