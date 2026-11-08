@@ -384,6 +384,12 @@ ALTER TABLE pagos.transacciones
 ALTER TABLE pagos.transacciones DROP CONSTRAINT IF EXISTS transacciones_token_verificacion_key;
 CREATE INDEX IF NOT EXISTS idx_transacciones_token_verificacion
     ON pagos.transacciones (token_verificacion);
+
+-- ==========================================================================
+-- TDSI-50/177: el Libro de Ventas agrupa por mes -- este indice deja la
+-- consulta mensual (date_part sobre fecha) rapida aunque crezca la tabla.
+-- ==========================================================================
+CREATE INDEX IF NOT EXISTS idx_transacciones_fecha ON pagos.transacciones (fecha);
 -- ==========================================================================
 -- TDSI-39/155: cobro con QR. No hay integracion con ningun banco, asi que
 -- esto NO genera un QR de pago real -- es solo el registro interno del
@@ -448,3 +454,115 @@ ALTER TABLE pagos.ventas_online
     ADD COLUMN IF NOT EXISTS aviso_marketplace_estado VARCHAR(20)
         CHECK (aviso_marketplace_estado IN ('Enviado', 'Error')),
     ADD COLUMN IF NOT EXISTS aviso_marketplace_error  VARCHAR(500);
+
+-- ==========================================================================
+-- TDSI-48/897: motivo de la anulacion de una venta (elegido entre las
+-- respuestas rapidas del cajero, de facturacion.respuestas_anulacion, o
+-- escrito a mano). Se guarda el texto, no una referencia, para que si la
+-- respuesta rapida despues se edita o se elimina, la venta ya anulada
+-- conserve el motivo que tenia en ese momento.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS motivo_anulacion VARCHAR(100);
+
+-- Idempotente: la columna ya existia (de un intento anterior, hoy sin usar) como
+-- VARCHAR(300); se achica a 100 para que coincida con el limite del ticket.
+ALTER TABLE pagos.transacciones
+    ALTER COLUMN motivo_anulacion TYPE VARCHAR(100);
+
+-- ==========================================================================
+-- TDSI-49/929: el cierre de caja necesita mostrar tambien el NOMBRE del
+-- supervisor que autorizo la anulacion (antes solo se guardaba su id en
+-- anulado_por).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS anulado_por_nombre VARCHAR(255);
+
+-- ==========================================================================
+-- TDSI-46: indice para la pantalla "Facturas" del cajero
+-- --------------------------------------------------------------------------
+-- GET /api/pagos/mis-facturas siempre filtra por el cajero de la sesion con
+-- lower(trim(cajero)) (TDSI-866) y ordena por fecha; con el buscador se llama
+-- cada vez que el cajero deja de escribir. Sin este indice cada busqueda
+-- recorre todas las ventas de todos los cajeros. Idempotente.
+-- ==========================================================================
+CREATE INDEX IF NOT EXISTS idx_transacciones_cajero_sesion_fecha
+    ON pagos.transacciones (lower(trim(cajero)), fecha DESC);
+
+-- ==========================================================================
+-- TDSI-44/165: respuestas rápidas del cajero para justificar la cancelación
+-- de una venta. Cada cajero tiene sus propias frases guardadas.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.respuestas_rapidas (
+    id          BIGSERIAL PRIMARY KEY,
+    cajero_id   VARCHAR(60)  NOT NULL,
+    texto       VARCHAR(100) NOT NULL CHECK (char_length(texto) >= 5),
+    orden       SMALLINT     NOT NULL DEFAULT 1,
+    creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_respuestas_rapidas_cajero ON pagos.respuestas_rapidas (cajero_id);
+
+ALTER TABLE pagos.respuestas_rapidas ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-802: guardar la respuesta rápida que usó el cajero al cancelar la venta.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS respuesta_rapida_id BIGINT REFERENCES pagos.respuestas_rapidas(id);
+
+-- ==========================================================================
+-- TDSI-45/167: ventas canceladas antes de cobrar. No generan factura ni
+-- transaccion, pero sirven para llevar un registro del motivo.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.ventas_canceladas (
+    id          BIGSERIAL PRIMARY KEY,
+    cajero_id   VARCHAR(60)  NOT NULL,
+    caja_id     VARCHAR(60),
+    turno_id    VARCHAR(60),
+    items       JSONB        NOT NULL,
+    total       NUMERIC(14,2) NOT NULL CHECK (total >= 0),
+    motivo      VARCHAR(50)  NOT NULL CHECK (motivo IN ('El cliente desistió', 'Fondos insuficientes', 'Error al cargar ítems', 'Otro')),
+    motivo_texto VARCHAR(300),
+    creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ventas_canceladas_cajero ON pagos.ventas_canceladas (cajero_id, creado_en);
+ALTER TABLE pagos.ventas_canceladas ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-826: registrar si el cajero decidió "Cobrar igual" a pesar del aviso
+-- de posible duplicado. Un valor true indica que forzó el cobro.
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS cobro_duplicado BOOLEAN NOT NULL DEFAULT false;
+
+-- ==========================================================================
+-- TDSI-42/161: tabla de parametros para el cobro en dolares. Guarda el tipo
+-- de cambio vigente (Bs por 1 USD) para convertir el total de la venta y
+-- calcular el vuelto en bolivianos. Se puede correr varias veces.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS pagos.tipo_cambio (
+    id            SERIAL PRIMARY KEY,
+    valor         NUMERIC(10,2) NOT NULL CHECK (valor > 0),
+    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+    actualizado_por VARCHAR(60)
+);
+
+-- Insertar el valor inicial (12) solo si la tabla está vacía (idempotente)
+INSERT INTO pagos.tipo_cambio (valor, actualizado_por)
+SELECT 12, 'SISTEMA'
+WHERE NOT EXISTS (SELECT 1 FROM pagos.tipo_cambio);
+
+ALTER TABLE pagos.tipo_cambio ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
+-- TDSI-42/813: faltaba guardar con que moneda pago el cliente cuando elige
+-- "Efectivo en dolares" -- el endpoint de calcular-vuelto (TDSI-812) y la
+-- leyenda del PDF (TDSI-814) ya existian, pero la venta nunca guardaba estos
+-- datos, asi que la leyenda "Pagado en USD" nunca llegaba a la factura real.
+-- La venta en si sigue en Bs (monto, monto_recibido, vuelto no cambian).
+-- ==========================================================================
+ALTER TABLE pagos.transacciones
+    ADD COLUMN IF NOT EXISTS moneda_recibida VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS monto_usd       NUMERIC(10,2) CHECK (monto_usd IS NULL OR monto_usd > 0),
+    ADD COLUMN IF NOT EXISTS tipo_cambio     NUMERIC(10,2) CHECK (tipo_cambio IS NULL OR tipo_cambio > 0);

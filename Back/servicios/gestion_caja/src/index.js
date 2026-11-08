@@ -10,6 +10,8 @@ const { cerrarSesionesInactivas } = require("./services/sesionCajeroService");
 const recaudadoRoutes = require("./routes/recaudadoRoutes");
 const comparacionRoutes = require("./routes/comparacionRoutes");
 const reportesRoutes = require("./routes/reportesRoutes");
+const usuariosRoutes = require("./routes/usuariosRoutes");
+const { requireAdministrador } = require("./middlewares/requireAdministrador");
 
 const app = express();
 const PORT = process.env.PORT || 4004;
@@ -41,6 +43,7 @@ app.use("/api/caja/comparacion", comparacionRoutes);
 app.use("/api/caja/reportes", reportesRoutes); // TDSI-36 (antes de /api/caja)
 app.use("/api/caja", turnosRoutes);
 app.use("/api/caja", cajasRoutes);
+app.use("/api/usuarios", requireAdministrador, usuariosRoutes); // TDSI-47/171/919
 app.use(errorHandler);
 
 // TDSI-268: cada minuto revisa y cierra las sesiones inactivas

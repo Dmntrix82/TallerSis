@@ -14,6 +14,8 @@ import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
 import VentasOnline from './pages/VentasOnline.jsx'
+import LibroVentas from './pages/LibroVentas.jsx'
+import Usuarios from './pages/Usuarios.jsx'
 import './App.css'
 
 function RutaProtegida({ children }) {
@@ -53,6 +55,8 @@ function App() {
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/cierre-diario" element={<RutaProtegidaAdmin><CierreDiario /></RutaProtegidaAdmin>} />
           <Route path="/admin/ventas-online" element={<RutaProtegidaAdmin><VentasOnline /></RutaProtegidaAdmin>} />
+          <Route path="/admin/libro-ventas" element={<RutaProtegidaAdmin><LibroVentas /></RutaProtegidaAdmin>} />
+          <Route path="/admin/usuarios" element={<RutaProtegidaAdmin><Usuarios /></RutaProtegidaAdmin>} />
         </Routes>
       </main>
     </>
