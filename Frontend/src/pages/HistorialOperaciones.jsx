@@ -2,9 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import '../App.css'
 
 const BASE_URL = import.meta.env.VITE_GESTION_PAGOS_API_BASE_URL || 'http://localhost:4005'
+const CAJA_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4004'
 const CAJEROS_URL = `${BASE_URL}/api/pagos/revision/cajeros`
 const HISTORIAL_URL = `${BASE_URL}/api/pagos/historial-cajeros`
+// TDSI-62/963/964: apertura, cierre y aprobacion de operaciones especiales (gestion_caja),
+// para combinar con las ventas/anulaciones de arriba (gestion_pagos) en una sola tabla.
+const EVENTOS_URL = `${CAJA_BASE_URL}/api/caja/eventos-autorizacion`
 const POR_PAGINA = 10
+// Tope de paginas de ventas que se traen para combinar con los eventos de gestion_caja
+// (un rango de fechas angosto no debería acercarse a esto; de lo contrario, el filtro
+// por cajero o por fechas más corto es la forma de acotar la consulta).
+const MAX_PAGINAS_VENTAS = 10
+
+const ETIQUETA_TIPO = {
+  APERTURA: 'Apertura',
+  CIERRE: 'Cierre',
+  OPERACION_ESPECIAL: 'Operación especial',
+}
+const TIPOS_CON_AUTORIZACION = new Set(['ANULADA', 'APERTURA', 'CIERRE', 'OPERACION_ESPECIAL'])
 
 const aFechaLocal = (fecha) => {
   const offset = fecha.getTimezoneOffset()
@@ -48,19 +63,26 @@ const formatearFechaHora = (valor) => {
   return d.toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// TDSI-62/960: etiqueta de color por tipo de operacion autorizada (apertura, cierre,
+// anulacion, aprobacion); el resto de los estados de venta sigue como antes.
 const claseEstado = (estado) => {
   const v = String(estado).toUpperCase()
   if (!v) return 'ho-estado-neutro'
+  if (v === 'APERTURA') return 'ho-estado-ok'
+  if (v === 'CIERRE') return 'ho-estado-neutro'
+  if (v === 'OPERACION_ESPECIAL') return 'ho-estado-info'
   if (/ANUL|RECHAZ|ERROR|FALL/.test(v)) return 'ho-estado-error'
   if (/PEND/.test(v)) return 'ho-estado-pendiente'
   return 'ho-estado-ok'
 }
 
-// TDSI-62/960: solo las anulaciones necesitan autorizacion de un supervisor;
-// el resto de operaciones muestra "—" (TDSI-961) y las anulaciones antiguas
-// sin ese dato guardado muestran "No registrado" en vez de un "—" engañoso.
+const etiquetaEstado = (estado) => ETIQUETA_TIPO[estado] || estado
+
+// TDSI-62/961: solo las operaciones que de verdad necesitaron un supervisor (anulacion,
+// apertura, cierre, operacion especial) muestran quien autorizo; el resto muestra "—",
+// y las de antes de este cambio (sin el dato guardado) muestran "No registrado".
 const autorizadoPorMostrar = (op) => {
-  if (op.estado !== 'ANULADA') return '—'
+  if (!TIPOS_CON_AUTORIZACION.has(op.estado)) return '—'
   return op.autorizado_por || 'No registrado'
 }
 
@@ -104,9 +126,12 @@ export default function HistorialOperaciones() {
   const [desde, setDesde] = useState(hace7Dias)
   const [hasta, setHasta] = useState(fechaHoy)
 
+  // TDSI-62/963/964: lista combinada de ventas/anulaciones (gestion_pagos) + apertura,
+  // cierre y operaciones especiales (gestion_caja), ya ordenada por fecha. La paginacion
+  // se hace en el navegador sobre esta lista combinada (ver "visibles" mas abajo).
   const [operaciones, setOperaciones] = useState([])
   const [resumen, setResumen] = useState(null)
-  const [paginacion, setPaginacion] = useState({ pagina: 1, total_paginas: 1, total_registros: 0 })
+  const [avisoEventos, setAvisoEventos] = useState('')
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState('')
   const [orden, setOrden] = useState('desc')
@@ -133,29 +158,87 @@ export default function HistorialOperaciones() {
     return () => { activo = false }
   }, [desde, hasta, rangoInvalido])
 
+  // Trae todas las ventas/anulaciones del rango (paginando por dentro, hasta
+  // MAX_PAGINAS_VENTAS), ya que la paginacion final es sobre la lista combinada.
+  async function obtenerTodasLasVentas(params) {
+    const primera = await requestJson(`${HISTORIAL_URL}?${new URLSearchParams({ ...params, pagina: 1, por_pagina: 100 })}`)
+    const datos = primera?.data ?? primera
+    let operaciones = datos.operaciones ?? []
+    const resumen = datos.resumen ?? null
+    const totalPaginas = Math.min(datos.paginacion?.total_paginas ?? 1, MAX_PAGINAS_VENTAS)
+    for (let p = 2; p <= totalPaginas; p++) {
+      const r = await requestJson(`${HISTORIAL_URL}?${new URLSearchParams({ ...params, pagina: p, por_pagina: 100 })}`)
+      operaciones = operaciones.concat((r?.data ?? r).operaciones ?? [])
+    }
+    return { operaciones, resumen }
+  }
+
+  const normalizarVenta = (op) => ({
+    key: `VTA-${op.id_transaccion}`,
+    fecha: op.fecha,
+    metodos: op.metodos,
+    total: op.total,
+    estado: op.estado,
+    pedido_por: op.pedido_por,
+    autorizado_por: op.autorizado_por,
+  })
+
+  const normalizarEvento = (e, i) => ({
+    key: `EVT-${e.tipo}-${e.caja_id}-${e.fecha}-${i}`,
+    fecha: e.fecha,
+    metodos: e.descripcion || etiquetaEstado(e.tipo),
+    total: e.monto,
+    estado: e.tipo,
+    pedido_por: e.pedido_por,
+    autorizado_por: e.autorizado_por,
+  })
+
   const cargarHistorial = useCallback(async () => {
     if (!desde || !hasta || rangoInvalido) {
       setOperaciones([])
       setResumen(null)
+      setAvisoEventos('')
       setError('')
       return
     }
     const actual = ++peticion.current
     setCargando(true)
     setError('')
+    setAvisoEventos('')
     try {
-      const params = new URLSearchParams({ desde, hasta, pagina, por_pagina: POR_PAGINA })
-      if (cajeroId) params.append('cajero_id', cajeroId)
-      // TDSI-62/959: filtrar por el supervisor que autorizo la anulacion (solo trae anulaciones).
-      if (supervisorId.trim()) params.append('supervisor_id', supervisorId.trim())
+      const paramsVentas = { desde, hasta }
+      if (cajeroId) paramsVentas.cajero_id = cajeroId
+      // TDSI-62/959: filtrar por el supervisor que autorizo (anulacion, apertura, cierre u operacion especial).
+      const supervisor = supervisorId.trim()
+      if (supervisor) paramsVentas.supervisor_id = supervisor
 
-      const res = await requestJson(`${HISTORIAL_URL}?${params}`)
+      const paramsEventos = new URLSearchParams({ desde, hasta })
+      if (supervisor) paramsEventos.append('supervisor_id', supervisor)
+
+      const [ventasResultado, eventosResultado] = await Promise.allSettled([
+        obtenerTodasLasVentas(paramsVentas),
+        requestJson(`${EVENTOS_URL}?${paramsEventos}`),
+      ])
       if (actual !== peticion.current) return
 
-      const datos = res?.data ?? res
-      setOperaciones(datos.operaciones ?? [])
-      setResumen(datos.resumen ?? null)
-      setPaginacion(datos.paginacion ?? { pagina: 1, total_paginas: 1, total_registros: 0 })
+      if (ventasResultado.status === 'rejected') throw ventasResultado.reason
+
+      const ventas = ventasResultado.value.operaciones.map(normalizarVenta)
+
+      let eventos = []
+      if (eventosResultado.status === 'fulfilled') {
+        const datosEventos = eventosResultado.value?.data ?? eventosResultado.value
+        eventos = (datosEventos.eventos ?? [])
+          .filter((e) => !cajeroId || e.pedido_por === cajeroId)
+          .map(normalizarEvento)
+      } else {
+        setAvisoEventos('No se pudo cargar la apertura, el cierre ni la aprobación de operaciones (gestion_caja no respondió). Se muestran solo las ventas.')
+      }
+
+      const combinadas = [...ventas, ...eventos].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+
+      setOperaciones(combinadas)
+      setResumen(ventasResultado.value.resumen)
     } catch (err) {
       if (actual !== peticion.current) return
       setOperaciones([])
@@ -164,7 +247,7 @@ export default function HistorialOperaciones() {
     } finally {
       if (actual === peticion.current) setCargando(false)
     }
-  }, [cajeroId, supervisorId, desde, hasta, pagina, rangoInvalido])
+  }, [cajeroId, supervisorId, desde, hasta, rangoInvalido])
 
   useEffect(() => {
     cargarHistorial()
@@ -175,9 +258,19 @@ export default function HistorialOperaciones() {
     return c?.cajero ?? ''
   })()
 
-  const visibles = useMemo(() => {
+  const ordenadas = useMemo(() => {
     return orden === 'asc' ? [...operaciones].reverse() : operaciones
   }, [operaciones, orden])
+
+  // Paginacion sobre la lista ya combinada (ventas + eventos de gestion_caja).
+  const totalRegistros = ordenadas.length
+  const totalPaginas = Math.max(1, Math.ceil(totalRegistros / POR_PAGINA))
+  const paginaActual = Math.min(pagina, totalPaginas)
+  const paginacion = { pagina: paginaActual, por_pagina: POR_PAGINA, total_paginas: totalPaginas, total_registros: totalRegistros }
+  const visibles = useMemo(
+    () => ordenadas.slice((paginaActual - 1) * POR_PAGINA, paginaActual * POR_PAGINA),
+    [ordenadas, paginaActual]
+  )
 
   const cambiarFiltro = (setter) => (event) => {
     setter(event.target.value)
@@ -231,9 +324,10 @@ export default function HistorialOperaciones() {
         {errorCajeros && <p className="ho-error-linea" role="alert">No se pudieron cargar los cajeros: {errorCajeros}</p>}
         {supervisorId.trim() && (
           <p className="ho-error-linea" role="status" style={{ color: 'inherit' }}>
-            Solo las anulaciones tienen un supervisor autorizante, así que este filtro solo muestra anulaciones.
+            Solo las operaciones que necesitaron un supervisor (apertura, cierre, anulación o aprobación) tienen autorizante, así que este filtro solo muestra esas.
           </p>
         )}
+        {avisoEventos && <p className="ho-error-linea" role="status">{avisoEventos}</p>}
       </section>
 
       {!hayFiltros && (
@@ -279,7 +373,7 @@ export default function HistorialOperaciones() {
                 <span>Total recaudado</span>
                 <strong>{formatearMoneda(resumen.total)}</strong>
               </div>
-              <div className="ho-total"><span>Operaciones</span><strong>{resumen.cantidad_operaciones}</strong></div>
+              <div className="ho-total"><span>Ventas</span><strong>{resumen.cantidad_operaciones}</strong></div>
               <div className="ho-total"><span>Días con actividad</span><strong>{resumen.por_dia?.length || 0}</strong></div>
             </div>
             <div className="ho-tabla-contenedor ho-tabla-resumen">
@@ -330,15 +424,15 @@ export default function HistorialOperaciones() {
                 </thead>
                 <tbody>
                   {visibles.map((op) => (
-                    <tr key={op.id_transaccion}>
+                    <tr key={op.key}>
                       <td className="ho-fecha">{formatearFechaHora(op.fecha)}</td>
                       <td className="ho-metodo">{Array.isArray(op.metodos) ? op.metodos.join(', ') : op.metodos}</td>
-                      <td className="ho-derecha ho-monto">{formatearMoneda(op.total)}</td>
+                      <td className="ho-derecha ho-monto">{op.total == null ? '—' : formatearMoneda(op.total)}</td>
                       <td>
-                        <span className={`ho-estado ${claseEstado(op.estado)}`}><span aria-hidden="true" />{op.estado}</span>
+                        <span className={`ho-estado ${claseEstado(op.estado)}`}><span aria-hidden="true" />{etiquetaEstado(op.estado)}</span>
                       </td>
                       <td>{op.pedido_por || '—'}</td>
-                      <td title={op.estado === 'ANULADA' ? `Anulado el ${formatearFechaHora(op.fecha)}` : undefined}>
+                      <td title={TIPOS_CON_AUTORIZACION.has(op.estado) ? `Autorizado el ${formatearFechaHora(op.fecha)}` : undefined}>
                         {autorizadoPorMostrar(op)}
                       </td>
                     </tr>
