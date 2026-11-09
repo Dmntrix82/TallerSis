@@ -19,7 +19,7 @@ test.after(async () => {
 
 test("TDSI-956: la operacion anulada muestra quien la pidio y que supervisor la autorizo (nombre)", async () => {
   const pago = (await registrarPagoSimple({ metodo: "Efectivo", monto: 15, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
-  await anularVenta({ id_transaccion: pago.id_transaccion, cajero: CAJERO, ...SUPERVISOR });
+  await anularVenta({ id_transaccion: pago.id_transaccion, cajero: CAJERO, motivo: "Prueba de anulacion TDSI-956", ...SUPERVISOR });
 
   const hoy = hoyLocal();
   const r = await consultarHistorial({ cajero_id: CAJERO, fecha: hoy, por_pagina: 50 });
@@ -47,7 +47,7 @@ test("TDSI-956: una operacion que no necesito autorizacion no tiene 'autorizado_
 // TDSI-957
 test("TDSI-957: filtra el historial por el supervisor que autorizo", async () => {
   const anulada = (await registrarPagoSimple({ metodo: "Tarjeta", monto: 18, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
-  await anularVenta({ id_transaccion: anulada.id_transaccion, cajero: CAJERO, ...SUPERVISOR });
+  await anularVenta({ id_transaccion: anulada.id_transaccion, cajero: CAJERO, motivo: "Prueba de anulacion TDSI-956", ...SUPERVISOR });
   const normal = (await registrarPagoSimple({ metodo: "Tarjeta", monto: 9, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
 
   const hoy = hoyLocal();
@@ -68,7 +68,7 @@ test("TDSI-957: un supervisor sin anulaciones en el rango devuelve la lista vaci
 // TDSI-958: la anulacion guarda el cajero y el supervisor correctos directamente en la fila.
 test("TDSI-958: anular guarda el cajero y el supervisor real en pagos.transacciones", async () => {
   const pago = (await registrarPagoSimple({ metodo: "Efectivo", monto: 33, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
-  await anularVenta({ id_transaccion: pago.id_transaccion, cajero: CAJERO, ...SUPERVISOR });
+  await anularVenta({ id_transaccion: pago.id_transaccion, cajero: CAJERO, motivo: "Prueba de anulacion TDSI-956", ...SUPERVISOR });
 
   const { rows } = await pool.query(
     `SELECT cajero, anulado_por, anulado_por_nombre, estado FROM pagos.transacciones WHERE id_transaccion = $1`,
@@ -84,7 +84,7 @@ test("TDSI-958: solo el cajero que emitio la venta puede pedir su anulacion", as
   const pago = (await registrarPagoSimple({ metodo: "Efectivo", monto: 17, cajero: CAJERO, caja_id: "CAJA-956" })).pago;
 
   await assert.rejects(
-    () => anularVenta({ id_transaccion: pago.id_transaccion, cajero: "otro-cajero@test.com", ...SUPERVISOR }),
+    () => anularVenta({ id_transaccion: pago.id_transaccion, cajero: "otro-cajero@test.com", motivo: "Prueba de anulacion TDSI-956", ...SUPERVISOR }),
     (e) => e.status === 403
   );
 

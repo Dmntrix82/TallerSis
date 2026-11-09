@@ -40,6 +40,9 @@ async function construirFacturaDigital(id_transaccion) {
       fecha: primera.fecha,
       caja_id: primera.caja_id || null,
       cajero: primera.cajero || null,
+      // TDSI-61/943: nombre para mostrar ("Atendido por"); "no registrado" en
+      // ventas de antes de este cambio, que no tienen cajero_nombre guardado.
+      cajero_nombre: primera.cajero_nombre || "no registrado",
       tipo_pago: primera.tipo_pago,
       tokenVerificacion,
       urlVerificacion: urlVerificacion(tokenVerificacion),
@@ -49,7 +52,15 @@ async function construirFacturaDigital(id_transaccion) {
       nit: primera.nit || null,
       razon_social: primera.razon_social || "Consumidor final",
     },
-    pagos: transacciones.map((t) => ({ metodo: t.metodo, monto: t.monto })),
+    // TDSI-42/814: si pagaron en dolares, se agrega la moneda/monto en USD/tipo
+    // de cambio para que el PDF muestre "Pagado en USD: X (T.C. Y)".
+    pagos: transacciones.map((t) => ({
+      metodo: t.metodo,
+      monto: t.monto,
+      moneda_recibida: t.moneda_recibida || null,
+      monto_usd: t.monto_usd ?? null,
+      tipo_cambio: t.tipo_cambio ?? null,
+    })),
     total,
   };
 }
