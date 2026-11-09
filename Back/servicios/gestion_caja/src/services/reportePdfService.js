@@ -74,6 +74,18 @@ function generarReporteCierrePdfBuffer(reporte, { cajeroNombre, cajeroUsuario })
     fila(doc, "Monto anulado (no contado)", bs(reporte.resumenVentas.montoAnulado));
   }
 
+  // TDSI-931: detalle de cada factura anulada (N°, hora, total, motivo, supervisor).
+  if (reporte.anuladas && reporte.anuladas.length > 0) {
+    subtitulo(doc, "Facturas anuladas");
+    for (const f of reporte.anuladas) {
+      fila(doc, `${f.numero_factura}  (${new Date(f.hora).toLocaleTimeString("es-BO")})`, bs(f.total), { negrita: true });
+      doc.font("Helvetica").fontSize(9).fillColor("#616e7c");
+      doc.text(`Motivo: ${f.motivo || "-"}  ·  Autorizó: ${f.supervisor || "-"}`, MARGEN, doc.y, { width: ANCHO_UTIL });
+      doc.fillColor("#000000");
+      doc.moveDown(0.3);
+    }
+  }
+
   if (reporte.arqueoEfectivo) {
     subtitulo(doc, "Arqueo de efectivo");
     fila(doc, "Efectivo inicial", bs(reporte.arqueoEfectivo.efectivoInicial));

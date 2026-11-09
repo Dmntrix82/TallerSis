@@ -31,6 +31,13 @@ export function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado, arq
   })
 }
 
+// TDSI-49/175: facturas anuladas del turno (N° de factura, hora, total, motivo y
+// supervisor que autorizo), para el boton "Ver anuladas" del resumen de cierre.
+// Responde data: { turnoId, caja_id, cantidadAnuladas, montoAnulado, anuladas }.
+export function obtenerAnuladasTurno(turnoId) {
+  return apiFetch(`/api/caja/turnos/${turnoId}/anuladas`)
+}
+
 // TDSI-324 / TDSI-880: PDF del reporte de cierre (con firma del cajero y detalle de conteo).
 export function urlReporteCierrePdf(turnoId, efectivoContado) {
   const base = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -88,20 +95,32 @@ export function obtenerComparacionMontos({ fecha, caja_id, cajero_id, tipo }) {
   return apiFetch(`/api/caja/comparacion?${params.toString()}`)
 }
 
-// TDSI-141/489: diferencias de caja (faltantes/sobrantes) registradas al cerrar turnos.
-export function listarDiferencias({ estado, tipo, caja_id } = {}) {
+// TDSI-141/489/701: diferencias de caja (faltantes/sobrantes) registradas al cerrar
+// turnos, con el estado del aviso a Contabilidad. Filtro opcional: estado (PENDIENTE |
+// RESUELTA). Cada diferencia trae { id, turno_id, caja_id, cajero, monto, tipo, estado,
+// justificacion, resuelta_por, resuelta_en, cerrado_en, contabilidad } -- "contabilidad"
+// es null si todavia no se resolvio, o { estado, motivo_rechazo, intentos, ultimo_error }
+// con estado Pendiente | Enviado | Confirmado | Rechazado.
+export function listarDiferencias({ estado } = {}) {
   const params = new URLSearchParams()
   if (estado) params.set('estado', estado)
-  if (tipo) params.set('tipo', tipo)
-  if (caja_id) params.set('caja_id', caja_id)
   const qs = params.toString()
   return apiFetch(`/api/caja/diferencias${qs ? `?${qs}` : ''}`)
 }
 
-// TDSI-488: resuelve una diferencia; justificacion y resuelta_por son obligatorios.
+// TDSI-488/698: resuelve una diferencia (justificacion y resuelta_por obligatorios) y de
+// una vez intenta avisar a Contabilidad. Responde data: { diferencia, contabilidad }.
 export function resolverDiferencia(id, { justificacion, resuelta_por }) {
   return apiFetch(`/api/caja/diferencias/${id}/resolver`, {
     method: 'POST',
     body: JSON.stringify({ justificacion, resuelta_por }),
+  })
+}
+
+// TDSI-701/704: reintenta el aviso a Contabilidad de una diferencia ya resuelta (solo
+// tiene sentido si el envio anterior quedo en Pendiente-con-error o en Rechazado).
+export function reenviarDiferenciaContabilidad(id) {
+  return apiFetch(`/api/caja/diferencias/${id}/reenviar-contabilidad`, {
+    method: 'POST',
   })
 }

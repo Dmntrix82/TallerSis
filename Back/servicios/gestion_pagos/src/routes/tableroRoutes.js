@@ -1,5 +1,7 @@
 const { Router } = require("express");
 const { obtenerIngresosDelDia, obtenerRankings, obtenerSerieDiaria } = require("../services/tableroService");
+const { obtenerHorasPico } = require("../services/horasPicoService");
+const { obtenerDesgloseMensual } = require("../services/comparativoMensualService");
 const { tableroEvents } = require("../utils/tableroEvents");
 
 const router = Router();
@@ -39,6 +41,25 @@ router.get("/rankings", wrap(async (req, res) => {
 // TDSI-331: serie de los ultimos N dias (?dias=14), para el grafico de montanas.
 router.get("/serie-diaria", wrap(async (req, res) => {
   res.json({ ok: true, data: await obtenerSerieDiaria(req.query.dias) });
+}));
+
+// TDSI-57/763: "Horas pico" -- ventas por hora (?desde=&hasta=YYYY-MM-DD, obligatorios)
+// y, si se pide, de una sola caja (?caja=). Devuelve el detalle por hora y las 3 horas
+// con mas ventas.
+router.get("/horas-pico", wrap(async (req, res) => {
+  const data = await obtenerHorasPico(req.query.desde, req.query.hasta, req.query.caja);
+  res.json({ ok: true, data });
+}));
+
+// TDSI-56/737: "Comparativo mensual" -- total, por caja y por metodo del mes elegido
+// contra el mes anterior (o los mismos dias, si el mes elegido es el actual).
+// Sin ?mes=&anio=, usa el mes y año de hoy (en hora de Bolivia).
+router.get("/comparativo-mensual", wrap(async (req, res) => {
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+  const [anioHoy, mesHoy] = hoy.split("-");
+  const mes = req.query.mes ?? mesHoy;
+  const anio = req.query.anio ?? anioHoy;
+  res.json({ ok: true, data: await obtenerDesgloseMensual(mes, anio) });
 }));
 
 module.exports = router;

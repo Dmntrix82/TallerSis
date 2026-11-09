@@ -1,6 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listarMisFacturas, anularVenta, modificarVenta, urlFacturaPdf } from '../api/pagos.js'
+import { validarMotivoAnulacion, LARGO_MAXIMO_ANULACION } from '../api/respuestasAnulacion.js'
+import RespuestasAnulacionBotones from '../components/RespuestasAnulacionBotones.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import BuscadorFacturas from '../components/BuscadorFacturas.jsx'
+import useDebounce from '../hooks/useDebounce.js'
+import useResumenFactura from '../hooks/useResumenFactura.js'
+import ResumenFactura from '../components/ResumenFactura.jsx'
+import ComparacionModificacion from '../components/ComparacionModificacion.jsx'
 
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000 // 2 horas
 
@@ -9,6 +16,10 @@ const ESTADOS = {
   AnulacionSolicitada: { texto: 'Anulación solicitada', clase: 'badge-estado--solicitada' },
   Anulado: { texto: 'Anulada', clase: '' },
 }
+
+// TDSI-48: panel "Mis respuestas de anulación" (va aparte de los imports de arriba para no
+// chocar al unir ramas que tambien los modifican).
+import MisRespuestasAnulacion from '../components/MisRespuestasAnulacion.jsx'
 
 function dentroDelPlazo(fecha) {
   return Date.now() - new Date(fecha).getTime() <= PLAZO_ANULACION_MS
@@ -46,10 +57,20 @@ function Facturas() {
   const [filtroDesde, setFiltroDesde] = useState('')
   const [filtroHasta, setFiltroHasta] = useState('')
 
+  // TDSI-46: buscador por número, NIT/CI o nombre. La búsqueda la resuelve el backend
+  // (parámetro "q"); aquí solo se espera 400 ms tras dejar de escribir (TDSI-868).
+  const [busqueda, setBusqueda] = useState('')
+  const busquedaDebounced = useDebounce(busqueda, 400)
+  const termino = busqueda.trim() === '' ? '' : busquedaDebounced.trim() // vacío = todo al instante
+  const peticionActual = useRef(0) // evita que una respuesta vieja pise a una más nueva
+
   // Paso 1: factura elegida + ventana emergente de credenciales del supervisor.
   const [facturaParaAnular, setFacturaParaAnular] = useState(null)
   const [credenciales, setCredenciales] = useState(CREDENCIALES_INICIAL)
   const [errorCredenciales, setErrorCredenciales] = useState(null)
+  // TDSI-48/896-897: motivo de la anulación -- con un clic en una respuesta guardada se
+  // completa solo; si ninguna sirve, el cajero lo escribe a mano (10 a 100 caracteres).
+  const [motivoAnulacion, setMotivoAnulacion] = useState('')
 
   // Paso 2: pregunta de seguridad final, antes de anular de verdad.
   const [pidiendoConfirmacion, setPidiendoConfirmacion] = useState(false)
@@ -64,34 +85,61 @@ function Facturas() {
   const [modificando, setModificando] = useState(false)
   const [tiempoRestante, setTiempoRestante] = useState(null)
 
+  // TDSI-59: resumen de la factura que se muestra antes del PIN del supervisor
+  // (anulación o modificación; solo hay una ventana abierta a la vez).
+  const {
+    resumen,
+    cargando: cargandoResumen,
+    error: errorResumen,
+    reintentar: reintentarResumen,
+  } = useResumenFactura(
+    facturaParaAnular?.id_transaccion ?? facturaParaModificar?.id_transaccion ?? null,
+    cajero?.nombre,
+  )
+  // TDSI-909: se muestra el N° de factura, no el número interno de la transacción
+  const numeroFactura =
+    resumen?.numero_factura ??
+    resumen?.nro_factura ??
+    resumen?.numero ??
+    facturaParaAnular?.numero_factura ??
+    facturaParaModificar?.numero_factura ??
+    null
+
   async function cargarFacturas() {
     if (!cajero) return
+    const numeroPeticion = ++peticionActual.current
     setCargando(true)
     try {
-      const respuesta = await listarMisFacturas(cajero.nombre, { desde: filtroDesde, hasta: filtroHasta })
+      // TDSI-869: la búsqueda (q) viaja junto al rango de fechas, no lo reemplaza.
+      const respuesta = await listarMisFacturas(cajero.nombre, { desde: filtroDesde, hasta: filtroHasta, q: termino })
+      if (numeroPeticion !== peticionActual.current) return
       setFacturas(respuesta.data)
       setErrorCarga(null)
     } catch (err) {
+      if (numeroPeticion !== peticionActual.current) return
       setErrorCarga(err.message)
     } finally {
-      setCargando(false)
+      if (numeroPeticion === peticionActual.current) setCargando(false)
     }
   }
 
   useEffect(() => {
     cargarFacturas()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cajero, filtroDesde, filtroHasta])
+  }, [cajero, filtroDesde, filtroHasta, termino])
 
+  // TDSI-870: "Limpiar" también vacía el buscador.
   function limpiarFiltro() {
     setFiltroDesde('')
     setFiltroHasta('')
+    setBusqueda('')
   }
 
   function abrirVentanaCredenciales(factura) {
     setFacturaParaAnular(factura)
     setCredenciales(CREDENCIALES_INICIAL)
     setErrorCredenciales(null)
+    setMotivoAnulacion('')
     setPidiendoConfirmacion(false)
     setMensaje(null)
   }
@@ -100,6 +148,7 @@ function Facturas() {
     setFacturaParaAnular(null)
     setPidiendoConfirmacion(false)
     setErrorCredenciales(null)
+    setMotivoAnulacion('')
   }
 
   function actualizarCredencial(campo, valor) {
@@ -110,6 +159,11 @@ function Facturas() {
   // "¿está seguro?" y recién ahí se llama al backend con el PIN.
   function aceptarCredenciales(event) {
     event.preventDefault()
+    const errorMotivo = validarMotivoAnulacion(motivoAnulacion)
+    if (errorMotivo) {
+      setErrorCredenciales(errorMotivo)
+      return
+    }
     if (!credenciales.supervisor_id.trim() || !credenciales.pin.trim()) {
       setErrorCredenciales('Ingrese el usuario y el PIN del supervisor.')
       return
@@ -125,6 +179,7 @@ function Facturas() {
         cajero: cajero?.nombre,
         supervisor_id: credenciales.supervisor_id.trim(),
         pin: credenciales.pin.trim(),
+        motivo: motivoAnulacion.trim(),
       })
       setMensaje({ ok: true, texto: `La factura ${facturaParaAnular.id_transaccion} fue anulada.` })
       cerrarTodo()
@@ -225,6 +280,7 @@ function Facturas() {
     <section>
       <h1>Facturas</h1>
       <p className="resumen-turno-actual">Ventas emitidas por {cajero ? cajero.nombre : 'sin sesión iniciada'}.</p>
+      {cajero && <MisRespuestasAnulacion cajeroId={cajero.nombre} />}
 
       <div className="filtro-fechas">
         <label className="campo">
@@ -235,9 +291,14 @@ function Facturas() {
           Hasta
           <input type="date" value={filtroHasta} min={filtroDesde || undefined} onChange={(e) => setFiltroHasta(e.target.value)} />
         </label>
-        {(filtroDesde || filtroHasta) && (
+        {/* TDSI-170: buscador con lupa junto al filtro de fechas */}
+        <label className="campo">
+          Buscar
+          <BuscadorFacturas valor={busqueda} onChange={setBusqueda} />
+        </label>
+        {(filtroDesde || filtroHasta || busqueda) && (
           <button type="button" className="btn btn-secundario" onClick={limpiarFiltro}>
-            Quitar filtro
+            Limpiar
           </button>
         )}
       </div>
@@ -248,7 +309,13 @@ function Facturas() {
       {errorCarga && <p className="error">Error: {errorCarga}</p>}
 
       {!cargando && !errorCarga && facturas.length === 0 && (
-        <p>{filtroDesde || filtroHasta ? 'No hay facturas en ese rango de fechas.' : 'Todavía no emitiste ninguna factura.'}</p>
+        <p className={termino ? 'facturas-sin-resultados' : undefined}>
+          {termino
+            ? 'No se encontraron facturas' // TDSI-871
+            : filtroDesde || filtroHasta
+              ? 'No hay facturas en ese rango de fechas.'
+              : 'Todavía no emitiste ninguna factura.'}
+        </p>
       )}
 
       {facturas.length > 0 && (
@@ -309,12 +376,40 @@ function Facturas() {
       {/* Ventana emergente 1: usuario + PIN del supervisor de caja */}
       {facturaParaAnular && !pidiendoConfirmacion && (
         <div className="modal-overlay">
-          <form className="modal-caja" onSubmit={aceptarCredenciales}>
+          <form className="modal-caja modal-caja-ancho" onSubmit={aceptarCredenciales}>
             <h2>Autorización de supervisor</h2>
-            <p>
-              Para anular la factura <strong>{facturaParaAnular.id_transaccion}</strong> se necesita el usuario y el PIN
-              de un supervisor de caja.
-            </p>
+            <p className="factura-numero-destacado">Factura N° {cargandoResumen ? '…' : (numeroFactura ?? '—')}</p>
+
+            {/* TDSI-196 / 907 / 910: resumen de la factura antes de los campos de PIN */}
+            <ResumenFactura
+              resumen={resumen}
+              cargando={cargandoResumen}
+              error={errorResumen}
+              onReintentar={reintentarResumen}
+              factura={facturaParaAnular}
+            />
+
+            <p>Para anular esta factura se necesita el usuario y el PIN de un supervisor de caja.</p>
+
+            <RespuestasAnulacionBotones
+              cajeroId={cajero?.nombre}
+              onElegir={(texto) => setMotivoAnulacion(texto)}
+              disabled={anulando}
+            />
+
+            <label className="campo">
+              Motivo de la anulación
+              <textarea
+                rows={2}
+                maxLength={LARGO_MAXIMO_ANULACION}
+                value={motivoAnulacion}
+                onChange={(e) => setMotivoAnulacion(e.target.value)}
+                placeholder="Elegí una respuesta de arriba o escribí el motivo (mínimo 10 caracteres)"
+              />
+              <span className="respuestas-contador">
+                {motivoAnulacion.trim().length}/{LARGO_MAXIMO_ANULACION}
+              </span>
+            </label>
 
             <label className="campo">
               Usuario del supervisor
@@ -344,7 +439,7 @@ function Facturas() {
               <button type="button" className="btn btn-secundario" onClick={cerrarTodo}>
                 Cancelar
               </button>
-              <button type="submit" className="btn">
+              <button type="submit" className="btn" disabled={cargandoResumen}>
                 Aceptar
               </button>
             </div>
@@ -358,9 +453,10 @@ function Facturas() {
           <div className="modal-caja">
             <h2>¿Está seguro?</h2>
             <p>
-              ¿Desea anular la factura número <strong>{facturaParaAnular.id_transaccion}</strong>? Esta acción no se
+              ¿Desea anular la factura número <strong>{numeroFactura ?? facturaParaAnular.id_transaccion}</strong>? Esta acción no se
               puede deshacer.
             </p>
+            <p>Motivo: «{motivoAnulacion.trim()}»</p>
 
             <div className="pago-exito-acciones">
               <button type="button" className="btn btn-secundario" onClick={cerrarTodo} disabled={anulando}>
@@ -377,14 +473,23 @@ function Facturas() {
       {/* TDSI-37: modificar los datos de facturacion de una venta, con PIN de supervisor */}
       {facturaParaModificar && formModificar && (
         <div className="modal-overlay">
-          <form className="modal-caja" onSubmit={enviarModificacion}>
-            <h2>Modificar factura {facturaParaModificar.id_transaccion}</h2>
+          <form className="modal-caja modal-caja-ancho" onSubmit={enviarModificacion}>
+            <h2>Modificar factura</h2>
+            <p className="factura-numero-destacado">Factura N° {cargandoResumen ? '…' : (numeroFactura ?? '—')}</p>
 
             {tiempoRestante ? (
               <p className="ayuda-mixto">{tiempoRestante} para poder modificar esta factura.</p>
             ) : (
               <p className="error">Ya pasaron las 2 horas desde la emisión: no se puede modificar.</p>
             )}
+
+            <ResumenFactura
+              resumen={resumen}
+              cargando={cargandoResumen}
+              error={errorResumen}
+              onReintentar={reintentarResumen}
+              factura={facturaParaModificar}
+            />
 
             <div className="tipo-venta-opciones">
               {TIPOS_DOCUMENTO_MOD.map((tipo) => (
@@ -427,6 +532,19 @@ function Facturas() {
                 onChange={(e) => actualizarFormModificar('telefono', e.target.value)}
               />
             </label>
+
+            {/* TDSI-908 / 914: dato actual y dato nuevo lado a lado, antes del PIN */}
+            {/* TDSI-904: "actual" sale de lo guardado en la BD (resumen.datos_actuales); la fila
+                de la tabla puede estar desactualizada si la factura se modifico despues de cargarla */}
+            <ComparacionModificacion
+              actual={{
+                tipoDocumento: (resumen?.datos_actuales ?? facturaParaModificar).tipo_documento || 'NIT',
+                numeroDocumento: (resumen?.datos_actuales ?? facturaParaModificar).nit || '',
+                razonSocial: (resumen?.datos_actuales ?? facturaParaModificar).razon_social || '',
+                telefono: (resumen?.datos_actuales ?? facturaParaModificar).telefono || '',
+              }}
+              nuevo={formModificar}
+            />
 
             <label className="campo">
               Usuario del supervisor

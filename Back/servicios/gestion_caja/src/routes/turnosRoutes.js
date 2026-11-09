@@ -40,6 +40,12 @@ router.get("/turnos/:turnoId/recaudado", wrap(async (req, res) => {
   res.json({ ok: true, data });
 }));
 
+// TDSI-49/175: facturas anuladas del turno, para el boton "Ver anuladas" del cierre de caja.
+router.get("/turnos/:turnoId/anuladas", wrap(async (req, res) => {
+  const data = await cierre.listarAnuladas(req.params.turnoId);
+  res.json({ ok: true, data });
+}));
+
 // TDSI-878: con { arqueo: [{ denominacion, cantidad }] } compara el total del arqueo.
 router.post("/turnos/:turnoId/comparar-efectivo", wrap(async (req, res) => {
   const data = req.body.arqueo !== undefined
