@@ -4,7 +4,7 @@ import { generarReporteCierre, cerrarTurno, urlReporteCierrePdf } from '../api/c
 import { obtenerTurnoActual } from '../api/turnos.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ArqueoEfectivo, { ResumenArqueo } from '../components/ArqueoEfectivo.jsx'
-import { arqueoEsValido, arqueoTieneConteo, totalContadoCentavos, detalleArqueo } from '../utils/arqueo.js' // <-- Se importó detalleArqueo aquí
+import { arqueoEsValido, arqueoTieneConteo, totalContadoCentavos, detalleArqueo } from '../utils/arqueo.js'
 
 function CierreCaja() {
   const { cajero, cerrarSesion } = useAuth()
@@ -72,7 +72,6 @@ function CierreCaja() {
     setCargando(true)
     setError(null)
     try {
-      // AQUÍ ESTÁN LAS DOS LÍNEAS DE INTEGRACIÓN CON EL BACKEND DE JOSÉ
       const arqueo = detalleArqueo(cantidades)
       await cerrarTurno(turnoId, { supervisor_id: supervisorId.trim(), pin: pin.trim(), efectivo_contado: Number(efectivoContado), arqueo })
       
