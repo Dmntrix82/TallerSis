@@ -2,6 +2,8 @@ const { AppError } = require("../utils/AppError");
 const { aCentavos, aMonto } = require("../utils/money");
 const turnosRepo = require("../data/turnosRepo");
 const diferenciasRepo = require("../data/diferenciasRepo");
+const arqueoRepo = require("../data/arqueoRepo");
+const { tipoDe } = require("../utils/denominaciones");
 const { obtenerReporteVentas, obtenerAnuladasTurno } = require("./pagosProxy");
 const { validarSupervisor } = require("./supervisorProxy");
 
@@ -40,6 +42,62 @@ async function calcularTotalRecaudado(turnoId) {
       montoAnulado: reporteVentas.montoAnulado,
     },
   };
+}
+
+// TDSI-879: tope por denominacion, para frenar un numero escrito de mas (ej. 1000000).
+const CANTIDAD_MAX = 100000;
+
+/** TDSI-879: la cantidad de billetes o monedas tiene que ser un entero >= 0 (vacio cuenta como 0). */
+function validarCantidad(valor, denominacion) {
+  if (valor === undefined || valor === null || valor === "") return 0;
+  const unidad = `${tipoDe(denominacion) === "BILLETE" ? "billetes" : "monedas"} de Bs ${denominacion.toFixed(2)}`;
+  const texto = typeof valor === "string" ? valor.trim() : valor;
+  const cantidad = typeof texto === "number" || (typeof texto === "string" && /^-?\d+(\.\d+)?$/.test(texto)) ? Number(texto) : NaN;
+  if (!Number.isInteger(cantidad) || cantidad < 0) {
+    throw new AppError(`Solo números enteros: la cantidad de ${unidad} debe ser un entero mayor o igual a 0.`, 400, { denominacion, cantidad: valor });
+  }
+  if (cantidad > CANTIDAD_MAX) {
+    throw new AppError(`La cantidad de ${unidad} no puede pasar de ${CANTIDAD_MAX}.`, 400, { denominacion, cantidad: valor });
+  }
+  return cantidad;
+}
+
+/**
+ * TDSI-877: arma el arqueo a partir de lo que conto el cajero.
+ * detalle: [{ denominacion: 100, cantidad: 3 }, ...] -> filas con subtotal (solo las que
+ * tienen cantidad) y el total contado. Se suma en centavos para no perder las monedas de
+ * 0.10, 0.20 y 0.50 por redondeo.
+ * Una lista vacia es un arqueo valido de Bs 0.00: el front solo manda las filas con
+ * cantidad, asi que si el cajero conto 0 en todo llega [] (caja sin efectivo).
+ */
+function calcularArqueo(detalle) {
+  if (!Array.isArray(detalle)) {
+    throw new AppError("El arqueo debe ser una lista de { denominacion, cantidad }.", 400);
+  }
+
+  let totalC = 0;
+  const filas = [];
+  const vistas = new Set();
+  for (const item of detalle) {
+    if (!item || typeof item !== "object") {
+      throw new AppError("Cada fila del arqueo debe ser { denominacion, cantidad }.", 400);
+    }
+    const denominacion = Number(item.denominacion);
+    if (!tipoDe(denominacion)) {
+      throw new AppError(`${item.denominacion} no es un billete ni una moneda de Bs.`, 400, { denominacion: item.denominacion });
+    }
+    if (vistas.has(denominacion)) {
+      throw new AppError(`La denominacion de Bs ${denominacion.toFixed(2)} esta repetida en el arqueo.`, 400, { denominacion });
+    }
+    vistas.add(denominacion);
+    const cantidad = validarCantidad(item.cantidad, denominacion);
+    const subtotalC = aCentavos(denominacion) * cantidad;
+    totalC += subtotalC;
+    if (cantidad > 0) filas.push({ denominacion, cantidad, subtotal: aMonto(subtotalC) });
+  }
+
+  filas.sort((a, b) => b.denominacion - a.denominacion);
+  return { filas, totalContado: aMonto(totalC) };
 }
 
 /**
@@ -95,13 +153,42 @@ async function compararEfectivo(turnoId, efectivoContado) {
   };
 }
 
+/**
+ * TDSI-878: compara el total del arqueo por denominacion con el efectivo esperado del
+ * turno, para mostrar cuadra / faltante / sobrante antes de confirmar el cierre.
+ */
+async function compararArqueo(turnoId, detalle) {
+  const { filas, totalContado } = calcularArqueo(detalle);
+  const comparacion = await compararEfectivo(turnoId, totalContado);
+  return { ...comparacion, denominaciones: filas };
+}
+
+/**
+ * TDSI-880: billetes y monedas contados en el turno, para el reporte de cierre.
+ * null si el turno se cerro sin arqueo por denominacion.
+ */
+async function obtenerArqueoDenominaciones(turnoId) {
+  const filas = await arqueoRepo.listarPorTurno(turnoId);
+  if (filas.length === 0) return null;
+  const totalC = filas.reduce((acc, f) => acc + aCentavos(f.subtotal), 0);
+  return { detalle: filas.map((f) => ({ ...f, tipo: tipoDe(f.denominacion) })), totalContado: aMonto(totalC) };
+}
+
 /** TDSI-321: arma el reporte de cierre con totales por método (datos estructurados). */
 async function generarReporteCierre(turnoId, efectivoContado = null) {
   const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
   if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
 
   const recaudado = await calcularTotalRecaudado(turnoId);
-  const arqueo = efectivoContado != null ? await compararEfectivo(turnoId, efectivoContado) : null;
+  // TDSI-880: un turno ya cerrado usa el efectivo contado que se guardo al cerrarlo,
+  // asi el reporte (PDF o texto) muestra su arqueo aunque no se mande el monto.
+  const contado = efectivoContado != null
+    ? efectivoContado
+    : turno.efectivo_contado != null ? Number(turno.efectivo_contado) : null;
+  const arqueo = contado != null ? await compararEfectivo(turnoId, contado) : null;
+  // Solo un turno cerrado tiene arqueo definitivo: si quedo uno de un intento de cierre que
+  // fallo, la vista previa de un turno abierto no lo muestra (el cajero esta contando de nuevo).
+  const arqueoDenominaciones = turno.estado === "CERRADO" ? await obtenerArqueoDenominaciones(turnoId) : null;
   // TDSI-931: la lista de anuladas (con motivo y supervisor) va en el reporte de cierre.
   const anuladas = await listarAnuladas(turnoId);
 
@@ -121,6 +208,7 @@ async function generarReporteCierre(turnoId, efectivoContado = null) {
     resumenVentas: recaudado.resumenVentas,
     anuladas: anuladas.anuladas,
     arqueoEfectivo: arqueo,
+    arqueoDenominaciones,
   };
 }
 
@@ -185,6 +273,17 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
     L.push(col(`  ${r.arqueoEfectivo.tipoDiferencia}`, r.arqueoEfectivo.diferencia.toFixed(2)));
   }
 
+  // TDSI-880: detalle de billetes y monedas contados
+  if (r.arqueoDenominaciones) {
+    L.push(linea());
+    L.push("DETALLE DEL CONTEO");
+    for (const d of r.arqueoDenominaciones.detalle) {
+      const nombre = `${d.tipo === "BILLETE" ? "Billete" : "Moneda"} Bs ${d.denominacion.toFixed(2)}`;
+      L.push(col(`  ${nombre} x ${d.cantidad}`, d.subtotal.toFixed(2)));
+    }
+    L.push(col("  TOTAL CONTADO", r.arqueoDenominaciones.totalContado.toFixed(2)));
+  }
+
   L.push(linea("="));
   return L.join("\n");
 }
@@ -194,8 +293,10 @@ async function generarReporteTexto(turnoId, efectivoContado = null) {
  * la apertura, el cajero no puede cerrar la caja solo: necesita que un supervisor
  * ponga su usuario + PIN (validado via supervisorProxy.js). Ya no pide el monto
  * contado en efectivo: el cierre se basa solo en lo que registro el sistema.
+ * TDSI-877: tambien recibe el arqueo por denominacion ("arqueo"), lo guarda en
+ * caja.arqueo_denominaciones y devuelve el total contado.
  */
-async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {}) {
+async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado, arqueo: detalleArqueo } = {}) {
   const turno = await turnosRepo.obtenerTurnoPorId(turnoId);
   if (!turno) throw new AppError("Turno no encontrado", 404, { turnoId });
   if (turno.estado === "CERRADO") throw new AppError("El turno ya fue cerrado", 409, { turnoId });
@@ -210,10 +311,27 @@ async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {
     throw new AppError("El efectivo contado debe ser un numero mayor o igual a 0", 400);
   }
 
+  const conteo = detalleArqueo !== undefined && detalleArqueo !== null ? calcularArqueo(detalleArqueo) : null;
+  // TDSI-878: con arqueo, el efectivo contado ES su total; si tambien mandan
+  // efectivo_contado, tiene que coincidir para no guardar dos montos distintos.
+  if (conteo && hayContado && aCentavos(efectivo_contado) !== aCentavos(conteo.totalContado)) {
+    throw new AppError(
+      `El efectivo contado (${Number(efectivo_contado).toFixed(2)}) no coincide con el total del arqueo (${conteo.totalContado.toFixed(2)}).`,
+      400,
+      { efectivo_contado: Number(efectivo_contado), total_arqueo: conteo.totalContado }
+    );
+  }
+  const contado = conteo ? conteo.totalContado : hayContado ? Number(efectivo_contado) : null;
+
   const supervisor = await validarSupervisor({ supervisor_id, pin });
 
-  // Si viene efectivo_contado, calculamos la diferencia
-  const arqueo = hayContado ? await compararEfectivo(turnoId, Number(efectivo_contado)) : null;
+  // Si viene el arqueo o efectivo_contado, calculamos la diferencia contra lo esperado.
+  // Va antes de guardar el arqueo: si gestion_pagos no responde, el cierre falla sin
+  // dejar billetes y monedas guardados en un turno que sigue abierto.
+  const arqueo = contado !== null ? await compararEfectivo(turnoId, contado) : null;
+
+  // Se guarda justo antes de marcar el turno cerrado: si eso falla, un reintento lo reemplaza.
+  const denominaciones = conteo ? await arqueoRepo.reemplazarArqueo(turnoId, conteo.filas) : [];
 
   const turnoCerrado = await turnosRepo.marcarCerrado(turnoId, {
     efectivoContado: arqueo ? arqueo.efectivoContado : null,
@@ -235,7 +353,11 @@ async function cerrarTurno(turnoId, { supervisor_id, pin, efectivo_contado } = {
     });
   }
 
-  return { turno: turnoCerrado, reporte };
+  return {
+    turno: turnoCerrado,
+    reporte,
+    arqueoDenominaciones: conteo ? { detalle: denominaciones, totalContado: conteo.totalContado } : null,
+  };
 }
 
-module.exports = { calcularTotalRecaudado, listarAnuladas, compararEfectivo, generarReporteCierre, generarReporteTexto, cerrarTurno };
+module.exports = { calcularTotalRecaudado, calcularArqueo, compararEfectivo, compararArqueo, listarAnuladas, generarReporteCierre, generarReporteTexto, cerrarTurno };

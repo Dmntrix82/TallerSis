@@ -258,6 +258,27 @@ CREATE INDEX IF NOT EXISTS idx_aprobaciones_especiales_estado
   ON caja.aprobaciones_especiales (estado, tipo, creado_en DESC);
 
 -- ==========================================================================
+-- TDSI-60 / TDSI-197: arqueo de efectivo por billetes y monedas
+-- --------------------------------------------------------------------------
+-- Al cerrar la caja el cajero cuenta cuantos billetes y monedas de cada valor
+-- tiene; cada fila guarda una denominacion del turno con su cantidad y su
+-- subtotal (denominacion x cantidad). La suma de los subtotales es el
+-- efectivo contado del turno (caja.turnos.efectivo_contado). Idempotente.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS caja.arqueo_denominaciones (
+    id              BIGSERIAL PRIMARY KEY,
+    turno_id        BIGINT        NOT NULL REFERENCES caja.turnos(id) ON DELETE CASCADE,
+    denominacion    NUMERIC(6,2)  NOT NULL
+                     CHECK (denominacion IN (200, 100, 50, 20, 10, 5, 2, 1, 0.50, 0.20, 0.10)),
+    cantidad        INT           NOT NULL CHECK (cantidad >= 0),
+    subtotal        NUMERIC(14,2) NOT NULL,
+    creado_en       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_arqueo_turno_denominacion UNIQUE (turno_id, denominacion),
+    CONSTRAINT ck_arqueo_subtotal CHECK (subtotal = denominacion * cantidad)
+);
+ALTER TABLE caja.arqueo_denominaciones ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================================================
 -- TDSI-58/193: meta de ventas diaria por caja ("Metas de venta"). Una caja
 -- tiene a lo sumo una meta vigente (se edita, no se versiona por fecha --
 -- "Editar meta" la cambia para adelante). caja_id es texto suelto, sin FK,

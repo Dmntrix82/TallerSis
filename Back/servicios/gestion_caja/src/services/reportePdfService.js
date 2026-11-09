@@ -100,6 +100,17 @@ function generarReporteCierrePdfBuffer(reporte, { cajeroNombre, cajeroUsuario })
     doc.fillColor("#000000");
   }
 
+  // TDSI-880: detalle de billetes y monedas contados en el arqueo
+  if (reporte.arqueoDenominaciones) {
+    subtitulo(doc, "Detalle del conteo (billetes y monedas)");
+    for (const d of reporte.arqueoDenominaciones.detalle) {
+      const nombre = `${d.tipo === "BILLETE" ? "Billete" : "Moneda"} de ${bs(d.denominacion)}`;
+      fila(doc, `${nombre}  x ${d.cantidad}`, bs(d.subtotal));
+    }
+    linea(doc);
+    fila(doc, "Total contado", bs(reporte.arqueoDenominaciones.totalContado), { negrita: true });
+  }
+
   doc.moveDown(3);
   linea(doc);
   doc.moveDown(2.5);
