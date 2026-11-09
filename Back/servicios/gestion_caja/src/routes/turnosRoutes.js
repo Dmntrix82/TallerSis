@@ -4,6 +4,7 @@ const cierre = require("../services/cierreService");
 const movimientoService = require("../services/movimientoService");
 const { listarCajasActivas } = require("../services/cajaService");
 const { generarReporteCierrePdfBuffer } = require("../services/reportePdfService");
+const { DENOMINACIONES } = require("../utils/denominaciones");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -12,6 +13,11 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(nex
 router.get("/cajas", wrap(async (req, res) => {
   res.json({ ok: true, data: await listarCajasActivas() });
 }));
+
+// TDSI-60: billetes y monedas de Bs para armar la tabla "Arqueo de efectivo" del cierre.
+router.get("/arqueo/denominaciones", (req, res) => {
+  res.json({ ok: true, data: DENOMINACIONES });
+});
 
 // TDSI-311/312: apertura de turno
 router.post("/turnos/apertura", wrap(async (req, res) =>
@@ -34,8 +40,17 @@ router.get("/turnos/:turnoId/recaudado", wrap(async (req, res) => {
   res.json({ ok: true, data });
 }));
 
+// TDSI-49/175: facturas anuladas del turno, para el boton "Ver anuladas" del cierre de caja.
+router.get("/turnos/:turnoId/anuladas", wrap(async (req, res) => {
+  const data = await cierre.listarAnuladas(req.params.turnoId);
+  res.json({ ok: true, data });
+}));
+
+// TDSI-878: con { arqueo: [{ denominacion, cantidad }] } compara el total del arqueo.
 router.post("/turnos/:turnoId/comparar-efectivo", wrap(async (req, res) => {
-  const data = await cierre.compararEfectivo(req.params.turnoId, req.body.efectivoContado);
+  const data = req.body.arqueo !== undefined
+    ? await cierre.compararArqueo(req.params.turnoId, req.body.arqueo)
+    : await cierre.compararEfectivo(req.params.turnoId, req.body.efectivoContado);
   res.json({ ok: true, data });
 }));
 
@@ -61,6 +76,7 @@ router.post("/turnos/:turnoId/cerrar", wrap(async (req, res) => {
     supervisor_id: req.body.supervisor_id,
     pin: req.body.pin,
     efectivo_contado: req.body.efectivo_contado,
+    arqueo: req.body.arqueo, // TDSI-877: [{ denominacion, cantidad }]
   });
   res.json({ ok: true, mensaje: "Turno cerrado", data });
 }));

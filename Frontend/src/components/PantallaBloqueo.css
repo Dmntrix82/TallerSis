@@ -1,0 +1,55 @@
+/* Pantalla de bloqueo del cajero (TDSI-53). Va en su propio archivo para no tocar App.css. */
+.pantalla-bloqueo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: var(--color-brand-dark);
+}
+
+.pantalla-bloqueo-caja {
+  width: 100%;
+  max-width: 360px;
+  padding: 2rem 1.75rem;
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(11, 11, 11, 0.3);
+  text-align: center;
+}
+
+.pantalla-bloqueo-caja h2 {
+  margin: 0.5rem 0 1rem;
+}
+
+.pantalla-bloqueo-icono {
+  color: var(--color-brand-dark);
+}
+
+.pantalla-bloqueo-cajero {
+  margin: 0;
+  font-weight: 700;
+  color: #1f2933;
+  overflow-wrap: anywhere;
+}
+
+.pantalla-bloqueo-caja-nombre {
+  margin: 0.25rem 0 0;
+  color: #616e7c;
+}
+
+.pantalla-bloqueo-ayuda {
+  margin: 1rem 0;
+  color: #616e7c;
+  font-size: 0.85rem;
+}
+
+.pantalla-bloqueo-caja .campo {
+  text-align: left;
+}
+
+.pantalla-bloqueo-caja .btn {
+  width: 100%;
+}

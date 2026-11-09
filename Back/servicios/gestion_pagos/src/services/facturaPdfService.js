@@ -90,7 +90,11 @@ function dibujarContenido(doc, { factura, dia, hora, qrBuffer }) {
   filaDosColumnas(doc, "Método de pago", "Monto Bs.");
   doc.font("Helvetica").fontSize(8);
   factura.pagos.forEach((p) => {
-    filaDosColumnas(doc, p.metodo, p.monto.toFixed(2));
+    let etiqueta = p.metodo;
+    if (p.metodo === "Efectivo" && p.moneda_recibida === "USD") {
+      etiqueta += ` (Pagado en USD: ${Number(p.monto_usd).toFixed(2)} USD, T.C. ${p.tipo_cambio})`;
+    }
+    filaDosColumnas(doc, etiqueta, p.monto.toFixed(2));
   });
 
   lineaPunteada(doc);

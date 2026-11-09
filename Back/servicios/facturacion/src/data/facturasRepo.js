@@ -1,8 +1,17 @@
 const { query, withTransaction } = require("../config/db");
 
-/** TDSI-89/281: crea la factura con el NIT/Razon Social del cliente y sus items */
+/**
+ * TDSI-89/281: crea la factura con el NIT/Razon Social del cliente y sus items.
+ * El numero correlativo se arma leyendo el ultimo + 1 (no hay columna GENERATED
+ * para "F-NNNNNN"), asi que dos facturas creadas al mismo tiempo podrian leer el
+ * mismo "ultimo" y chocar en el numero -- el advisory lock serializa esta seccion
+ * (leer el ultimo numero + insertar) entre transacciones concurrentes, sin bloquear
+ * el resto de la tabla.
+ */
 async function crearFactura({ cliente_nit, cliente_nombre, items, subtotal, descuento, impuesto, total }) {
   return withTransaction(async (client) => {
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('facturacion.facturas.numero'))`);
+
     const { rows: ultimas } = await client.query(
       `SELECT numero FROM facturacion.facturas ORDER BY id DESC LIMIT 1`
     );

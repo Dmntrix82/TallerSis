@@ -74,6 +74,18 @@ function generarReporteCierrePdfBuffer(reporte, { cajeroNombre, cajeroUsuario })
     fila(doc, "Monto anulado (no contado)", bs(reporte.resumenVentas.montoAnulado));
   }
 
+  // TDSI-931: detalle de cada factura anulada (N°, hora, total, motivo, supervisor).
+  if (reporte.anuladas && reporte.anuladas.length > 0) {
+    subtitulo(doc, "Facturas anuladas");
+    for (const f of reporte.anuladas) {
+      fila(doc, `${f.numero_factura}  (${new Date(f.hora).toLocaleTimeString("es-BO")})`, bs(f.total), { negrita: true });
+      doc.font("Helvetica").fontSize(9).fillColor("#616e7c");
+      doc.text(`Motivo: ${f.motivo || "-"}  ·  Autorizó: ${f.supervisor || "-"}`, MARGEN, doc.y, { width: ANCHO_UTIL });
+      doc.fillColor("#000000");
+      doc.moveDown(0.3);
+    }
+  }
+
   if (reporte.arqueoEfectivo) {
     subtitulo(doc, "Arqueo de efectivo");
     fila(doc, "Efectivo inicial", bs(reporte.arqueoEfectivo.efectivoInicial));
@@ -86,6 +98,17 @@ function generarReporteCierrePdfBuffer(reporte, { cajeroNombre, cajeroUsuario })
     doc.fillColor(colorDif);
     fila(doc, reporte.arqueoEfectivo.tipoDiferencia, bs(reporte.arqueoEfectivo.diferencia), { negrita: true });
     doc.fillColor("#000000");
+  }
+
+  // TDSI-880: detalle de billetes y monedas contados en el arqueo
+  if (reporte.arqueoDenominaciones) {
+    subtitulo(doc, "Detalle del conteo (billetes y monedas)");
+    for (const d of reporte.arqueoDenominaciones.detalle) {
+      const nombre = `${d.tipo === "BILLETE" ? "Billete" : "Moneda"} de ${bs(d.denominacion)}`;
+      fila(doc, `${nombre}  x ${d.cantidad}`, bs(d.subtotal));
+    }
+    linea(doc);
+    fila(doc, "Total contado", bs(reporte.arqueoDenominaciones.totalContado), { negrita: true });
   }
 
   doc.moveDown(3);

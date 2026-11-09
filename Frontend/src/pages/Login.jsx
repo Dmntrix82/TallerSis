@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { loginCajero } from '../api/auth.js'
 import { loginAdministrador } from '../api/authAdministrador.js'
 import { listarCajas } from '../api/caja.js'
@@ -68,6 +68,7 @@ function Login() {
   const { iniciarSesion: iniciarSesionCajero } = useAuth()
   const { iniciarSesion: iniciarSesionAdmin } = useAdminAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const emailRef = useRef(null)
   const passwordRef = useRef(null)
 
@@ -122,6 +123,7 @@ function Login() {
         const respuesta = await loginCajero(datos)
         iniciarSesionCajero({
           nombre: respuesta.data.cajero.email,
+          cajero_id: respuesta.data.cajero.cajero_id, // TDSI-53: lo pide el desbloqueo de pantalla
           caja: respuesta.data.caja.codigo,
           cajaNombre: respuesta.data.caja.nombre,
         })
@@ -257,6 +259,8 @@ function Login() {
 
             {errorValidacion && <p className="error">{errorValidacion}</p>}
             {errorApi && <p className="error">Error: {errorApi}</p>}
+            {/* TDSI-858: aviso cuando la sesion se cerro por fallar el desbloqueo 3 veces */}
+            {!errorApi && location.state?.mensaje && <p className="error">{location.state.mensaje}</p>}
 
             <button type="submit" className="btn login-btn" disabled={enviando}>
               {enviando ? 'Ingresando...' : 'Ingresar'}

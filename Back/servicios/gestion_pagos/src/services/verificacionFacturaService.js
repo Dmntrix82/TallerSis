@@ -3,6 +3,7 @@ const QRCode = require("qrcode");
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/pagosRepo");
 const { lineaAtendidoPor } = require("../utils/atendidoPor");
+const ventasOnlineRepo = require("../data/ventasOnlineRepo");
 
 // Para que el QR sirva de verdad al escanearlo desde un celular, la URL debe
 // ser publica (no "localhost"). En este proyecto academico se deja localhost
@@ -48,6 +49,20 @@ async function generarImagenQrVerificacion(token, { ancho = 160 } = {}) {
 }
 
 /**
+ * TDSI-51/684: mismo token+URL de verificacion, pero para una venta online (su propia
+ * fila en pagos.ventas_online, no pagos.transacciones) -- es lo que se publica en
+ * "pagos-facturas-emitidas" como el enlace "Verificar Factura" del Marketplace.
+ */
+async function obtenerOCrearTokenVentaOnline(ventaId) {
+  const existente = await ventasOnlineRepo.obtenerTokenVerificacion(ventaId);
+  if (existente) return existente;
+
+  const token = generarTokenVerificacion();
+  await ventasOnlineRepo.guardarTokenVerificacion(ventaId, token);
+  return ventasOnlineRepo.obtenerTokenVerificacion(ventaId);
+}
+
+/**
  * TDSI-528: lo que ve el cliente al escanear el QR. Es de solo lectura y
  * publico (sin login), asi que solo se devuelven los datos necesarios para
  * identificar la compra -- nada interno del negocio (el email del cajero en
@@ -57,30 +72,46 @@ async function generarImagenQrVerificacion(token, { ancho = 160 } = {}) {
  */
 async function obtenerFacturaPorToken(token) {
   const filas = await repo.buscarPorTokenVerificacion(token);
-  if (!filas.length) {
-    throw new AppError("No se encontró ninguna factura con ese código de verificación.", 404);
+  if (filas.length) {
+    const [primera] = filas;
+    const comprobante = { cajero_nombre: primera.cajero_nombre || "no registrado", caja_id: primera.caja_id || null };
+    return {
+      id_transaccion: primera.id_transaccion,
+      fecha: primera.fecha,
+      estado: primera.estado,
+      cliente: primera.razon_social || "Consumidor final",
+      nit: primera.nit,
+      total: filas.reduce((suma, f) => suma + Number(f.monto), 0),
+      metodos: filas.map((f) => ({ metodo: f.metodo, monto: Number(f.monto) })),
+      caja_id: comprobante.caja_id,
+      cajero_nombre: comprobante.cajero_nombre,
+      atendido_por: lineaAtendidoPor(comprobante),
+    };
   }
 
-  const [primera] = filas;
-  const comprobante = { cajero_nombre: primera.cajero_nombre || "no registrado", caja_id: primera.caja_id || null };
-  return {
-    id_transaccion: primera.id_transaccion,
-    fecha: primera.fecha,
-    estado: primera.estado,
-    cliente: primera.razon_social || "Consumidor final",
-    nit: primera.nit,
-    total: filas.reduce((suma, f) => suma + Number(f.monto), 0),
-    metodos: filas.map((f) => ({ metodo: f.metodo, monto: Number(f.monto) })),
-    caja_id: comprobante.caja_id,
-    cajero_nombre: comprobante.cajero_nombre,
-    atendido_por: lineaAtendidoPor(comprobante),
-  };
+  // TDSI-51/684: si no es una venta de mostrador, puede ser el token de una venta online.
+  const venta = await ventasOnlineRepo.buscarPorTokenVerificacion(token);
+  if (venta) {
+    return {
+      id_transaccion: venta.numero_factura || venta.orden_id,
+      fecha: venta.recibida_en,
+      estado: venta.estado,
+      cliente: venta.razon_social || venta.cliente_id || "Consumidor final",
+      nit: venta.nit,
+      total: venta.total,
+      metodos: [{ metodo: venta.metodo_pago, monto: venta.total }],
+      items: venta.items,
+    };
+  }
+
+  throw new AppError("No se encontró ninguna factura con ese código de verificación.", 404);
 }
 
 module.exports = {
   generarTokenVerificacion,
   urlVerificacion,
   obtenerOCrearToken,
+  obtenerOCrearTokenVentaOnline,
   generarImagenQrVerificacion,
   obtenerFacturaPorToken,
 };

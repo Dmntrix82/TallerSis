@@ -1,31 +1,39 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { generarReporteCierre, cerrarTurno, urlReporteCierrePdf } from '../api/caja.js'
+import { generarReporteCierre, cerrarTurno, urlReporteCierrePdf, obtenerAnuladasTurno } from '../api/caja.js'
 import { obtenerTurnoActual } from '../api/turnos.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import ArqueoEfectivo, { ResumenArqueo } from '../components/ArqueoEfectivo.jsx'
+import { arqueoEsValido, arqueoTieneConteo, totalContadoCentavos, detalleArqueo } from '../utils/arqueo.js'
 
 function CierreCaja() {
   const { cajero, cerrarSesion } = useAuth()
   const navigate = useNavigate()
 
-  // Tras cerrar la caja, el turno queda cerrado: se vuelve a la pantalla de
-  // login para empezar de nuevo (hace falta un supervisor para reabrir la caja).
   function volverAIniciarSesion() {
     cerrarSesion()
     navigate('/login')
   }
 
-  const [turnoActual, setTurnoActual] = useState(null) // { id, codigo } del turno abierto en la caja
+  const [turnoActual, setTurnoActual] = useState(null) 
   const [cargandoTurno, setCargandoTurno] = useState(true)
   const [errorTurno, setErrorTurno] = useState(null)
 
-  const [paso, setPaso] = useState('ingreso') // ingreso, reporte, listo
+  const [paso, setPaso] = useState('ingreso')
   const [supervisorId, setSupervisorId] = useState('')
   const [pin, setPin] = useState('')
-  const [efectivoContado, setEfectivoContado] = useState('')
+  const [cantidades, setCantidades] = useState({})
+  
+  const efectivoContado = totalContadoCentavos(cantidades) / 100
   const [reporte, setReporte] = useState(null)
   const [error, setError] = useState(null)
   const [cargando, setCargando] = useState(false)
+
+  // TDSI-49/176: ventana con el detalle de facturas anuladas del turno.
+  const [mostrandoAnuladas, setMostrandoAnuladas] = useState(false)
+  const [anuladas, setAnuladas] = useState(null)
+  const [cargandoAnuladas, setCargandoAnuladas] = useState(false)
+  const [errorAnuladas, setErrorAnuladas] = useState(null)
 
   // El turno (de caja) sale de la caja del cajero logueado, no se escribe a mano.
   useEffect(() => {
@@ -41,6 +49,7 @@ function CierreCaja() {
   }, [cajero?.caja])
 
   const turnoId = turnoActual?.id
+  const efectivoEsperado = reporte?.arqueoEfectivo?.efectivoEsperado ?? reporte?.totalesPorMetodo?.Efectivo?.neto ?? 0
 
   const manejarContinuar = async (e) => {
     e.preventDefault()
@@ -48,8 +57,8 @@ function CierreCaja() {
       setError('Ingrese el usuario y el PIN de un supervisor de caja para poder cerrar la caja.')
       return
     }
-    if (!efectivoContado || Number(efectivoContado) < 0) {
-      setError('Ingrese el efectivo contado en caja para poder cerrarla.')
+    if (!arqueoEsValido(cantidades) || !arqueoTieneConteo(cantidades)) {
+      setError('Complete el arqueo de efectivo con números enteros para poder cerrar la caja.')
       return
     }
 
@@ -70,19 +79,35 @@ function CierreCaja() {
     setCargando(true)
     setError(null)
     try {
-      await cerrarTurno(turnoId, { supervisor_id: supervisorId.trim(), pin: pin.trim(), efectivo_contado: Number(efectivoContado) })
-      // El reporte en PDF (con firma del cajero) se abre en una pestaña nueva
-      // apenas se cierra la caja, para que se pueda imprimir o guardar al toque.
+      const arqueo = detalleArqueo(cantidades)
+      await cerrarTurno(turnoId, { supervisor_id: supervisorId.trim(), pin: pin.trim(), efectivo_contado: Number(efectivoContado), arqueo })
+      
       window.open(urlReporteCierrePdf(turnoId, Number(efectivoContado)), '_blank', 'noopener,noreferrer')
       setPaso('listo')
     } catch (err) {
-      // Si el PIN es incorrecto (o vencio el intento), se vuelve a la pantalla de
-      // autorizacion para corregirlo, en vez de perder el reporte ya generado.
       setPaso('ingreso')
       setError(err.mensaje || err.message)
     } finally {
       setCargando(false)
     }
+  }
+
+  async function abrirAnuladas() {
+    setMostrandoAnuladas(true)
+    setCargandoAnuladas(true)
+    setErrorAnuladas(null)
+    try {
+      const { data } = await obtenerAnuladasTurno(turnoId)
+      setAnuladas(data)
+    } catch (err) {
+      setErrorAnuladas(err.mensaje || err.message)
+    } finally {
+      setCargandoAnuladas(false)
+    }
+  }
+
+  function cerrarAnuladas() {
+    setMostrandoAnuladas(false)
   }
 
   if (cargandoTurno) {
@@ -112,7 +137,7 @@ function CierreCaja() {
       {error && <div className="error" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px' }}>{error}</div>}
 
       {paso === 'ingreso' && (
-        <div style={{ maxWidth: '400px', margin: 'auto', padding: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+        <div style={{ maxWidth: '480px', margin: 'auto', padding: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
           <h3>Por favor, ingrese los datos del supervisor de caja para cerrar caja</h3>
           <p style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '1rem' }}>
             Pida a un supervisor de caja su usuario y PIN para poder cerrar el turno.
@@ -147,20 +172,14 @@ function CierreCaja() {
               />
             </label>
 
-            <label className="campo" style={{ display: 'block', marginBottom: '1rem' }}>
-              Efectivo contado en caja (Bs.)
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={efectivoContado}
-                onChange={(e) => {
-                  setEfectivoContado(e.target.value)
-                  setError(null)
-                }}
-                style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
-              />
-            </label>
+            <ArqueoEfectivo
+              cantidades={cantidades}
+              onChange={(nuevas) => {
+                setCantidades(nuevas)
+                setError(null)
+              }}
+              mostrarDiferencia={false}
+            />
 
             <button type="submit" className="btn" disabled={cargando} style={{ width: '100%' }}>
               {cargando ? 'Generando Reporte...' : 'Continuar al Reporte'}
@@ -194,7 +213,12 @@ function CierreCaja() {
               <span><strong>Ventas:</strong> {reporte.resumenVentas?.cantidadVentas ?? 0}</span>
               <span><strong>Facturas anuladas:</strong> {reporte.resumenVentas?.cantidadAnuladas ?? 0}</span>
               {reporte.resumenVentas?.cantidadAnuladas > 0 && (
-                <span style={{ color: '#b91c1c' }}>(Bs. {reporte.resumenVentas.montoAnulado} anulados, no contados)</span>
+                <>
+                  <span style={{ color: '#b91c1c' }}>(Bs. {reporte.resumenVentas.montoAnulado} anulados, no contados)</span>
+                  <button type="button" className="btn btn-secundario" onClick={abrirAnuladas} style={{ padding: '0.35rem 0.75rem' }}>
+                    Ver anuladas
+                  </button>
+                </>
               )}
             </div>
 
@@ -207,23 +231,7 @@ function CierreCaja() {
               </ul>
             </div>
 
-            {reporte.arqueoEfectivo && (
-              <div
-                style={{
-                  marginTop: '1rem',
-                  padding: '1rem',
-                  borderRadius: '8px',
-                  backgroundColor: reporte.arqueoEfectivo.tipoDiferencia === 'CUADRA' ? '#ecfdf5' : '#fef3c7',
-                }}
-              >
-                <h4 style={{ marginTop: 0 }}>Arqueo de efectivo</h4>
-                <p style={{ margin: '0.25rem 0' }}>Esperado: Bs. {reporte.arqueoEfectivo.efectivoEsperado}</p>
-                <p style={{ margin: '0.25rem 0' }}>Contado: Bs. {reporte.arqueoEfectivo.efectivoContado}</p>
-                <p style={{ margin: '0.25rem 0', fontWeight: 'bold' }}>
-                  {reporte.arqueoEfectivo.tipoDiferencia}: Bs. {reporte.arqueoEfectivo.diferencia}
-                </p>
-              </div>
-            )}
+            <ResumenArqueo cantidades={cantidades} efectivoEsperado={efectivoEsperado} />
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
               <button
@@ -249,12 +257,66 @@ function CierreCaja() {
         </div>
       )}
 
+      {mostrandoAnuladas && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Facturas anuladas del turno">
+          <div className="rt-modal-facturas">
+            <button type="button" className="rt-modal-cerrar" onClick={cerrarAnuladas} aria-label="Cerrar">
+              ✕
+            </button>
+            <h3 style={{ marginTop: 0 }}>Facturas anuladas del turno</h3>
+
+            {cargandoAnuladas && <p>Cargando...</p>}
+
+            {!cargandoAnuladas && errorAnuladas && (
+              <div className="error" style={{ padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px' }}>
+                No se pudo cargar la lista de anuladas: {errorAnuladas}
+              </div>
+            )}
+
+            {!cargandoAnuladas && !errorAnuladas && anuladas && (
+              <table className="tabla-facturas">
+                <thead>
+                  <tr>
+                    <th>N° Factura</th>
+                    <th>Hora</th>
+                    <th>Total (Bs.)</th>
+                    <th>Motivo</th>
+                    <th>Supervisor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anuladas.anuladas.map((a) => (
+                    <tr key={a.numero_factura}>
+                      <td>{a.numero_factura}</td>
+                      <td>{new Date(a.hora).toLocaleTimeString()}</td>
+                      <td>{a.total.toFixed(2)}</td>
+                      <td>{a.motivo || '—'}</td>
+                      <td>{a.supervisor || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={2}><strong>Total anulado</strong></td>
+                    <td><strong>{anuladas.montoAnulado.toFixed(2)}</strong></td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
       {paso === 'listo' && (
-        <div style={{ maxWidth: '400px', margin: 'auto', textAlign: 'center', padding: '2rem', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#ecfdf5' }}>
+        <div style={{ maxWidth: '520px', margin: 'auto', textAlign: 'center', padding: '2rem', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#ecfdf5' }}>
           <h2 style={{ color: '#065f46' }}>Caja Cerrada Exitosamente</h2>
           <p style={{ color: '#064e3b', marginBottom: '1rem' }}>
             El turno #{turnoActual.codigo ?? turnoId} ha sido cerrado. El reporte en PDF se abrió en una pestaña nueva.
           </p>
+          <div style={{ textAlign: 'left', margin: '0 0 1.5rem' }}>
+            <ResumenArqueo cantidades={cantidades} efectivoEsperado={efectivoEsperado} />
+          </div>
           <button type="button" className="btn" onClick={volverAIniciarSesion}>Volver al Inicio</button>
         </div>
       )}

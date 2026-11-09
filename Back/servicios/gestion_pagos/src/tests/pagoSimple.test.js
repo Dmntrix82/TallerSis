@@ -29,9 +29,14 @@ test("TDSI-271: rechaza monto invalido", async () => {
   );
 });
 
-test("TDSI-272: el historial crece tras registrar", async () => {
-  const antes = (await obtenerHistorial()).total;
-  await registrarPagoSimple({ id_transaccion: `TX-SIMPLE-${Date.now()}-2`, metodo: "Efectivo", monto: 30 });
-  const despues = (await obtenerHistorial()).total;
-  assert.ok(despues > antes);
+test("TDSI-272: el pago registrado aparece en el historial", async () => {
+  // No compara el total global (otros tests corren en paralelo contra la misma
+  // base y pueden insertar/borrar al mismo tiempo, asi que el conteo global es
+  // fragil) -- en cambio busca especificamente la transaccion recien creada.
+  const { pago } = await registrarPagoSimple({ metodo: "Efectivo", monto: 30 });
+  const { historial } = await obtenerHistorial();
+  assert.ok(
+    historial.some((h) => h.id_transaccion === pago.id_transaccion),
+    "la transaccion recien registrada debe aparecer en el historial"
+  );
 });
