@@ -116,3 +116,35 @@ test("TDSI-314: al abrir turno se registra el efectivo inicial en el historial d
     await query(`DELETE FROM caja.cajas  WHERE codigo   = $1`, [CAJA_H]);
   }
 });
+
+// TDSI-62/958: la apertura guarda el cajero y el supervisor real que autorizo (no solo su codigo).
+test("TDSI-958: abrir turno guarda el cajero y el nombre real del supervisor que autorizo", async () => {
+  const CAJA_958 = "CAJA-TEST-958";
+  await query(
+    `INSERT INTO caja.cajas (codigo, nombre, estado) VALUES ($1, 'Caja Test 958', 'ACTIVA')
+     ON CONFLICT (codigo) DO NOTHING`,
+    [CAJA_958]
+  );
+  await query(`DELETE FROM caja.turnos WHERE caja_id = $1`, [CAJA_958]);
+
+  try {
+    const turno = await abrirTurno({
+      caja_id: CAJA_958, cajero_id: "cajero-958@test.com", efectivo_inicial: 10, ...SUPERVISOR,
+    });
+
+    assert.equal(turno.cajero_id, "cajero-958@test.com");
+    assert.equal(turno.autorizado_por, "SUP-TEST");
+    assert.equal(turno.autorizado_por_nombre, "Supervisor Prueba");
+
+    const { rows } = await query(
+      `SELECT cajero_id, autorizado_por, autorizado_por_nombre FROM caja.turnos WHERE id = $1`,
+      [turno.id]
+    );
+    assert.equal(rows[0].cajero_id, "cajero-958@test.com");
+    assert.equal(rows[0].autorizado_por, "SUP-TEST");
+    assert.equal(rows[0].autorizado_por_nombre, "Supervisor Prueba");
+  } finally {
+    await query(`DELETE FROM caja.turnos WHERE caja_id = $1`, [CAJA_958]);
+    await query(`DELETE FROM caja.cajas  WHERE codigo   = $1`, [CAJA_958]);
+  }
+});

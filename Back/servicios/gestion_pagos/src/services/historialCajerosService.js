@@ -40,6 +40,16 @@ function validarCajaOpcional(valor) {
   return texto;
 }
 
+/** TDSI-62/957: supervisor que autorizo la anulacion, opcional (sin el, todos). */
+function validarSupervisorOpcional(valor) {
+  if (valor === undefined || valor === null || valor === "") return null;
+  const texto = String(valor).trim();
+  if (!texto || texto.length > 60) {
+    throw new AppError("El campo 'supervisor_id' debe tener entre 1 y 60 caracteres.", 400, { supervisor_id: valor });
+  }
+  return texto;
+}
+
 const totalesCajero = (r) => ({
   cajero_id: r.cajero_id,
   cajero: r.cajero,
@@ -85,24 +95,26 @@ function armarResumen({ general, porDia, porCajero, porCajeroDia }) {
  * TDSI-432: ademas trae el resumen por cajero y por dia de todo lo filtrado.
  * TDSI-433: filtros opcionales por caja_id, metodo (Efectivo | Tarjeta | QR) y
  * estado_revision (PENDIENTE | REVISADA | OBSERVADA); aplican a la lista y al resumen.
+ * TDSI-62/957: filtro opcional por supervisor_id (quien autorizo la anulacion).
  */
-async function consultarHistorial({ cajero_id, caja_id, metodo, estado_revision, fecha, desde, hasta, pagina, por_pagina } = {}) {
+async function consultarHistorial({ cajero_id, caja_id, metodo, estado_revision, supervisor_id, fecha, desde, hasta, pagina, por_pagina } = {}) {
   const rango = validarRangoHistorial({ fecha, desde, hasta });
   const cajeroId = validarCajeroOpcional(cajero_id);
   const cajaId = validarCajaOpcional(caja_id);
   const metodoFiltro = validarMetodo(metodo);
   const revisionFiltro = validarFiltroRevision(estado_revision);
+  const supervisorId = validarSupervisorOpcional(supervisor_id);
   const paginaN = validarEnteroPositivo(pagina, "pagina", 1);
   const porPaginaN = validarEnteroPositivo(por_pagina, "por_pagina", POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO);
 
-  const filtros = { ...rango, cajeroId, cajaId, metodo: metodoFiltro, estadoRevision: revisionFiltro };
+  const filtros = { ...rango, cajeroId, cajaId, metodo: metodoFiltro, estadoRevision: revisionFiltro, supervisorId };
   const [{ total, filas }, resumen] = await Promise.all([
     repo.listarHistorial({ ...filtros, limite: porPaginaN, offset: (paginaN - 1) * porPaginaN }),
     repo.resumenHistorial(filtros),
   ]);
 
   return {
-    filtros: { ...rango, cajero_id: cajeroId, caja_id: cajaId, metodo: metodoFiltro, estado_revision: revisionFiltro },
+    filtros: { ...rango, cajero_id: cajeroId, caja_id: cajaId, metodo: metodoFiltro, estado_revision: revisionFiltro, supervisor_id: supervisorId },
     paginacion: {
       pagina: paginaN,
       por_pagina: porPaginaN,
@@ -123,6 +135,12 @@ async function consultarHistorial({ cajero_id, caja_id, metodo, estado_revision,
       detalle_metodos: f.detalle_metodos,
       total: f.total,
       estado: f.estado,
+      // TDSI-62/956: quien pidio la operacion y, si fue una anulacion, que
+      // supervisor la autorizo (nombre, no solo el codigo). Las operaciones
+      // que no necesitaron autorizacion (todo lo que no es una anulacion)
+      // no tienen autorizado_por.
+      pedido_por: f.cajero,
+      autorizado_por: f.estado === "ANULADA" ? (f.anulado_por_nombre || f.anulado_por || null) : null,
       revision: {
         estado: f.revision_estado,
         nota: f.revision_nota,

@@ -65,7 +65,7 @@ const ids = (r) => r.operaciones.map((o) => o.id_transaccion);
 
 test("TDSI-431: lista las operaciones de todos los cajeros del rango, de la mas reciente a la mas antigua", async () => {
   const r = await consultarHistorial(RANGO);
-  assert.deepEqual(r.filtros, { desde: D1, hasta: D3, cajero_id: null, caja_id: null, metodo: null, estado_revision: null });
+  assert.deepEqual(r.filtros, { desde: D1, hasta: D3, cajero_id: null, caja_id: null, metodo: null, estado_revision: null, supervisor_id: null });
   assert.equal(r.paginacion.total_registros, 7);
   assert.deepEqual(ids(r), [ops.b2, ops.a5, ops.a4, ops.a3, ops.b1, ops.a2, ops.a1].map((o) => o.id_transaccion));
 

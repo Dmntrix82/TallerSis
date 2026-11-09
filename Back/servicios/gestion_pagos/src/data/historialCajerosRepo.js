@@ -10,6 +10,8 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * TDSI-433, filtros opcionales: $4 caja_id, $5 metodo (operaciones que usaron ese metodo; una mixta
  * Efectivo+QR aparece al filtrar por cualquiera de los dos, con su total completo),
  * $6 estado de revision (PENDIENTE = todavia sin revisar, REVISADA u OBSERVADA).
+ * TDSI-62/957: $7 supervisor_id (el que autorizo la anulacion); solo las anulaciones
+ * tienen un supervisor, asi que filtrar por supervisor solo trae esas.
  * La caja de un pago mixto se toma de su fila o, si no la tiene, de su cabecera (pago_mixto_id),
  * igual que en el monitoreo por metodo de pago (TDSI-437).
  */
@@ -21,6 +23,8 @@ const CTE_HISTORIAL = `
            MAX(t.cajero)                                                    AS cajero,
            MAX(COALESCE(t.caja_id, pm.caja_id))                             AS caja_id,
            MAX(t.tipo_pago)                                                 AS tipo_pago,
+           MAX(t.anulado_por)                                               AS anulado_por,
+           MAX(t.anulado_por_nombre)                                        AS anulado_por_nombre,
            SUM(t.monto)                                                     AS total,
            array_agg(t.metodo ORDER BY t.id)                                AS metodos,
            json_agg(json_build_object('metodo', t.metodo, 'monto', t.monto) ORDER BY t.id) AS detalle_metodos,
@@ -49,10 +53,11 @@ const CTE_HISTORIAL = `
       FROM ventas v
       LEFT JOIN pagos.revisiones_transaccion r ON r.id_transaccion = v.id_transaccion
      WHERE ($6::text IS NULL OR COALESCE(r.estado, 'PENDIENTE') = $6)
+       AND ($7::text IS NULL OR v.anulado_por = $7)
   )`;
 
-const parametros = ({ desde, hasta, cajeroId = null, cajaId = null, metodo = null, estadoRevision = null }) =>
-  [desde, hasta, cajeroId, cajaId, metodo, estadoRevision];
+const parametros = ({ desde, hasta, cajeroId = null, cajaId = null, metodo = null, estadoRevision = null, supervisorId = null }) =>
+  [desde, hasta, cajeroId, cajaId, metodo, estadoRevision, supervisorId];
 
 /**
  * TDSI-431: operaciones de los cajeros (o de uno solo), de la mas reciente a la mas antigua, paginadas.

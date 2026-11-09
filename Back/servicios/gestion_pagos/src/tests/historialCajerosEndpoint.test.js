@@ -80,7 +80,7 @@ test("TDSI-434: GET /historial-cajeros devuelve operaciones, paginacion y resume
   assert.equal(headers.get("cache-control"), "no-store");
 
   const d = cuerpo.data;
-  assert.deepEqual(d.filtros, { desde: D1, hasta: D2, cajero_id: null, caja_id: null, metodo: null, estado_revision: null });
+  assert.deepEqual(d.filtros, { desde: D1, hasta: D2, cajero_id: null, caja_id: null, metodo: null, estado_revision: null, supervisor_id: null });
   assert.deepEqual(d.paginacion, { pagina: 1, por_pagina: 20, total_registros: 4, total_paginas: 1 });
   assert.deepEqual(ids(cuerpo), [ops.b2, ops.a2, ops.b1, ops.a1].map((o) => o.id_transaccion));
 

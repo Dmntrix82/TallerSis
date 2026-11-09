@@ -13,6 +13,7 @@ import VerificarFactura from './pages/VerificarFactura.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { useAdminAuth } from './context/AdminAuthContext.jsx'
 import CierreDiario from './pages/CierreDiario.jsx'
+import HistorialOperaciones from './pages/HistorialOperaciones.jsx'
 import MetasVenta from './pages/MetasVenta.jsx'
 import HorasPico from './pages/HorasPico.jsx'
 import ComparativoMensual from './pages/ComparativoMensual.jsx'
@@ -60,6 +61,7 @@ function App() {
           <Route path="/admin/clientes" element={<RutaProtegidaAdmin><Clientes /></RutaProtegidaAdmin>} />
           <Route path="/admin/tablero" element={<RutaProtegidaAdmin><TableroIngresos /></RutaProtegidaAdmin>} />
           <Route path="/admin/cierre-diario" element={<RutaProtegidaAdmin><CierreDiario /></RutaProtegidaAdmin>} />
+          <Route path="/admin/historial-operaciones" element={<RutaProtegidaAdmin><HistorialOperaciones /></RutaProtegidaAdmin>} />
           <Route path="/admin/metas-venta" element={<RutaProtegidaAdmin><MetasVenta /></RutaProtegidaAdmin>} />
           <Route path="/admin/horas-pico" element={<RutaProtegidaAdmin><HorasPico /></RutaProtegidaAdmin>} />
           <Route path="/admin/comparativo-mensual" element={<RutaProtegidaAdmin><ComparativoMensual /></RutaProtegidaAdmin>} />

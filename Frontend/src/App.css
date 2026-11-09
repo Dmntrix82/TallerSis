@@ -2425,6 +2425,7 @@
 .ho-estado-pendiente { background: #fef9c3; color: #854d0e; }
 .ho-estado-error { background: #fee2e2; color: #991b1b; }
 .ho-estado-neutro { background: #f1f5f9; color: #475569; }
+.ho-estado-info { background: #dbeafe; color: #1e40af; }
 
 .ho-paginacion { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; color: var(--ho-muted); font-size: .85rem; }
 .ho-paginacion > div { display: flex; align-items: center; gap: 10px; }
