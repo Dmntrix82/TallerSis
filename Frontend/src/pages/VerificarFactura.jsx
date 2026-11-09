@@ -55,6 +55,10 @@ function VerificarFactura() {
                 {factura.cliente}
                 {factura.nit ? ` (NIT/CI: ${factura.nit})` : ''}
               </dd>
+
+              {/* TDSI-61/947: quien atendio la venta (nombre + caja, o "no registrado"). */}
+              <dt>Atendido por</dt>
+              <dd>{factura.atendido_por}</dd>
             </dl>
 
             <table className="verificar-factura-tabla">

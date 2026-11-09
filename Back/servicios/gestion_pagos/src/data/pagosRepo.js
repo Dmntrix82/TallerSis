@@ -10,17 +10,17 @@ const num = (v) => (v === null || v === undefined ? v : Number(v));
  * correlativo de la propia tabla (nextval de su secuencia), asi queda unico
  * por construccion, sin depender de que el cajero no repita un numero.
  */
-async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto, cobro_duplicado, moneda_recibida, monto_usd, tipo_cambio }) {
+async function insertarTransaccionSimple({ metodo, monto, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, cajero_nombre, monto_recibido, vuelto, cobro_duplicado, moneda_recibida, monto_usd, tipo_cambio }) {
   const { rows } = await query(
     `WITH nuevo AS (
        SELECT nextval(pg_get_serial_sequence('pagos.transacciones', 'id')) AS id
      )
      INSERT INTO pagos.transacciones
-       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, monto_recibido, vuelto, cobro_duplicado, moneda_recibida, monto_usd, tipo_cambio)
-     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+       (id, id_transaccion, metodo, monto, tipo_pago, nit, razon_social, tipo_documento, telefono, caja_id, turno_id, cajero, cajero_id, cajero_nombre, monto_recibido, vuelto, cobro_duplicado, moneda_recibida, monto_usd, tipo_cambio)
+     SELECT id, 'VTA-' || lpad(id::text, 6, '0'), $1, $2, 'Simple', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
      FROM nuevo
      RETURNING *`,
-    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, monto_recibido ?? null, vuelto ?? null, cobro_duplicado || false, moneda_recibida || null, monto_usd ?? null, tipo_cambio ?? null]
+    [metodo, monto, nit || null, razon_social || null, tipo_documento || null, telefono || null, caja_id || null, turno_id || null, cajero || null, cajero_id || null, cajero_nombre || null, monto_recibido ?? null, vuelto ?? null, cobro_duplicado || false, moneda_recibida || null, monto_usd ?? null, tipo_cambio ?? null]
   );
   return {
     ...rows[0],
@@ -226,6 +226,7 @@ async function listarPorCajero(cajero, { desde, hasta, q } = {}) {
             MAX(tipo_documento) AS tipo_documento,
             MAX(telefono) AS telefono,
             MAX(caja_id) AS caja_id,
+            MAX(cajero_nombre) AS cajero_nombre,
             bool_and(estado = 'Anulado') AS anulado,
             bool_or(estado = 'AnulacionSolicitada') AS anulacion_solicitada
        FROM pagos.transacciones
@@ -245,6 +246,8 @@ async function listarPorCajero(cajero, { desde, hasta, q } = {}) {
     tipo_documento: r.tipo_documento,
     telefono: r.telefono,
     caja_id: r.caja_id,
+    // TDSI-61/943: "no registrado" para ventas de antes de este cambio (TDSI-199).
+    cajero_nombre: r.cajero_nombre || "no registrado",
     // TDSI-28: la venta con una anulacion pendiente se muestra como "Anulacion solicitada"
     estado: r.anulado ? 'Anulado' : r.anulacion_solicitada ? 'AnulacionSolicitada' : 'Registrado',
   }));
@@ -619,7 +622,7 @@ async function existePagoMixto(id_transaccion) {
  * Si no se pasa id_transaccion (caso normal desde la pantalla de Pagos), se genera aqui
  * con el mismo correlativo VTA-000NNN que usa el pago simple, asi queda unico por construccion.
  */
-async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, total, metodos, nit, razon_social, tipo_documento, telefono, cajero, cajeroId, cobro_duplicado }) {
+async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, total, metodos, nit, razon_social, tipo_documento, telefono, cajero, cajeroId, cajeroNombre, cobro_duplicado }) {
   return withTransaction(async (client) => {
     let idTransaccion = id_transaccion;
     if (!idTransaccion) {
@@ -651,10 +654,10 @@ async function registrarPagoMixtoCompleto({ id_transaccion, cajaId, turnoId, tot
     const transacciones = [];
     for (const d of detalle) {
       const { rows } = await client.query(
-        `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, pago_mixto_id, nit, razon_social, tipo_documento, telefono, cajero, caja_id, cajero_id, cobro_duplicado)
-         VALUES ($1, $2, $3, 'Mixto', $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        `INSERT INTO pagos.transacciones (id_transaccion, metodo, monto, tipo_pago, pago_mixto_id, nit, razon_social, tipo_documento, telefono, cajero, caja_id, cajero_id, cajero_nombre, cobro_duplicado)
+         VALUES ($1, $2, $3, 'Mixto', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
-        [pago.id_transaccion, d.metodo, d.monto, pago.id, nit || null, razon_social || null, tipo_documento || null, telefono || null, cajero || null, cajaId || null, cajeroId || null, cobro_duplicado || false]
+        [pago.id_transaccion, d.metodo, d.monto, pago.id, nit || null, razon_social || null, tipo_documento || null, telefono || null, cajero || null, cajaId || null, cajeroId || null, cajeroNombre || null, cobro_duplicado || false]
       );
       transacciones.push(rows[0]);
     }

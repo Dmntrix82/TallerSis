@@ -327,6 +327,7 @@ function Facturas() {
               <th>Cliente</th>
               <th>Método(s)</th>
               <th>Total (Bs.)</th>
+              <th>Atendido por</th>
               <th>Estado</th>
               <th></th>
             </tr>
@@ -342,6 +343,10 @@ function Facturas() {
                   <td>{factura.razon_social || 'Consumidor final'}</td>
                   <td>{factura.metodos.join(' + ')}</td>
                   <td>{factura.total.toFixed(2)}</td>
+                  <td>
+                    {factura.cajero_nombre}
+                    {factura.caja_id && <span className="solicitud-detalle"> Caja N° {factura.caja_id}</span>}
+                  </td>
                   <td>
                     <span className={`badge-estado ${estado.clase}`}>{estado.texto}</span>
                   </td>

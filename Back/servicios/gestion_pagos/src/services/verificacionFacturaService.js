@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const QRCode = require("qrcode");
 const { AppError } = require("../utils/AppError");
 const repo = require("../data/pagosRepo");
+const { lineaAtendidoPor } = require("../utils/atendidoPor");
 const ventasOnlineRepo = require("../data/ventasOnlineRepo");
 
 // Para que el QR sirva de verdad al escanearlo desde un celular, la URL debe
@@ -64,12 +65,16 @@ async function obtenerOCrearTokenVentaOnline(ventaId) {
 /**
  * TDSI-528: lo que ve el cliente al escanear el QR. Es de solo lectura y
  * publico (sin login), asi que solo se devuelven los datos necesarios para
- * identificar la compra -- nada interno del negocio (cajero, caja_id, etc.).
+ * identificar la compra -- nada interno del negocio (el email del cajero en
+ * "cajero", cajero_id, etc.).
+ * TDSI-61/945: quien atendio la venta SI se muestra (nombre + caja, igual que
+ * en la tirilla y el PDF); "no registrado" en facturas de antes de TDSI-199.
  */
 async function obtenerFacturaPorToken(token) {
   const filas = await repo.buscarPorTokenVerificacion(token);
   if (filas.length) {
     const [primera] = filas;
+    const comprobante = { cajero_nombre: primera.cajero_nombre || "no registrado", caja_id: primera.caja_id || null };
     return {
       id_transaccion: primera.id_transaccion,
       fecha: primera.fecha,
@@ -78,6 +83,9 @@ async function obtenerFacturaPorToken(token) {
       nit: primera.nit,
       total: filas.reduce((suma, f) => suma + Number(f.monto), 0),
       metodos: filas.map((f) => ({ metodo: f.metodo, monto: Number(f.monto) })),
+      caja_id: comprobante.caja_id,
+      cajero_nombre: comprobante.cajero_nombre,
+      atendido_por: lineaAtendidoPor(comprobante),
     };
   }
 
