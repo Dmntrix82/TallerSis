@@ -1,5 +1,8 @@
+name: back
+
 networks:
   app-network:
+    name: app-network
     driver: bridge
 
 services:
@@ -59,17 +62,3 @@ services:
       - ./servicios/pagos_proveedores/.env
     networks:
       - app-network
-
-  frontend:
-    build: ../Frontend
-    ports:
-      - "5173:5173"
-    env_file:
-      - ../Frontend/.env
-    networks:
-      - app-network
-    depends_on:
-      - gestion_caja
-      - gestion_pagos
-      - facturacion
-      - pagos_proveedores

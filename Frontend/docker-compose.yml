@@ -1,0 +1,19 @@
+name: frontend
+
+networks:
+  # Misma red que crea Back/docker-compose.yml (app-network): hay que levantar Back
+  # primero (o al menos una vez) para que esta red ya exista, asi el Frontend puede
+  # llamar a los microservicios por su nombre de contenedor dentro de Docker.
+  app-network:
+    external: true
+    name: app-network
+
+services:
+  frontend:
+    build: .
+    ports:
+      - "5173:5173"
+    env_file:
+      - ./.env
+    networks:
+      - app-network
