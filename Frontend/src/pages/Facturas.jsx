@@ -8,6 +8,7 @@ import useDebounce from '../hooks/useDebounce.js'
 import useResumenFactura from '../hooks/useResumenFactura.js'
 import ResumenFactura from '../components/ResumenFactura.jsx'
 import ComparacionModificacion from '../components/ComparacionModificacion.jsx'
+import CampoPassword from '../components/CampoPassword.jsx'
 
 const PLAZO_ANULACION_MS = 2 * 60 * 60 * 1000 // 2 horas
 
@@ -429,8 +430,7 @@ function Facturas() {
 
             <label className="campo">
               PIN
-              <input
-                type="password"
+              <CampoPassword
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={credenciales.pin}
@@ -563,8 +563,7 @@ function Facturas() {
 
             <label className="campo">
               PIN
-              <input
-                type="password"
+              <CampoPassword
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={credencialesModificar.pin}

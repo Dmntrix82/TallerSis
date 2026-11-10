@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { listarUsuarios, crearCajero, editarUsuario, cambiarPasswordCajero, cambiarEstadoUsuario } from '../api/usuarios.js'
 import { useAdminAuth } from '../context/AdminAuthContext.jsx'
+import CampoPassword from '../components/CampoPassword.jsx'
 
 const CLASE_ESTADO = { Activo: 'badge-estado--emitida', Inactivo: '', Bloqueado: 'badge-comparacion--faltante' }
 const FILTROS_ROL = [
@@ -250,8 +251,7 @@ function Usuarios() {
 
             <label className="campo">
               Contraseña (mínimo 6 caracteres)
-              <input
-                type="password"
+              <CampoPassword
                 autoComplete="new-password"
                 value={nuevo.password}
                 onChange={(e) => setNuevo((prev) => ({ ...prev, password: e.target.value }))}
@@ -260,8 +260,7 @@ function Usuarios() {
 
             <label className="campo">
               Confirmar contraseña
-              <input
-                type="password"
+              <CampoPassword
                 autoComplete="new-password"
                 value={nuevo.confirmarPassword}
                 onChange={(e) => setNuevo((prev) => ({ ...prev, confirmarPassword: e.target.value }))}
@@ -323,8 +322,7 @@ function Usuarios() {
                   <>
                     <label className="campo">
                       Contraseña nueva (mínimo 6 caracteres)
-                      <input
-                        type="password"
+                      <CampoPassword
                         autoComplete="new-password"
                         value={passwordNueva}
                         onChange={(e) => setPasswordNueva(e.target.value)}
@@ -332,8 +330,7 @@ function Usuarios() {
                     </label>
                     <label className="campo">
                       Confirmar contraseña
-                      <input
-                        type="password"
+                      <CampoPassword
                         autoComplete="new-password"
                         value={passwordConfirmar}
                         onChange={(e) => setPasswordConfirmar(e.target.value)}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { obtenerTurnoActual } from '../api/turnos.js'
 import { abrirTurno } from '../api/caja.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import CampoPassword from './CampoPassword.jsx'
 
 const FORM_INICIAL = { efectivoInicial: '', supervisorId: '', pin: '' }
 
@@ -121,8 +122,7 @@ function TurnoModal() {
 
               <label className="campo">
                 PIN del supervisor
-                <input
-                  type="password"
+                <CampoPassword
                   inputMode="numeric"
                   autoComplete="new-password"
                   value={datos.pin}

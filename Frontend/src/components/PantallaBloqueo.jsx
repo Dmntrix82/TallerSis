@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { desbloquearPantalla } from '../api/auth.js'
+import CampoPassword from './CampoPassword.jsx'
 import './PantallaBloqueo.css'
 
 const MAXIMO_INTENTOS = 3
@@ -75,8 +76,7 @@ function PantallaBloqueo({ intentos, onIntentoFallido, onDesbloqueada }) {
 
         <label className="campo">
           Contraseña
-          <input
-            type="password"
+          <CampoPassword
             autoComplete="new-password"
             autoFocus
             value={password}

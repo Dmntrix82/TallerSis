@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import CampoPassword from './CampoPassword.jsx'
 
 // TDSI-508: el supervisor aprueba o rechaza una operacion especial con su usuario y PIN.
 // TDSI-510: el motivo es obligatorio al rechazar y opcional al aprobar.
@@ -64,8 +65,7 @@ function DecisionOperacionModal({ operacion, etiquetaTipo, accion, onConfirmar, 
 
           <label className="campo">
             PIN del supervisor
-            <input
-              type="password"
+            <CampoPassword
               inputMode="numeric"
               autoComplete="new-password"
               value={pin}

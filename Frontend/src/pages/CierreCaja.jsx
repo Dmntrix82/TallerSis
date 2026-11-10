@@ -4,6 +4,7 @@ import { generarReporteCierre, cerrarTurno, urlReporteCierrePdf, obtenerAnuladas
 import { obtenerTurnoActual } from '../api/turnos.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ArqueoEfectivo, { ResumenArqueo } from '../components/ArqueoEfectivo.jsx'
+import CampoPassword from '../components/CampoPassword.jsx'
 import { arqueoEsValido, arqueoTieneConteo, totalContadoCentavos, detalleArqueo } from '../utils/arqueo.js'
 
 function CierreCaja() {
@@ -159,8 +160,7 @@ function CierreCaja() {
 
             <label className="campo" style={{ display: 'block', marginBottom: '1rem' }}>
               PIN del supervisor
-              <input
-                type="password"
+              <CampoPassword
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={pin}
@@ -168,7 +168,7 @@ function CierreCaja() {
                   setPin(e.target.value)
                   setError(null)
                 }}
-                style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                style={{ width: '100%', padding: '0.5rem', paddingRight: '2rem', marginTop: '0.25rem' }}
               />
             </label>
 

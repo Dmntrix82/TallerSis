@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listarSupervisores, crearSupervisor, restablecerPinSupervisor, cambiarEstadoSupervisor } from '../api/supervisores.js'
+import CampoPassword from '../components/CampoPassword.jsx'
 
 const PIN_REGEX = /^\d{4,6}$/
 const CLASE_ESTADO = { Activo: 'badge-estado--emitida', Inactivo: '', Bloqueado: 'badge-comparacion--faltante' }
@@ -219,8 +220,7 @@ function Supervisores() {
 
             <label className="campo">
               PIN (4 a 6 dígitos)
-              <input
-                type="password"
+              <CampoPassword
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={nuevo.pin}
@@ -230,8 +230,7 @@ function Supervisores() {
 
             <label className="campo">
               Confirmar PIN
-              <input
-                type="password"
+              <CampoPassword
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={nuevo.confirmarPin}
@@ -261,8 +260,7 @@ function Supervisores() {
 
             <label className="campo">
               PIN nuevo (4 a 6 dígitos)
-              <input
-                type="password"
+              <CampoPassword
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={pinNuevo}
@@ -273,8 +271,7 @@ function Supervisores() {
 
             <label className="campo">
               Confirmar PIN
-              <input
-                type="password"
+              <CampoPassword
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={pinConfirmar}
