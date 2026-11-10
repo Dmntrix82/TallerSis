@@ -80,13 +80,27 @@ async function buscarPorTokenVerificacion(token) {
   return { ...venta, total: num(venta.total), items: items.map((i) => ({ ...i, cantidad: num(i.cantidad), precio_unitario: num(i.precio_unitario), subtotal: num(i.subtotal) })) };
 }
 
-/** TDSI-51: venta puntual por su id (PK), para reenviar su aviso al Marketplace a pedido del Administrador. */
+/**
+ * TDSI-51/957: venta puntual por su id (PK), para cuando el Administrador la aprueba --
+ * avisa al Marketplace y, si trajo correo, tambien le manda la factura digital al cliente.
+ */
 async function obtenerVentaPorId(id) {
   const { rows } = await query(
-    `SELECT id, orden_id, numero_factura FROM pagos.ventas_online WHERE id = $1`,
+    `SELECT id, orden_id, numero_factura, nit, razon_social, cliente_id, total, email, recibida_en
+       FROM pagos.ventas_online WHERE id = $1`,
     [id]
   );
-  return rows[0] || null;
+  if (!rows[0]) return null;
+  return { ...rows[0], total: num(rows[0].total) };
+}
+
+/** TDSI-957: items de una venta online, en el formato que espera la factura digital. */
+async function obtenerItemsVenta(ventaId) {
+  const { rows } = await query(
+    `SELECT sku, descripcion, cantidad, precio_unitario, subtotal FROM pagos.venta_online_items WHERE venta_id = $1 ORDER BY id`,
+    [ventaId]
+  );
+  return rows.map((i) => ({ ...i, cantidad: num(i.cantidad), precio_unitario: num(i.precio_unitario), subtotal: num(i.subtotal) }));
 }
 
 /** TDSI-51/684: resultado del aviso al Marketplace (topico "pagos-facturas-emitidas"). */
@@ -159,6 +173,7 @@ module.exports = {
   guardarTokenVerificacion,
   buscarPorTokenVerificacion,
   obtenerVentaPorId,
+  obtenerItemsVenta,
   guardarAvisoMarketplace,
   listarVentas,
 };

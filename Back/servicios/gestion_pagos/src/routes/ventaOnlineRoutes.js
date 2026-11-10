@@ -12,9 +12,10 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(nex
  * el tópico ya es confiable por construccion, asi que esto NO duplica esa ruta, es la
  * alternativa directa para cuando no se usa el tópico. Misma validacion para ambas
  * (recibirVenta), asi que una venta ya recibida por el tópico tampoco se duplica aca.
- * El campo "email" es obligatorio: es nuestro modulo (pagos y facturacion), no el
- * Marketplace, el que valida la orden y le devuelve al cliente final su factura
- * digital por ese correo (ver facturaDigitalService.js#enviarFacturaDeVentaOnline).
+ * El campo "email" es opcional: si la orden lo trae, al aprobarla (ver
+ * /online/:id/reenviar-marketplace) se le manda ademas la factura digital a ese
+ * correo (facturaDigitalService.js#enviarFacturaDeVentaOnline); sin correo, no se
+ * le manda nada al cliente por ahi (solo se avisa al Marketplace).
  */
 router.post("/online", verificarToken, wrap(async (req, res) => {
   const data = await recibirVenta(req.body);
@@ -30,10 +31,11 @@ router.get("/online/ventas", wrap(async (req, res) => {
   res.json({ ok: true, data });
 }));
 
-// TDSI-51: boton "Enviar a Marketplace" del modal "Ver factura" en el panel del
-// Administrador -- reenvia el aviso Pub/Sub de esa factura, para poder demostrar
-// la integracion con el Marketplace sin esperar una orden nueva.
-// 200 { publicado, messageId } o { publicado: false, error }.
+// TDSI-51/957: boton "Aprobar y enviar a Marketplace" del modal "Ver factura" --
+// es el momento en que la orden sale de nuestro sistema: publica el aviso Pub/Sub
+// al Marketplace y, si la orden trajo correo, le manda ademas la factura digital
+// al cliente (las dos son independientes entre si).
+// 200 { publicado, messageId, facturaEmail } o { publicado: false, error, facturaEmail }.
 // 404 si la venta no existe; 409 si todavia no tiene una factura emitida.
 router.post("/online/:id/reenviar-marketplace", wrap(async (req, res) => {
   const data = await reenviarAvisoMarketplace(req.params.id);

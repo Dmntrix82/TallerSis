@@ -4,7 +4,6 @@ const { validarFormatoDocumento } = require("../utils/documento");
 const { validarEmail } = require("../utils/email");
 const { emitirActualizacion } = require("../utils/tableroEvents");
 const { emitirFactura } = require("./facturacionProxy");
-const { enviarFacturaDeVentaOnline } = require("./facturaDigitalService");
 const { AppError } = require("../utils/AppError");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
@@ -37,11 +36,14 @@ async function recibirVenta(json) {
   const errorFormato = validarFormatoDocumento(tipoDocumento, json.nit);
   if (errorFormato) throw new AppError(errorFormato, 400);
 
-  // TDSI-51: nosotros (pagos y facturacion) somos quienes le devolvemos la factura
-  // digital al cliente final por correo, no el Marketplace -- por eso el correo es
-  // obligatorio en la orden, igual que el NIT/CI.
-  const errorEmail = validarEmail(json.email);
-  if (errorEmail) throw new AppError(errorEmail, 400);
+  // TDSI-957: el correo es opcional -- si la orden lo trae, se usa para mandarle
+  // la factura digital al cliente (al aprobar, junto con el aviso al Marketplace);
+  // si no lo trae, simplemente no se le manda nada por correo.
+  const correo = json.email ? String(json.email).trim() : null;
+  if (correo) {
+    const errorEmail = validarEmail(correo);
+    if (errorEmail) throw new AppError(errorEmail, 400);
+  }
 
   if (!Array.isArray(json.items) || json.items.length === 0) {
     throw new AppError("La venta debe tener al menos un ítem", 400);
@@ -76,7 +78,7 @@ async function recibirVenta(json) {
       total: json.total,
       metodoPago,
       codigoConfirmacion: generarCodigo(),
-      email: String(json.email).trim(),
+      email: correo,
     },
     itemsProcesados
   );
@@ -105,18 +107,12 @@ async function recibirVenta(json) {
     await repo.guardarErrorFactura(venta.id, facturaError);
   }
 
-  // TDSI-51/957: sin factura no hay nada que mandarle al cliente todavia. Con
-  // factura, se le manda su factura digital por correo de una vez (ya pago, no
-  // tiene sentido hacerlo esperar). El aviso al Marketplace es la excepcion: el
-  // Administrador lo revisa primero (modal "Ver factura") y lo manda el mismo,
-  // a mano, con el boton "Enviar a Marketplace" (POST /online/:id/reenviar-marketplace)
-  // -- no se publica solo apenas se emite la factura.
-  let facturaEmail = null;
-  if (numeroFactura) {
-    facturaEmail = await enviarFacturaDeVentaOnline({ venta, items: itemsProcesados, numeroFactura });
-  }
-
-  return { ordenId: venta.orden_id, duplicada: false, venta, numeroFactura, facturaError, aviso: null, facturaEmail };
+  // TDSI-957: ni el aviso al Marketplace ni la factura por correo al cliente se
+  // mandan solos apenas se emite la factura -- el Administrador revisa la orden
+  // primero (modal "Ver factura") y recien al aprobarla (POST
+  // /online/:id/reenviar-marketplace) se publica el aviso Y, si la orden trajo
+  // correo, se le manda la factura digital. Sin correo, simplemente no se manda nada por ahi.
+  return { ordenId: venta.orden_id, duplicada: false, venta, numeroFactura, facturaError, aviso: null, facturaEmail: null };
 }
 
 /**

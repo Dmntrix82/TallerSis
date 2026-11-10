@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { listarMisFacturas, anularVenta, modificarVenta, urlFacturaPdf } from '../api/pagos.js'
+import { obtenerAnuladasTurno } from '../api/caja.js'
+import { obtenerTurnoActual } from '../api/turnos.js'
 import { validarMotivoAnulacion, LARGO_MAXIMO_ANULACION } from '../api/respuestasAnulacion.js'
 import RespuestasAnulacionBotones from '../components/RespuestasAnulacionBotones.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -85,6 +87,14 @@ function Facturas() {
   const [errorModificar, setErrorModificar] = useState(null)
   const [modificando, setModificando] = useState(false)
   const [tiempoRestante, setTiempoRestante] = useState(null)
+
+  // TDSI-49: "Anuladas en el turno" -- mismas facturas y el mismo endpoint que ya usa
+  // el reporte de Cierre de caja (obtenerAnuladasTurno), pero accesible en cualquier
+  // momento del turno, no solo al cerrar.
+  const [mostrandoAnuladasTurno, setMostrandoAnuladasTurno] = useState(false)
+  const [cargandoAnuladasTurno, setCargandoAnuladasTurno] = useState(false)
+  const [errorAnuladasTurno, setErrorAnuladasTurno] = useState(null)
+  const [anuladasTurno, setAnuladasTurno] = useState(null)
 
   // TDSI-59: resumen de la factura que se muestra antes del PIN del supervisor
   // (anulación o modificación; solo hay una ventana abierta a la vez).
@@ -215,6 +225,31 @@ function Facturas() {
     setErrorModificar(null)
   }
 
+  // TDSI-49: busca el turno abierto de la caja del cajero y trae sus facturas anuladas.
+  async function abrirAnuladasTurno() {
+    setMostrandoAnuladasTurno(true)
+    setCargandoAnuladasTurno(true)
+    setErrorAnuladasTurno(null)
+    setAnuladasTurno(null)
+    try {
+      const { data: turno } = await obtenerTurnoActual(cajero.caja)
+      if (!turno) {
+        setErrorAnuladasTurno('No tienes un turno abierto en este momento.')
+        return
+      }
+      const { data } = await obtenerAnuladasTurno(turno.id)
+      setAnuladasTurno(data)
+    } catch (err) {
+      setErrorAnuladasTurno(err.mensaje || err.message)
+    } finally {
+      setCargandoAnuladasTurno(false)
+    }
+  }
+
+  function cerrarAnuladasTurno() {
+    setMostrandoAnuladasTurno(false)
+  }
+
   function actualizarFormModificar(campo, valor) {
     setFormModificar((prev) => ({ ...prev, [campo]: valor }))
   }
@@ -281,7 +316,14 @@ function Facturas() {
     <section>
       <h1>Facturas</h1>
       <p className="resumen-turno-actual">Ventas emitidas por {cajero ? cajero.nombre : 'sin sesión iniciada'}.</p>
-      {cajero && <MisRespuestasAnulacion cajeroId={cajero.nombre} />}
+      {cajero && (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <MisRespuestasAnulacion cajeroId={cajero.nombre} />
+          <button type="button" className="btn btn-secundario" onClick={abrirAnuladasTurno}>
+            Anuladas en el turno
+          </button>
+        </div>
+      )}
 
       <div className="filtro-fechas">
         <label className="campo">
@@ -582,6 +624,61 @@ function Facturas() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+      {/* TDSI-49: facturas anuladas del turno abierto de la caja de este cajero. */}
+      {mostrandoAnuladasTurno && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Facturas anuladas del turno">
+          <div className="rt-modal-facturas">
+            <button type="button" className="rt-modal-cerrar" onClick={cerrarAnuladasTurno} aria-label="Cerrar">
+              ✕
+            </button>
+            <h3 style={{ marginTop: 0 }}>Anuladas en el turno</h3>
+
+            {cargandoAnuladasTurno && <p>Cargando...</p>}
+
+            {!cargandoAnuladasTurno && errorAnuladasTurno && (
+              <div className="error" style={{ padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px' }}>
+                {errorAnuladasTurno}
+              </div>
+            )}
+
+            {!cargandoAnuladasTurno && !errorAnuladasTurno && anuladasTurno && (
+              anuladasTurno.anuladas.length === 0 ? (
+                <p>Todavía no anulaste ninguna factura en este turno.</p>
+              ) : (
+                <table className="tabla-facturas">
+                  <thead>
+                    <tr>
+                      <th>N° Factura</th>
+                      <th>Hora</th>
+                      <th>Total (Bs.)</th>
+                      <th>Motivo</th>
+                      <th>Supervisor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {anuladasTurno.anuladas.map((a) => (
+                      <tr key={a.numero_factura}>
+                        <td>{a.numero_factura}</td>
+                        <td>{new Date(a.hora).toLocaleTimeString()}</td>
+                        <td>{a.total.toFixed(2)}</td>
+                        <td>{a.motivo || '—'}</td>
+                        <td>{a.supervisor || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2}><strong>Total anulado</strong></td>
+                      <td><strong>{anuladasTurno.montoAnulado.toFixed(2)}</strong></td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )
+            )}
+          </div>
         </div>
       )}
     </section>

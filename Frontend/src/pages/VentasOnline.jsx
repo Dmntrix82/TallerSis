@@ -76,9 +76,10 @@ function VentasOnline() {
     setErrorMarketplace(null)
   }
 
-  // TDSI-51/957: el aviso al Marketplace no se manda solo al emitir la factura --
-  // el Administrador la revisa primero en este modal y recien ahi la aprueba, con
-  // este boton, para que se publique de verdad por Pub/Sub.
+  // TDSI-51/957: ni el aviso al Marketplace ni la factura por correo al cliente se
+  // mandan solos al emitir la factura -- el Administrador la revisa primero en este
+  // modal y recien al aprobarla (este boton) se publica de verdad por Pub/Sub y,
+  // si la orden trajo correo, se le manda ademas la factura digital al cliente.
   async function enviarAMarketplace() {
     if (!ventaSeleccionada?.numero_factura) return
     const { id } = ventaSeleccionada
@@ -87,8 +88,9 @@ function VentasOnline() {
     try {
       const { data } = await reenviarAvisoMarketplace(id)
       const nuevoEstado = data.publicado ? 'Enviado' : 'Error'
-      setVentaSeleccionada((v) => (v ? { ...v, aviso_marketplace_estado: nuevoEstado } : v))
-      setVentas((lista) => lista.map((v) => (v.id === id ? { ...v, aviso_marketplace_estado: nuevoEstado } : v)))
+      const nuevoEstadoCorreo = data.facturaEmail?.envio?.estado
+      setVentaSeleccionada((v) => (v ? { ...v, aviso_marketplace_estado: nuevoEstado, ...(nuevoEstadoCorreo && { factura_email_estado: nuevoEstadoCorreo }) } : v))
+      setVentas((lista) => lista.map((v) => (v.id === id ? { ...v, aviso_marketplace_estado: nuevoEstado, ...(nuevoEstadoCorreo && { factura_email_estado: nuevoEstadoCorreo }) } : v)))
       if (!data.publicado) setErrorMarketplace(data.error || 'No se pudo publicar el aviso en Pub/Sub.')
     } catch (err) {
       setErrorMarketplace(err.message)
@@ -103,8 +105,9 @@ function VentasOnline() {
     <section>
       <h1>Ventas Online</h1>
       <p className="resumen-turno-actual">
-        Órdenes recibidas del Marketplace y su factura, ya emitida y enviada al cliente.
-        El aviso de vuelta al Marketplace queda pendiente de tu aprobación en "Ver factura".
+        Órdenes recibidas del Marketplace y su factura, ya emitida. El aviso de vuelta al
+        Marketplace (y, si la orden trajo correo, el envío de la factura al cliente) queda
+        pendiente de tu aprobación en "Ver factura".
       </p>
 
       <form className="filtro-fechas" onSubmit={buscar}>
@@ -258,7 +261,8 @@ function VentasOnline() {
                 </span>
               ) : ventaSeleccionada.numero_factura ? (
                 <span className="resumen-turno-actual" style={{ margin: 0 }}>
-                  Revisa la factura y aprueba para avisarle al Marketplace.
+                  Revisa la factura y aprueba para avisarle al Marketplace
+                  {ventaSeleccionada.email ? ' y mandarle la factura al cliente por correo.' : '.'}
                 </span>
               ) : null}
             </div>

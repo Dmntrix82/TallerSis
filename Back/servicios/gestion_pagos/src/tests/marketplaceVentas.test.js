@@ -72,27 +72,21 @@ test.after(async () => {
   await pool.end();
 });
 
-test("TDSI-179: valida items + total (misma logica que el pago en mostrador), el formato de NIT/CI y el correo", async () => {
+test("TDSI-179/957: valida items + total (misma logica que el pago en mostrador) y el formato de NIT/CI; el correo es opcional pero si viene debe ser valido", async () => {
   await assert.rejects(() => recibirVenta(null), /objeto JSON/);
   await assert.rejects(() => recibirVenta({}), /ordenId/);
   await assert.rejects(() => recibirVenta({ ordenId: "X", nit: "123", items: [] }), /dígitos/); // NIT (tipo por defecto) con formato invalido
-  // TDSI-51: el correo es obligatorio (se le devuelve la factura digital al cliente por ahi).
-  await assert.rejects(() => recibirVenta({ ordenId: "X", nit: "1234567890", items: [] }), /correo/i);
+  // TDSI-957: sin correo no rechaza -- solo se queda sin poder mandarle la factura al cliente.
+  await assert.rejects(() => recibirVenta({ ordenId: "X", nit: "1234567890", items: [] }), /al menos un ítem/);
+  // Pero si trae un correo, tiene que tener formato valido.
   await assert.rejects(() => recibirVenta({ ordenId: "X", nit: "1234567890", email: "no-es-un-correo", items: [] }), /correo/i);
   await assert.rejects(
-    () => recibirVenta({ ordenId: "X", nit: "1234567890", email: "x@correo-prueba.test", items: [] }),
-    /al menos un ítem/
-  );
-  await assert.rejects(
-    () => recibirVenta({
-      ordenId: "X", nit: "1234567890", email: "x@correo-prueba.test",
-      items: [{ sku: "A", cantidad: 1, precioUnitario: 10 }], total: 99,
-    }),
+    () => recibirVenta({ ordenId: "X", nit: "1234567890", items: [{ sku: "A", cantidad: 1, precioUnitario: 10 }], total: 99 }),
     /no coincide/
   );
 });
 
-test("TDSI-179/683/957: una venta valida del topico se guarda, emite su factura y se la manda al cliente -- el aviso al Marketplace queda pendiente de aprobacion", async () => {
+test("TDSI-179/683/957: una venta valida del topico se guarda y emite su factura -- el aviso al Marketplace y la factura por correo quedan pendientes de aprobacion", async () => {
   const orden = `${PREFIJO}-1`;
   subscriber.usarClienteDePrueba(suscripcionFalsa([ventaMsg(orden)]));
 
@@ -102,30 +96,27 @@ test("TDSI-179/683/957: una venta valida del topico se guarda, emite su factura 
   assert.equal(resultados[0].duplicada, false);
   assert.match(resultados[0].numeroFactura, /^F-\d{6}$/);
   assert.equal(resultados[0].facturaError, null);
-  // TDSI-957: el aviso al Marketplace ya no se publica solo -- lo aprueba el
-  // Administrador a mano (ver el test de reenviarAvisoMarketplace mas abajo).
+  // TDSI-957: ni el aviso al Marketplace ni la factura por correo se mandan solos --
+  // los aprueba el Administrador a mano (ver mas abajo, reenviarAvisoMarketplace).
   assert.equal(resultados[0].aviso, null);
-
-  // TDSI-51: al cliente (no al Marketplace) se le manda la factura digital real por
-  // correo, con el detalle de items de su orden (no un desglose de metodos de pago).
-  assert.equal(resultados[0].facturaEmail.envio.estado, "SIMULADO");
-  assert.equal(resultados[0].facturaEmail.envio.email, "cliente.marketplace@correo-prueba.test");
-  assert.equal(resultados[0].facturaEmail.factura.comprobante.canal, "Marketplace");
-  assert.deepEqual(resultados[0].facturaEmail.factura.items, [{ descripcion: "Producto", cantidad: 2, subtotal: 50 }]);
+  assert.equal(resultados[0].facturaEmail, null);
 
   const { rows } = await query(
     `SELECT v.id, v.orden_id, v.total, v.metodo_pago, v.nit, v.tipo_documento, v.estado, v.numero_factura, v.factura_error,
-            v.aviso_marketplace_estado, v.aviso_marketplace_error, v.token_verificacion,
+            v.aviso_marketplace_estado, v.aviso_marketplace_error, v.email, v.token_verificacion,
             (SELECT COUNT(*) FROM pagos.venta_online_items WHERE venta_id = v.id)::int AS cantidad_items
        FROM pagos.ventas_online v WHERE v.orden_id = $1`,
     [orden]
   );
   assert.deepEqual(
-    { ...rows[0], id: undefined, token_verificacion: rows[0].token_verificacion ? "presente" : null },
+    { ...rows[0], id: undefined },
     {
       id: undefined, orden_id: orden, total: "50.00", metodo_pago: "QR", nit: NIT_PRUEBA, tipo_documento: "CI", estado: "Pagado",
       numero_factura: resultados[0].numeroFactura, factura_error: null, cantidad_items: 1,
-      aviso_marketplace_estado: null, aviso_marketplace_error: null, token_verificacion: "presente",
+      aviso_marketplace_estado: null, aviso_marketplace_error: null, email: "cliente.marketplace@correo-prueba.test",
+      // TDSI-957: el token de verificacion todavia no existe -- recien se crea al
+      // aprobar (avisar al Marketplace / mandar la factura), no antes.
+      token_verificacion: null,
     }
   );
 
@@ -137,19 +128,44 @@ test("TDSI-179/683/957: una venta valida del topico se guarda, emite su factura 
   assert.equal(factura[0].cliente_nit, NIT_PRUEBA);
   assert.equal(Number(factura[0].total), 50);
 
-  // TDSI-51/684: el enlace "Verificar Factura" publicado tiene que funcionar de verdad.
-  const verificada = await obtenerFacturaPorToken(rows[0].token_verificacion);
+  // TDSI-957: recien cuando el Administrador aprueba (reenviarAvisoMarketplace) se
+  // publica de verdad el aviso Pub/Sub al Marketplace Y, porque la orden trajo
+  // correo, se le manda tambien la factura digital al cliente (con el detalle de
+  // items de su orden, no un desglose de metodos de pago).
+  const resultado = await reenviarAvisoMarketplace(rows[0].id);
+  assert.equal(resultado.publicado, true);
+  assert.ok(resultado.messageId);
+  assert.equal(resultado.facturaEmail.envio.estado, "SIMULADO");
+  assert.equal(resultado.facturaEmail.envio.email, "cliente.marketplace@correo-prueba.test");
+  assert.equal(resultado.facturaEmail.factura.comprobante.canal, "Marketplace");
+  assert.deepEqual(resultado.facturaEmail.factura.items, [{ descripcion: "Producto", cantidad: 2, subtotal: 50 }]);
+
+  const { rows: trasAprobar } = await query(
+    `SELECT aviso_marketplace_estado, token_verificacion FROM pagos.ventas_online WHERE id = $1`,
+    [rows[0].id]
+  );
+  assert.equal(trasAprobar[0].aviso_marketplace_estado, "Enviado");
+
+  // TDSI-51/684: el enlace "Verificar Factura" publicado (recien creado al aprobar) tiene que funcionar de verdad.
+  const verificada = await obtenerFacturaPorToken(trasAprobar[0].token_verificacion);
   assert.equal(verificada.id_transaccion, resultados[0].numeroFactura);
   assert.equal(verificada.total, 50);
   assert.equal(verificada.nit, NIT_PRUEBA);
+});
 
-  // TDSI-957: recien cuando el Administrador aprueba (reenviarAvisoMarketplace) se
-  // publica de verdad el aviso Pub/Sub al Marketplace.
-  const aviso = await reenviarAvisoMarketplace(rows[0].id);
-  assert.equal(aviso.publicado, true);
-  assert.ok(aviso.messageId);
-  const { rows: trasAprobar } = await query(`SELECT aviso_marketplace_estado FROM pagos.ventas_online WHERE id = $1`, [rows[0].id]);
-  assert.equal(trasAprobar[0].aviso_marketplace_estado, "Enviado");
+test("TDSI-957: una orden sin correo se aprueba igual (se avisa al Marketplace) pero no se intenta mandar nada por correo", async () => {
+  const orden = `${PREFIJO}-6`;
+  subscriber.usarClienteDePrueba(suscripcionFalsa([ventaMsg(orden, { email: undefined })]));
+
+  const resultados = await procesarVentas();
+  assert.match(resultados[0].numeroFactura, /^F-\d{6}$/);
+
+  const { rows } = await query(`SELECT id, email FROM pagos.ventas_online WHERE orden_id = $1`, [orden]);
+  assert.equal(rows[0].email, null);
+
+  const resultado = await reenviarAvisoMarketplace(rows[0].id);
+  assert.equal(resultado.publicado, true);
+  assert.equal(resultado.facturaEmail, null);
 });
 
 test("TDSI-957: si Pub/Sub no responde al aprobar el aviso, queda Error pero la venta y su factura no se pierden", async () => {
@@ -162,9 +178,12 @@ test("TDSI-957: si Pub/Sub no responde al aprobar el aviso, queda Error pero la 
 
   publisher.usarClienteDePrueba(topicoQueFalla("el topico no existe"));
   try {
-    const aviso = await reenviarAvisoMarketplace(idVenta);
-    assert.equal(aviso.publicado, false);
-    assert.match(aviso.error, /el topico no existe/);
+    const resultado = await reenviarAvisoMarketplace(idVenta);
+    assert.equal(resultado.publicado, false);
+    assert.match(resultado.error, /el topico no existe/);
+    // TDSI-957: que falle el aviso al Marketplace no frena la factura por correo --
+    // son independientes.
+    assert.equal(resultado.facturaEmail.envio.estado, "SIMULADO");
 
     const { rows } = await query(
       `SELECT numero_factura, aviso_marketplace_estado, aviso_marketplace_error FROM pagos.ventas_online WHERE id = $1`,

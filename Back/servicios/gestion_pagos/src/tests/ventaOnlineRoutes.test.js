@@ -117,7 +117,7 @@ test("TDSI-685: con un token invalido o de otro esquema responde 401", async () 
   assert.equal(r2.status, 401);
 });
 
-test("TDSI-685: con un token valido, guarda la venta, emite la factura y se la manda al cliente por correo", async () => {
+test("TDSI-685/957: con un token valido, guarda la venta y emite la factura -- el correo al cliente queda pendiente de que se apruebe", async () => {
   const orden = `${PREFIJO}-3`;
   const r = await fetch(`${base}/online`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -127,12 +127,9 @@ test("TDSI-685: con un token valido, guarda la venta, emite la factura y se la m
   const cuerpo = await r.json();
   assert.equal(cuerpo.data.ordenId, orden);
   assert.equal(cuerpo.data.duplicada, false);
-
-  // TDSI-51: el correo del cliente (no el Marketplace) recibe la factura digital
-  // real; en el test, "simulada" porque usarTransportadorDePrueba(null) no manda nada de verdad.
   assert.match(cuerpo.data.numeroFactura, /^F-\d{6}$/);
-  assert.equal(cuerpo.data.facturaEmail.envio.estado, "SIMULADO");
-  assert.equal(cuerpo.data.facturaEmail.envio.email, ventaMsg("x").email);
+  // TDSI-957: no se manda nada por correo hasta que el Administrador aprueba.
+  assert.equal(cuerpo.data.facturaEmail, null);
 
   // un ordenId que ya no pasa la validacion del body (ej. items vacios) responde 400, no 500
   const rMala = await fetch(`${base}/online`, {
@@ -143,14 +140,15 @@ test("TDSI-685: con un token valido, guarda la venta, emite la factura y se la m
   assert.match((await rMala.json()).mensaje, /ítem/);
 });
 
-test("TDSI-51: sin correo (o con uno invalido) responde 400, no se guarda la venta", async () => {
+test("TDSI-957: el correo es opcional -- sin el, la orden se guarda igual; si viene, debe tener formato valido", async () => {
   const sinCorreo = `${PREFIJO}-sin-correo`;
   const r1 = await fetch(`${base}/online`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(ventaMsg(sinCorreo, { email: undefined })),
   });
-  assert.equal(r1.status, 400);
-  assert.match((await r1.json()).mensaje, /correo/i);
+  assert.equal(r1.status, 201);
+  const { rows: sinCorreoFila } = await query(`SELECT email FROM pagos.ventas_online WHERE orden_id = $1`, [sinCorreo]);
+  assert.equal(sinCorreoFila[0].email, null);
 
   const invalido = `${PREFIJO}-correo-invalido`;
   const r2 = await fetch(`${base}/online`, {
@@ -160,7 +158,7 @@ test("TDSI-51: sin correo (o con uno invalido) responde 400, no se guarda la ven
   assert.equal(r2.status, 400);
   assert.match((await r2.json()).mensaje, /correo/i);
 
-  const { rows } = await query(`SELECT 1 FROM pagos.ventas_online WHERE orden_id IN ($1, $2)`, [sinCorreo, invalido]);
+  const { rows } = await query(`SELECT 1 FROM pagos.ventas_online WHERE orden_id = $1`, [invalido]);
   assert.equal(rows.length, 0);
 });
 
@@ -220,7 +218,7 @@ test("TDSI-686: filtra por estado", async () => {
   assert.ok(!ordenes.includes(`${PREFIJO}-pagada`));
 });
 
-test("TDSI-51: POST /online/:id/reenviar-marketplace reenvia el aviso Pub/Sub de una factura ya emitida", async () => {
+test("TDSI-51/957: POST /online/:id/reenviar-marketplace aprueba la factura -- publica el aviso Pub/Sub y manda la factura al cliente (tiene correo)", async () => {
   const orden = `${PREFIJO}-reenvio`;
   const idVenta = await sembrarVentaDirecta({ ordenId: orden, dia: DIA, estado: "Pagado", numeroFactura: "F-REENVIO" });
 
@@ -229,6 +227,8 @@ test("TDSI-51: POST /online/:id/reenviar-marketplace reenvia el aviso Pub/Sub de
   const { data } = await r.json();
   assert.equal(data.publicado, true);
   assert.ok(data.messageId);
+  assert.equal(data.facturaEmail.envio.estado, "SIMULADO");
+  assert.equal(data.facturaEmail.envio.email, "cliente.semilla@correo-prueba.test");
 
   const { rows } = await query(`SELECT aviso_marketplace_estado FROM pagos.ventas_online WHERE id = $1`, [idVenta]);
   assert.equal(rows[0].aviso_marketplace_estado, "Enviado");

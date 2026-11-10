@@ -2,6 +2,7 @@ const { publicar } = require("../clients/pubsubPublisher");
 const cfg = require("../config/marketplace");
 const repo = require("../data/ventasOnlineRepo");
 const { obtenerOCrearTokenVentaOnline, urlVerificacion } = require("./verificacionFacturaService");
+const { enviarFacturaDeVentaOnline } = require("./facturaDigitalService");
 const { AppError } = require("../utils/AppError");
 
 /**
@@ -30,9 +31,11 @@ async function avisarFacturaEmitida({ id, orden_id, numero_factura }) {
 }
 
 /**
- * TDSI-51: boton "Enviar a Marketplace" del modal de factura del Administrador --
- * reenvia (o envia por primera vez, si por algun motivo nunca se intento) el mismo
- * aviso por Pub/Sub, para poder demostrar la integracion sin esperar una orden nueva.
+ * TDSI-51/957: boton "Aprobar y enviar a Marketplace" del modal de factura del
+ * Administrador -- es el unico momento en que la orden sale de nuestro sistema:
+ * se publica el aviso Pub/Sub al Marketplace y, si la orden trajo un correo, se le
+ * manda ademas la factura digital al cliente (sin correo, simplemente no se le manda
+ * nada por ahi). Las dos cosas son independientes: que una falle no frena la otra.
  * Solo tiene sentido si la orden ya tiene una factura emitida.
  */
 async function reenviarAvisoMarketplace(ventaId) {
@@ -41,7 +44,16 @@ async function reenviarAvisoMarketplace(ventaId) {
   if (!venta.numero_factura) {
     throw new AppError("Esta orden todavía no tiene una factura emitida; no hay nada que avisar al Marketplace.", 409, { id: ventaId });
   }
-  return avisarFacturaEmitida({ id: venta.id, orden_id: venta.orden_id, numero_factura: venta.numero_factura });
+
+  const aviso = await avisarFacturaEmitida({ id: venta.id, orden_id: venta.orden_id, numero_factura: venta.numero_factura });
+
+  let facturaEmail = null;
+  if (venta.email) {
+    const items = await repo.obtenerItemsVenta(venta.id);
+    facturaEmail = await enviarFacturaDeVentaOnline({ venta, items, numeroFactura: venta.numero_factura });
+  }
+
+  return { ...aviso, facturaEmail };
 }
 
 module.exports = { avisarFacturaEmitida, reenviarAvisoMarketplace };
