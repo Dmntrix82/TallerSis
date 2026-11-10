@@ -18,6 +18,9 @@ async function avisarFacturaEmitida({ id, orden_id, numero_factura }) {
     ordenId: orden_id,
     numeroFactura: numero_factura,
     enlaceVerificacion: urlVerificacion(token),
+    // Fecha/hora exacta del aviso (el Marketplace la pidió clara en el cuerpo del mensaje,
+    // igual que ya la tienen los mensajes hacia Compras y Contabilidad).
+    emitidoEn: new Date().toISOString(),
   };
 
   const r = await publicar(cfg.FACTURAS_TOPIC, mensaje, { tipo: "FACTURA_EMITIDA", orden_id, numero_factura });

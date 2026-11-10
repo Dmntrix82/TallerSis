@@ -1,0 +1,20 @@
+# 1. Imagen base de Node.js
+FROM node:20
+
+# 2. Carpeta de trabajo
+WORKDIR /app
+
+# 3. Copiar archivos de dependencias
+COPY package*.json ./
+
+# 4. Instalar dependencias
+RUN npm install
+
+# 5. Copiar el codigo del frontend
+COPY . .
+
+# 6. Puerto del servidor de desarrollo de Vite
+EXPOSE 5173
+
+# 7. Ejecutar en modo desarrollo, accesible desde fuera del contenedor
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

@@ -32,7 +32,9 @@ function nombreSuscripcion(suscripcion) {
 
 /** Trae hasta `max` mensajes de `suscripcion`: [{ ackId, messageId, publicadoEn, atributos, texto }]. */
 async function leer(max = 50, suscripcion) {
-  const [respuesta] = await obtenerCliente().pull({ subscription: suscripcion, maxMessages: max }, { timeout: cfg.PUBSUB_TIMEOUT_MS });
+  // returnImmediately: sin esto, pull() se queda esperando mensajes que no llegan (el
+  // caso normal) y revienta con DEADLINE_EXCEEDED en vez de devolver una lista vacia.
+  const [respuesta] = await obtenerCliente().pull({ subscription: suscripcion, maxMessages: max, returnImmediately: true }, { timeout: cfg.PUBSUB_TIMEOUT_MS });
   return (respuesta.receivedMessages || []).map(({ ackId, message }) => ({
     ackId,
     messageId: message.messageId,
