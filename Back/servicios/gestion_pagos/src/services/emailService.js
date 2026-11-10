@@ -5,7 +5,13 @@ const { lineaAtendidoPor } = require("../utils/atendidoPor");
 // Mientras SMTP_HOST/SMTP_USER/SMTP_PASS no esten en el .env, el correo se "simula"
 // (se arma el HTML y se deja constancia en pagos.facturas_enviadas) en vez de mandarse
 // de verdad. Apenas lleguen las credenciales, esto empieza a enviar sin tocar el resto.
+// Solo para pruebas: reemplaza el transportador real (null fuerza "simulado"
+// aunque haya credenciales SMTP reales en el .env; undefined vuelve al real).
+let transportadorPrueba;
+
 function transportadorConfigurado() {
+  if (transportadorPrueba !== undefined) return transportadorPrueba;
+
   const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
 
@@ -17,12 +23,35 @@ function transportadorConfigurado() {
   });
 }
 
+function usarTransportadorDePrueba(falso) {
+  transportadorPrueba = falso;
+}
+
+// TDSI-51: una venta de Marketplace es un solo pago (no hay "metodos" que
+// desglosar) y no tiene cajero/caja -- se muestra el detalle de items de la
+// orden en vez del metodo de pago, y el numero de orden en vez de "atendido por".
 function renderizarHtmlFactura(factura) {
-  const filasPago = factura.pagos
-    .map(
-      (p) => `<tr><td style="padding:4px 0;">${p.metodo}</td><td style="padding:4px 0; text-align:right;">Bs. ${p.monto.toFixed(2)}</td></tr>`
-    )
-    .join("");
+  const esVentaOnline = Array.isArray(factura.items);
+
+  const filasDetalle = esVentaOnline
+    ? factura.items
+        .map(
+          (it) => `<tr><td style="padding:4px 0;">${it.descripcion} x${it.cantidad}</td><td style="padding:4px 0; text-align:right;">Bs. ${it.subtotal.toFixed(2)}</td></tr>`
+        )
+        .join("")
+    : factura.pagos
+        .map(
+          (p) => `<tr><td style="padding:4px 0;">${p.metodo}</td><td style="padding:4px 0; text-align:right;">Bs. ${p.monto.toFixed(2)}</td></tr>`
+        )
+        .join("");
+
+  const encabezadoDetalle = esVentaOnline
+    ? '<th style="text-align:left; border-bottom:1px solid #e4e7eb; padding-bottom:4px;">Producto</th><th style="text-align:right; border-bottom:1px solid #e4e7eb; padding-bottom:4px;">Subtotal</th>'
+    : '<th style="text-align:left; border-bottom:1px solid #e4e7eb; padding-bottom:4px;">Método de pago</th><th style="text-align:right; border-bottom:1px solid #e4e7eb; padding-bottom:4px;">Monto</th>';
+
+  const lineaOrigen = esVentaOnline
+    ? `Orden: ${factura.comprobante.orden_id}`
+    : lineaAtendidoPor(factura.comprobante);
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; color:#1f2933;">
@@ -34,15 +63,12 @@ function renderizarHtmlFactura(factura) {
         <strong>Fecha:</strong> ${new Date(factura.comprobante.fecha).toLocaleString("es-BO")}
       </p>
       <p><strong>Cliente:</strong> ${factura.cliente.razon_social}${factura.cliente.nit ? ` (NIT: ${factura.cliente.nit})` : ""}</p>
-      <p style="color:#616e7c; font-size:0.9rem;">${lineaAtendidoPor(factura.comprobante)}</p>
+      <p style="color:#616e7c; font-size:0.9rem;">${lineaOrigen}</p>
       <table style="width:100%; border-collapse:collapse; margin-top:1rem;">
         <thead>
-          <tr>
-            <th style="text-align:left; border-bottom:1px solid #e4e7eb; padding-bottom:4px;">Método de pago</th>
-            <th style="text-align:right; border-bottom:1px solid #e4e7eb; padding-bottom:4px;">Monto</th>
-          </tr>
+          <tr>${encabezadoDetalle}</tr>
         </thead>
-        <tbody>${filasPago}</tbody>
+        <tbody>${filasDetalle}</tbody>
       </table>
       <p style="text-align:right; font-size:1.2rem; font-weight:bold; margin-top:1rem;">
         Total: Bs. ${factura.total.toFixed(2)}
@@ -81,4 +107,4 @@ async function enviarFacturaPorCorreo({ email, factura, pdfBuffer }) {
   }
 }
 
-module.exports = { enviarFacturaPorCorreo, renderizarHtmlFactura };
+module.exports = { enviarFacturaPorCorreo, renderizarHtmlFactura, usarTransportadorDePrueba };

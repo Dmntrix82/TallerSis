@@ -601,3 +601,15 @@ ALTER TABLE pagos.transacciones
     ADD COLUMN IF NOT EXISTS moneda_recibida VARCHAR(10),
     ADD COLUMN IF NOT EXISTS monto_usd       NUMERIC(10,2) CHECK (monto_usd IS NULL OR monto_usd > 0),
     ADD COLUMN IF NOT EXISTS tipo_cambio     NUMERIC(10,2) CHECK (tipo_cambio IS NULL OR tipo_cambio > 0);
+
+-- ==========================================================================
+-- TDSI-51: correo del cliente final de una venta de Marketplace. Nosotros
+-- (pagos y facturacion) somos quienes validamos la orden y le devolvemos su
+-- factura digital -- el Marketplace solo recibe el aviso de que ya se emitio
+-- (aviso_marketplace_estado), el cliente recibe la factura de verdad por este
+-- correo (mismo mecanismo que pagos.facturas_enviadas ya usa para mostrador,
+-- ver src/services/facturaDigitalService.js#enviarFacturaDeVentaOnline).
+-- NULL en ventas de antes de este cambio.
+-- ==========================================================================
+ALTER TABLE pagos.ventas_online
+    ADD COLUMN IF NOT EXISTS email VARCHAR(150);

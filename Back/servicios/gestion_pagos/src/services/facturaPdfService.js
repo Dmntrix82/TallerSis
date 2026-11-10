@@ -58,7 +58,12 @@ function dibujarContenido(doc, { factura, dia, hora, qrBuffer }) {
 
   doc.moveDown(0.4);
   doc.font("Helvetica-Bold").fontSize(9);
-  centrado(doc, factura.comprobante.tipo_pago === "Mixto" ? "COMPROBANTE DE PAGO MIXTO" : "COMPROBANTE DE PAGO");
+  centrado(
+    doc,
+    factura.comprobante.canal === "Marketplace"
+      ? "COMPROBANTE DE VENTA ONLINE"
+      : factura.comprobante.tipo_pago === "Mixto" ? "COMPROBANTE DE PAGO MIXTO" : "COMPROBANTE DE PAGO"
+  );
 
   if (factura.comprobante.anulada) {
     doc.moveDown(0.2);
@@ -76,7 +81,13 @@ function dibujarContenido(doc, { factura, dia, hora, qrBuffer }) {
   filaDosColumnas(doc, "Hora de emisión:", hora);
   // TDSI-61/944: si se reimprime, siguen siendo los datos de quien la emitio
   // originalmente, no los de quien reimprime (vienen ya fijos en factura.comprobante).
-  doc.text(lineaAtendidoPor(factura.comprobante), MARGEN, doc.y, { width: ANCHO_PT - MARGEN * 2 });
+  // TDSI-51: una venta de Marketplace no tiene cajero/caja -- se muestra su N° de orden.
+  doc.text(
+    factura.comprobante.canal === "Marketplace" ? `Orden: ${factura.comprobante.orden_id}` : lineaAtendidoPor(factura.comprobante),
+    MARGEN,
+    doc.y,
+    { width: ANCHO_PT - MARGEN * 2 }
+  );
   doc.moveDown(0.15);
 
   lineaPunteada(doc);
@@ -87,15 +98,25 @@ function dibujarContenido(doc, { factura, dia, hora, qrBuffer }) {
 
   lineaPunteada(doc);
   doc.font("Helvetica-Bold").fontSize(8);
-  filaDosColumnas(doc, "Método de pago", "Monto Bs.");
-  doc.font("Helvetica").fontSize(8);
-  factura.pagos.forEach((p) => {
-    let etiqueta = p.metodo;
-    if (p.metodo === "Efectivo" && p.moneda_recibida === "USD") {
-      etiqueta += ` (Pagado en USD: ${Number(p.monto_usd).toFixed(2)} USD, T.C. ${p.tipo_cambio})`;
-    }
-    filaDosColumnas(doc, etiqueta, p.monto.toFixed(2));
-  });
+  if (Array.isArray(factura.items)) {
+    // TDSI-51: una venta de Marketplace es un solo pago -- se muestra el
+    // detalle de items de la orden en vez del desglose por metodo de pago.
+    filaDosColumnas(doc, "Producto", "Subtotal Bs.");
+    doc.font("Helvetica").fontSize(8);
+    factura.items.forEach((it) => {
+      filaDosColumnas(doc, `${it.descripcion} x${it.cantidad}`, it.subtotal.toFixed(2));
+    });
+  } else {
+    filaDosColumnas(doc, "Método de pago", "Monto Bs.");
+    doc.font("Helvetica").fontSize(8);
+    factura.pagos.forEach((p) => {
+      let etiqueta = p.metodo;
+      if (p.metodo === "Efectivo" && p.moneda_recibida === "USD") {
+        etiqueta += ` (Pagado en USD: ${Number(p.monto_usd).toFixed(2)} USD, T.C. ${p.tipo_cambio})`;
+      }
+      filaDosColumnas(doc, etiqueta, p.monto.toFixed(2));
+    });
+  }
 
   lineaPunteada(doc);
   doc.font("Helvetica-Bold").fontSize(10);

@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const { verificarToken } = require("../middlewares/verificarToken");
 const { recibirVenta, listarVentas } = require("../services/ventaOnlineService");
+const { reenviarAvisoMarketplace } = require("../services/avisoMarketplaceService");
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
@@ -11,6 +12,9 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(nex
  * el tópico ya es confiable por construccion, asi que esto NO duplica esa ruta, es la
  * alternativa directa para cuando no se usa el tópico. Misma validacion para ambas
  * (recibirVenta), asi que una venta ya recibida por el tópico tampoco se duplica aca.
+ * El campo "email" es obligatorio: es nuestro modulo (pagos y facturacion), no el
+ * Marketplace, el que valida la orden y le devuelve al cliente final su factura
+ * digital por ese correo (ver facturaDigitalService.js#enviarFacturaDeVentaOnline).
  */
 router.post("/online", verificarToken, wrap(async (req, res) => {
   const data = await recibirVenta(req.body);
@@ -19,9 +23,20 @@ router.post("/online", verificarToken, wrap(async (req, res) => {
 
 // TDSI-51/686: listado real de "Ventas Online" para el Administrador, con filtros
 // opcionales (?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&estado=Pagado|Anulado) y el detalle
-// de items de cada orden.
+// de items de cada orden. Cada venta trae tambien el correo del cliente y el estado
+// del envio de su factura digital (factura_email_estado: SIMULADO/ENVIADO/ERROR).
 router.get("/online/ventas", wrap(async (req, res) => {
   const data = await listarVentas({ desde: req.query.desde, hasta: req.query.hasta, estado: req.query.estado });
+  res.json({ ok: true, data });
+}));
+
+// TDSI-51: boton "Enviar a Marketplace" del modal "Ver factura" en el panel del
+// Administrador -- reenvia el aviso Pub/Sub de esa factura, para poder demostrar
+// la integracion con el Marketplace sin esperar una orden nueva.
+// 200 { publicado, messageId } o { publicado: false, error }.
+// 404 si la venta no existe; 409 si todavia no tiene una factura emitida.
+router.post("/online/:id/reenviar-marketplace", wrap(async (req, res) => {
+  const data = await reenviarAvisoMarketplace(req.params.id);
   res.json({ ok: true, data });
 }));
 

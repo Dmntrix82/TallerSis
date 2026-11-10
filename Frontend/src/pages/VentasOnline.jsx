@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listarVentasOnline } from '../api/ventasOnline.js'
+import { listarVentasOnline, reenviarAvisoMarketplace } from '../api/ventasOnline.js'
 
 const ESTADOS = [
   { valor: '', etiqueta: 'Todos' },
@@ -14,12 +14,19 @@ const CLASE_ESTADO = {
   'Anulacion Pendiente': 'badge-estado--solicitada',
 }
 
+// TDSI-51: estado del correo con la factura digital que se le manda al cliente final
+// (distinto del aviso al Marketplace, que solo avisa que ya se emitio el numero).
+const ETIQUETA_FACTURA_EMAIL = { ENVIADO: 'Enviado', SIMULADO: 'Simulado (sin SMTP)', ERROR: 'Error' }
+const CLASE_FACTURA_EMAIL = { ENVIADO: 'badge-estado--emitida', SIMULADO: '', ERROR: 'badge-comparacion--faltante' }
+
 const bs = (v) => Number(v ?? 0).toFixed(2)
 const FILTROS_VACIOS = { desde: '', hasta: '', estado: '' }
 
-// TDSI-180/688-691: pantalla "Ventas Online" del Administrador -- ventas reales
-// que llegan del Marketplace (topico o POST /api/pagos/online), su factura emitida
-// y si el aviso de esa factura ya llego al Marketplace.
+// TDSI-180/688-691/957: pantalla "Ventas Online" del Administrador -- ventas reales
+// que llegan del Marketplace (topico o POST /api/pagos/online). La factura se arma y
+// se le manda al cliente por correo apenas llega la orden; el aviso de vuelta al
+// Marketplace (Pub/Sub) queda pendiente de que el Administrador revise la factura en
+// "Ver factura" y la apruebe.
 function VentasOnline() {
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
@@ -31,6 +38,8 @@ function VentasOnline() {
   const [error, setError] = useState(null)
 
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null)
+  const [enviandoMarketplace, setEnviandoMarketplace] = useState(false)
+  const [errorMarketplace, setErrorMarketplace] = useState(null)
 
   useEffect(() => {
     let vigente = true
@@ -57,13 +66,45 @@ function VentasOnline() {
     setFiltros(FILTROS_VACIOS)
   }
 
+  function abrirFactura(venta) {
+    setVentaSeleccionada(venta)
+    setErrorMarketplace(null)
+  }
+
+  function cerrarFactura() {
+    setVentaSeleccionada(null)
+    setErrorMarketplace(null)
+  }
+
+  // TDSI-51/957: el aviso al Marketplace no se manda solo al emitir la factura --
+  // el Administrador la revisa primero en este modal y recien ahi la aprueba, con
+  // este boton, para que se publique de verdad por Pub/Sub.
+  async function enviarAMarketplace() {
+    if (!ventaSeleccionada?.numero_factura) return
+    const { id } = ventaSeleccionada
+    setEnviandoMarketplace(true)
+    setErrorMarketplace(null)
+    try {
+      const { data } = await reenviarAvisoMarketplace(id)
+      const nuevoEstado = data.publicado ? 'Enviado' : 'Error'
+      setVentaSeleccionada((v) => (v ? { ...v, aviso_marketplace_estado: nuevoEstado } : v))
+      setVentas((lista) => lista.map((v) => (v.id === id ? { ...v, aviso_marketplace_estado: nuevoEstado } : v)))
+      if (!data.publicado) setErrorMarketplace(data.error || 'No se pudo publicar el aviso en Pub/Sub.')
+    } catch (err) {
+      setErrorMarketplace(err.message)
+    } finally {
+      setEnviandoMarketplace(false)
+    }
+  }
+
   const hayFiltros = filtros.desde || filtros.hasta || filtros.estado
 
   return (
     <section>
       <h1>Ventas Online</h1>
       <p className="resumen-turno-actual">
-        Órdenes recibidas del Marketplace, su factura emitida y el aviso enviado de vuelta.
+        Órdenes recibidas del Marketplace y su factura, ya emitida y enviada al cliente.
+        El aviso de vuelta al Marketplace queda pendiente de tu aprobación en "Ver factura".
       </p>
 
       <form className="filtro-fechas" onSubmit={buscar}>
@@ -106,10 +147,12 @@ function VentasOnline() {
                 <th>N° Orden</th>
                 <th>Fecha</th>
                 <th>Cliente</th>
+                <th>Correo</th>
                 <th>Total (Bs.)</th>
                 <th>Método</th>
                 <th>N° Factura</th>
                 <th>Aviso al Marketplace</th>
+                <th>Factura por correo</th>
                 <th>Estado</th>
                 <th></th>
               </tr>
@@ -117,9 +160,10 @@ function VentasOnline() {
             <tbody>
               {ventas.map((v) => (
                 <tr key={v.id}>
-                  <td>{v.orden_id}</td>
+                  <td className="celda-truncada" title={v.orden_id}>{v.orden_id}</td>
                   <td>{new Date(v.recibida_en).toLocaleString()}</td>
                   <td>{v.razon_social || v.cliente_id || 'Consumidor final'}</td>
+                  <td className="celda-truncada" title={v.email || ''}>{v.email || '—'}</td>
                   <td>{bs(v.total)}</td>
                   <td>{v.metodo_pago}</td>
                   <td>
@@ -132,6 +176,17 @@ function VentasOnline() {
                       <span className={`badge-estado ${v.aviso_marketplace_estado === 'Enviado' ? 'badge-estado--emitida' : ''}`}>
                         {v.aviso_marketplace_estado}
                       </span>
+                    ) : v.numero_factura ? (
+                      <span className="badge-estado badge-estado--solicitada">Pendiente de aprobación</span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td>
+                    {v.factura_email_estado ? (
+                      <span className={`badge-estado ${CLASE_FACTURA_EMAIL[v.factura_email_estado] ?? ''}`}>
+                        {ETIQUETA_FACTURA_EMAIL[v.factura_email_estado] ?? v.factura_email_estado}
+                      </span>
                     ) : (
                       '—'
                     )}
@@ -140,7 +195,7 @@ function VentasOnline() {
                     <span className={`badge-estado ${CLASE_ESTADO[v.estado] ?? ''}`}>{v.estado}</span>
                   </td>
                   <td>
-                    <button type="button" className="btn btn-azul" onClick={() => setVentaSeleccionada(v)}>
+                    <button type="button" className="btn btn-azul" onClick={() => abrirFactura(v)}>
                       Ver factura
                     </button>
                   </td>
@@ -157,7 +212,7 @@ function VentasOnline() {
             <button
               type="button"
               className="rt-modal-cerrar"
-              onClick={() => setVentaSeleccionada(null)}
+              onClick={cerrarFactura}
               aria-label="Cerrar"
             >
               ✕
@@ -173,6 +228,41 @@ function VentasOnline() {
               <strong>Cliente:</strong> {ventaSeleccionada.razon_social || ventaSeleccionada.cliente_id || 'Consumidor final'}
               {ventaSeleccionada.nit && ` · ${ventaSeleccionada.tipo_documento || 'NIT'} ${ventaSeleccionada.nit}`}
             </p>
+
+            {/* TDSI-51/957: el aviso Pub/Sub al Marketplace no sale solo -- recien se
+                publica cuando el Administrador revisa esta factura y la aprueba aca. */}
+            <div
+              style={{
+                margin: '0.75rem 0 1.25rem',
+                padding: '0.75rem 1rem',
+                borderRadius: '8px',
+                backgroundColor: '#f4f6fa',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+                alignItems: 'center',
+              }}
+            >
+              <button
+                type="button"
+                className="btn"
+                onClick={enviarAMarketplace}
+                disabled={!ventaSeleccionada.numero_factura || ventaSeleccionada.aviso_marketplace_estado === 'Enviado' || enviandoMarketplace}
+                title={!ventaSeleccionada.numero_factura ? 'Todavía no tiene una factura emitida' : undefined}
+              >
+                {enviandoMarketplace ? 'Enviando...' : 'Aprobar y enviar a Marketplace (Pub/Sub)'}
+              </button>
+              {ventaSeleccionada.aviso_marketplace_estado ? (
+                <span className={`badge-estado ${ventaSeleccionada.aviso_marketplace_estado === 'Enviado' ? 'badge-estado--emitida' : ''}`}>
+                  {ventaSeleccionada.aviso_marketplace_estado}
+                </span>
+              ) : ventaSeleccionada.numero_factura ? (
+                <span className="resumen-turno-actual" style={{ margin: 0 }}>
+                  Revisa la factura y aprueba para avisarle al Marketplace.
+                </span>
+              ) : null}
+            </div>
+            {errorMarketplace && <p className="error" style={{ marginTop: '-0.5rem' }}>{errorMarketplace}</p>}
 
             <table className="tabla-facturas">
               <thead>

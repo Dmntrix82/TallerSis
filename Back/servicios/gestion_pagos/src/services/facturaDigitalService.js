@@ -3,12 +3,12 @@ const pagosRepo = require("../data/pagosRepo");
 const facturaEmailRepo = require("../data/facturaEmailRepo");
 const { enviarFacturaPorCorreo } = require("./emailService");
 const { generarFacturaPdfBuffer } = require("./facturaPdfService");
-const { obtenerOCrearToken, urlVerificacion } = require("./verificacionFacturaService");
+const { obtenerOCrearToken, obtenerOCrearTokenVentaOnline, urlVerificacion } = require("./verificacionFacturaService");
+const { validarEmail } = require("../utils/email");
 
 // Datos fijos del negocio para el encabezado de la factura digital.
 // NIT simulado: este proyecto es academico y no tiene integracion real con el SIN.
 const EMPRESA = { nombre: "TallerSis", direccion: "Av. Principal s/n, Bolivia", nit: "1009876015" };
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Extension de TDSI-107/108: en este proyecto todavia no hay catalogo de productos,
@@ -70,9 +70,8 @@ async function construirFacturaDigital(id_transaccion) {
  * genera el PDF de la factura (TDSI-303) y la manda con ese PDF adjunto.
  */
 async function enviarFacturaDeTransaccion(id_transaccion, email) {
-  if (!email || !EMAIL_REGEX.test(String(email).trim())) {
-    throw new AppError("Ingrese un correo válido para enviar la factura.", 400, { email });
-  }
+  const errorEmail = validarEmail(email);
+  if (errorEmail) throw new AppError(errorEmail, 400, { email });
 
   const factura = await construirFacturaDigital(id_transaccion);
   const pdfBuffer = await generarFacturaPdfBuffer(factura);
@@ -88,4 +87,61 @@ async function enviarFacturaDeTransaccion(id_transaccion, email) {
   return { factura, envio };
 }
 
-module.exports = { construirFacturaDigital, enviarFacturaDeTransaccion };
+/**
+ * TDSI-51: la factura digital de una venta de Marketplace, en el mismo formato
+ * (empresa, QR de verificacion) que la de mostrador, pero con el detalle de
+ * items de la orden en vez del desglose por metodo de pago (una venta online
+ * es un solo pago, no hay "metodos" que mostrar por separado) y sin cajero/caja
+ * (la atendio el canal online, no una persona en una caja).
+ */
+async function construirFacturaDigitalVentaOnline({ venta, items, numeroFactura }) {
+  const tokenVerificacion = await obtenerOCrearTokenVentaOnline(venta.id);
+
+  return {
+    empresa: EMPRESA,
+    comprobante: {
+      id_transaccion: numeroFactura,
+      orden_id: venta.orden_id,
+      fecha: venta.recibida_en,
+      caja_id: null,
+      cajero_nombre: null,
+      canal: "Marketplace",
+      tokenVerificacion,
+      urlVerificacion: urlVerificacion(tokenVerificacion),
+      anulada: false,
+    },
+    cliente: {
+      nit: venta.nit || null,
+      razon_social: venta.razon_social || venta.cliente_id || "Consumidor final",
+    },
+    items: items.map((it) => ({ descripcion: it.descripcion, cantidad: it.cantidad, subtotal: it.subtotal })),
+    total: venta.total,
+  };
+}
+
+/**
+ * TDSI-51: al Marketplace se le avisa por el topico (ver avisoMarketplaceService.js,
+ * no toca al cliente); esto es lo que de verdad llega al cliente -- el correo que
+ * dio en su orden, con la factura digital adjunta en PDF, apenas se emite el numero.
+ */
+async function enviarFacturaDeVentaOnline({ venta, items, numeroFactura }) {
+  const factura = await construirFacturaDigitalVentaOnline({ venta, items, numeroFactura });
+  const pdfBuffer = await generarFacturaPdfBuffer(factura);
+  const resultado = await enviarFacturaPorCorreo({ email: venta.email, factura, pdfBuffer });
+
+  const envio = await facturaEmailRepo.registrarEnvio({
+    id_transaccion: numeroFactura,
+    email: venta.email,
+    estado: resultado.estado,
+    payload: factura,
+  });
+
+  return { factura, envio };
+}
+
+module.exports = {
+  construirFacturaDigital,
+  enviarFacturaDeTransaccion,
+  construirFacturaDigitalVentaOnline,
+  enviarFacturaDeVentaOnline,
+};

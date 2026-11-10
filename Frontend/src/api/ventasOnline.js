@@ -15,3 +15,9 @@ export function listarVentasOnline({ desde, hasta, estado } = {}) {
   const qs = params.toString()
   return apiFetch(`/api/pagos/online/ventas${qs ? `?${qs}` : ''}`, {}, GESTION_PAGOS_API_BASE_URL)
 }
+
+// TDSI-51: boton "Enviar a Marketplace" del modal "Ver factura" -- reenvia el aviso
+// Pub/Sub de esa factura, para demostrar la integracion sin esperar una orden nueva.
+export function reenviarAvisoMarketplace(id) {
+  return apiFetch(`/api/pagos/online/${encodeURIComponent(id)}/reenviar-marketplace`, { method: 'POST' }, GESTION_PAGOS_API_BASE_URL)
+}

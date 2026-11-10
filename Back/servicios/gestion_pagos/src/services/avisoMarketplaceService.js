@@ -2,6 +2,7 @@ const { publicar } = require("../clients/pubsubPublisher");
 const cfg = require("../config/marketplace");
 const repo = require("../data/ventasOnlineRepo");
 const { obtenerOCrearTokenVentaOnline, urlVerificacion } = require("./verificacionFacturaService");
+const { AppError } = require("../utils/AppError");
 
 /**
  * TDSI-51/684: avisa al Marketplace que la factura de su orden ya se emitio, publicando
@@ -28,4 +29,19 @@ async function avisarFacturaEmitida({ id, orden_id, numero_factura }) {
   return { publicado: r.ok, ...(r.ok ? { messageId: r.messageId } : { error: r.error }) };
 }
 
-module.exports = { avisarFacturaEmitida };
+/**
+ * TDSI-51: boton "Enviar a Marketplace" del modal de factura del Administrador --
+ * reenvia (o envia por primera vez, si por algun motivo nunca se intento) el mismo
+ * aviso por Pub/Sub, para poder demostrar la integracion sin esperar una orden nueva.
+ * Solo tiene sentido si la orden ya tiene una factura emitida.
+ */
+async function reenviarAvisoMarketplace(ventaId) {
+  const venta = await repo.obtenerVentaPorId(ventaId);
+  if (!venta) throw new AppError("No existe una venta online con ese id.", 404, { id: ventaId });
+  if (!venta.numero_factura) {
+    throw new AppError("Esta orden todavía no tiene una factura emitida; no hay nada que avisar al Marketplace.", 409, { id: ventaId });
+  }
+  return avisarFacturaEmitida({ id: venta.id, orden_id: venta.orden_id, numero_factura: venta.numero_factura });
+}
+
+module.exports = { avisarFacturaEmitida, reenviarAvisoMarketplace };

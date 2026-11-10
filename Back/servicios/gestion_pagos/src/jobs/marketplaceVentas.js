@@ -30,10 +30,12 @@ async function procesarVentas() {
         const json = JSON.parse(m.texto);
         const r = await recibirVenta(json);
         resultados.push(r);
+        // TDSI-957: el aviso al Marketplace ya no se publica solo -- el Administrador
+        // lo revisa y lo manda a mano desde el panel, no aparece en este log.
         const estado = r.duplicada
           ? "ya estaba registrada"
           : r.numeroFactura
-            ? `venta guardada, factura ${r.numeroFactura}, aviso al Marketplace ${r.aviso?.publicado ? "enviado" : "con error"}`
+            ? `venta guardada, factura ${r.numeroFactura}, correo al cliente ${r.facturaEmail?.envio?.estado || "?"}, pendiente de aprobar el aviso al Marketplace`
             : `venta guardada, SIN factura (${r.facturaError})`;
         console.log(`[marketplace] ${r.ordenId} -> ${estado}`);
       } catch (e) {

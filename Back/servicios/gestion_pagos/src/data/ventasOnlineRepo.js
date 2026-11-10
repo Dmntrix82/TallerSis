@@ -8,15 +8,15 @@ async function existeOrden(ordenId) {
 }
 
 /** TDSI-51/179: guarda la venta (cabecera) + sus items en una sola transaccion SQL. */
-async function guardarVenta({ ordenId, clienteId, nit, tipoDocumento, razonSocial, total, metodoPago, codigoConfirmacion }, items) {
+async function guardarVenta({ ordenId, clienteId, nit, tipoDocumento, razonSocial, total, metodoPago, codigoConfirmacion, email }, items) {
   return withTransaction(async (client) => {
     const { rows } = await client.query(
       `INSERT INTO pagos.ventas_online
-         (orden_id, cliente_id, nit, tipo_documento, razon_social, total, metodo_pago, codigo_confirmacion)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (orden_id, cliente_id, nit, tipo_documento, razon_social, total, metodo_pago, codigo_confirmacion, email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (orden_id) DO NOTHING
        RETURNING *`,
-      [ordenId, clienteId || null, nit || null, tipoDocumento || null, razonSocial || null, total, metodoPago, codigoConfirmacion]
+      [ordenId, clienteId || null, nit || null, tipoDocumento || null, razonSocial || null, total, metodoPago, codigoConfirmacion, email]
     );
     const venta = rows[0];
     if (!venta) return null; // TDSI-51: ya existia (la orden llego dos veces) -- una orden = una venta
@@ -80,6 +80,15 @@ async function buscarPorTokenVerificacion(token) {
   return { ...venta, total: num(venta.total), items: items.map((i) => ({ ...i, cantidad: num(i.cantidad), precio_unitario: num(i.precio_unitario), subtotal: num(i.subtotal) })) };
 }
 
+/** TDSI-51: venta puntual por su id (PK), para reenviar su aviso al Marketplace a pedido del Administrador. */
+async function obtenerVentaPorId(id) {
+  const { rows } = await query(
+    `SELECT id, orden_id, numero_factura FROM pagos.ventas_online WHERE id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
 /** TDSI-51/684: resultado del aviso al Marketplace (topico "pagos-facturas-emitidas"). */
 async function guardarAvisoMarketplace(ventaId, { estado, error }) {
   await query(
@@ -113,7 +122,10 @@ async function listarVentas({ desde, hasta, estado } = {}) {
   const { rows } = await query(
     `SELECT v.id, v.orden_id, v.cliente_id, v.nit, v.tipo_documento, v.razon_social,
             v.total, v.metodo_pago, v.estado, v.numero_factura, v.factura_error,
-            v.aviso_marketplace_estado, v.aviso_marketplace_error, v.recibida_en,
+            v.aviso_marketplace_estado, v.aviso_marketplace_error, v.recibida_en, v.email,
+            (SELECT fe.estado FROM pagos.facturas_enviadas fe
+              WHERE fe.id_transaccion = v.numero_factura
+              ORDER BY fe.creado_en DESC LIMIT 1) AS factura_email_estado,
             COALESCE(
               json_agg(
                 json_build_object(
@@ -146,6 +158,7 @@ module.exports = {
   obtenerTokenVerificacion,
   guardarTokenVerificacion,
   buscarPorTokenVerificacion,
+  obtenerVentaPorId,
   guardarAvisoMarketplace,
   listarVentas,
 };

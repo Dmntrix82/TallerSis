@@ -1,9 +1,10 @@
 const repo = require("../data/ventasOnlineRepo");
 const { aCentavos, aMonto } = require("../utils/money");
 const { validarFormatoDocumento } = require("../utils/documento");
+const { validarEmail } = require("../utils/email");
 const { emitirActualizacion } = require("../utils/tableroEvents");
 const { emitirFactura } = require("./facturacionProxy");
-const { avisarFacturaEmitida } = require("./avisoMarketplaceService");
+const { enviarFacturaDeVentaOnline } = require("./facturaDigitalService");
 const { AppError } = require("../utils/AppError");
 
 const METODOS_VALIDOS = ["Efectivo", "Tarjeta", "QR"];
@@ -35,6 +36,12 @@ async function recibirVenta(json) {
   const tipoDocumento = json.tipoDocumento || "NIT";
   const errorFormato = validarFormatoDocumento(tipoDocumento, json.nit);
   if (errorFormato) throw new AppError(errorFormato, 400);
+
+  // TDSI-51: nosotros (pagos y facturacion) somos quienes le devolvemos la factura
+  // digital al cliente final por correo, no el Marketplace -- por eso el correo es
+  // obligatorio en la orden, igual que el NIT/CI.
+  const errorEmail = validarEmail(json.email);
+  if (errorEmail) throw new AppError(errorEmail, 400);
 
   if (!Array.isArray(json.items) || json.items.length === 0) {
     throw new AppError("La venta debe tener al menos un ítem", 400);
@@ -69,6 +76,7 @@ async function recibirVenta(json) {
       total: json.total,
       metodoPago,
       codigoConfirmacion: generarCodigo(),
+      email: String(json.email).trim(),
     },
     itemsProcesados
   );
@@ -97,14 +105,18 @@ async function recibirVenta(json) {
     await repo.guardarErrorFactura(venta.id, facturaError);
   }
 
-  // TDSI-51/684: sin factura no hay nada que avisar todavia -- se avisa cuando
-  // la factura SI se pudo emitir.
-  let aviso = null;
+  // TDSI-51/957: sin factura no hay nada que mandarle al cliente todavia. Con
+  // factura, se le manda su factura digital por correo de una vez (ya pago, no
+  // tiene sentido hacerlo esperar). El aviso al Marketplace es la excepcion: el
+  // Administrador lo revisa primero (modal "Ver factura") y lo manda el mismo,
+  // a mano, con el boton "Enviar a Marketplace" (POST /online/:id/reenviar-marketplace)
+  // -- no se publica solo apenas se emite la factura.
+  let facturaEmail = null;
   if (numeroFactura) {
-    aviso = await avisarFacturaEmitida({ id: venta.id, orden_id: venta.orden_id, numero_factura: numeroFactura });
+    facturaEmail = await enviarFacturaDeVentaOnline({ venta, items: itemsProcesados, numeroFactura });
   }
 
-  return { ordenId: venta.orden_id, duplicada: false, venta, numeroFactura, facturaError, aviso };
+  return { ordenId: venta.orden_id, duplicada: false, venta, numeroFactura, facturaError, aviso: null, facturaEmail };
 }
 
 /**

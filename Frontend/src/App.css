@@ -154,6 +154,14 @@
   padding: 2rem;
 }
 
+/* Panel de administracion: las tablas con muchas columnas (Ventas online,
+   Historial de operaciones, Diferencias de caja, etc.) necesitaban scroll
+   horizontal porque el .container de 960px las apretaba de mas -- con mas
+   ancho entran enteras y solo queda el scroll vertical normal de la pagina. */
+.container-ancho {
+  max-width: 1600px;
+}
+
 .error {
   color: #b91c1c;
 }
@@ -1719,7 +1727,7 @@
   --mc-fondo: #f4f6fa;
   --mc-acento: #a7f3d9;
   display: flex; flex-direction: column; gap: 20px;
-  max-width: 1100px; margin: 0 auto; padding: 28px 24px;
+  max-width: 1600px; margin: 0 auto; padding: 28px 24px;
   color: var(--mc-texto);
 }
 
@@ -1773,7 +1781,7 @@
 
 /* CierreDiario.jsx lo puse en una fila para ahorrar espacio hahaha*/
 
-.cierre-diario { --cd-primario: var(--color-brand-dark, #173b35); --cd-acento: var(--color-brand-mint, #a7e6cf); --cd-texto: #334155; --cd-muted: #64748b; --cd-borde: #e2e8f0; --cd-fondo: #f8fafc; width: 100%; max-width: 1100px; margin: 0 auto; padding: 24px 0 40px; color: var(--cd-texto); }
+.cierre-diario { --cd-primario: var(--color-brand-dark, #173b35); --cd-acento: var(--color-brand-mint, #a7e6cf); --cd-texto: #334155; --cd-muted: #64748b; --cd-borde: #e2e8f0; --cd-fondo: #f8fafc; width: 100%; max-width: 1600px; margin: 0 auto; padding: 24px 0 40px; color: var(--cd-texto); }
 .cierre-diario * { box-sizing: border-box; }
 .cierre-diario h1, .cierre-diario h2, .cierre-diario p { margin-top: 0; }
 .cierre-diario h1 { margin-bottom: 8px; color: var(--cd-primario); font-size: clamp(1.6rem, 3vw, 2.1rem); font-weight: 750; }
@@ -2064,12 +2072,30 @@
 }
 
 .reporte-tabla {
-  overflow-x: auto;
+  overflow: auto;
+  /* El scroll horizontal (cuando hace falta) queda pegado al borde de esta caja,
+     no al final de la tabla -- con muchas filas, antes había que bajar hasta el
+     final de la página entera para encontrarlo. */
+  max-height: 68vh;
+  border-radius: 8px;
 }
 
 .reporte-tabla .tabla-facturas th,
 .reporte-tabla .tabla-facturas td {
   padding: 0.6rem 0.75rem;
+  white-space: nowrap;
+}
+
+.reporte-tabla .tabla-facturas th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.celda-truncada {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2281,7 +2307,7 @@
   --rt-fondo: #f4f6fa;
   --rt-acento: #a7f3d9;
   display: flex; flex-direction: column; gap: 20px;
-  max-width: 1100px; margin: 0 auto; padding: 28px 24px;
+  max-width: 1600px; margin: 0 auto; padding: 28px 24px;
   color: var(--rt-texto);
 }
 .revision-transacciones .btn.btn-pequeno { height: 34px; padding: 0 14px; font-size: .85rem; }
@@ -2405,7 +2431,7 @@
   --ho-fondo: #f4f6fa;
   --ho-acento: #a7f3d9;
   display: flex; flex-direction: column; gap: 20px;
-  max-width: 1100px; margin: 0 auto; padding: 28px 24px;
+  max-width: 1600px; margin: 0 auto; padding: 28px 24px;
   color: var(--ho-texto);
 }
 .historial-operaciones .btn.btn-pequeno { height: 34px; padding: 0 14px; font-size: .85rem; }
@@ -2482,7 +2508,7 @@
   --mp-fondo: #f4f6fa;
   --mp-acento: #a7f3d9;
   display: flex; flex-direction: column; gap: 20px;
-  max-width: 1100px; margin: 0 auto; padding: 28px 24px;
+  max-width: 1600px; margin: 0 auto; padding: 28px 24px;
   color: var(--mp-texto);
 }
 .metodos-pago .btn.btn-pequeno { height: 34px; padding: 0 14px; font-size: .85rem; }
